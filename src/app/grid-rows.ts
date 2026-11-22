@@ -2,12 +2,13 @@
 // The rows are exactly the sheet's (the same writers as a download), so the grid and the workbook
 // always agree. Data structure: rebuild/data-structure.md §9.
 
-import type { ArmyList, CompositionRule, Equipment, Item, Package, RaceProfile, SlotKind, SpecialRule, Unit } from "../items/items";
+import type { ArmyList, CompositionRule, Equipment, Item, Package, RaceProfile, SlotKind, Source, SpecialRule, Unit } from "../items/items";
 import type { Row } from "../sheets/csv";
 import { TABS, type TabId } from "../packages/package-sheets";
 import * as tabs from "../packages/sheet-tabs";
 
 export const KIND_OF_TAB: Record<TabId, Item["kind"]> = {
+  bibliography: "source",
   races: "race-profile",
   "common links": "slot-kind",
   rules: "special-rule",
@@ -38,6 +39,8 @@ export function gridFor(pkg: Package, tab: TabId, byKey: Map<string, Item>): Gri
 
 function rowsOf(item: Item, columns: tabs.PackageColumns, categoryOf: Map<string, string>): Row[] {
   switch (item.kind) {
+    case "source":
+      return [tabs.writeSourceRow(item as Source)];
     case "race-profile":
       return [tabs.writeRaceRow(item as RaceProfile)];
     case "slot-kind":

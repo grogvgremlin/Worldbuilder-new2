@@ -2,7 +2,7 @@
 // Data structure: rebuild/data-structure.md §2–5. Names are matched afterwards, across the whole
 // library, by `refreshLibrary` (library.ts), which also makes the stubs.
 
-import type { ArmyList, CompositionRule, Equipment, Game, Item, Package, RaceProfile, SlotKind, SpecialRule, Unit } from "../items/items";
+import type { ArmyList, CompositionRule, Equipment, Game, Item, Package, RaceProfile, SlotKind, Source, SpecialRule, Unit } from "../items/items";
 import { slug } from "../items/keys";
 import type { Row } from "../sheets/csv";
 import { TABS, type GameSheets, type PackageSheets, type TabId } from "./package-sheets";
@@ -79,6 +79,7 @@ function readPackageTabs(sheet: PackageSheets, pkg: Package, game: Game, problem
 }
 
 function readTab(id: TabId, rows: Row[], ctx: tabs.TabContext, categories: string[], onArmyList: (list: ArmyList) => void): Item[] {
+  if (id === "bibliography") return tabs.readSourceRows(rows, ctx);
   if (id === "races") return tabs.readRaceRows(rows, ctx);
   if (id === "common links") return tabs.readCommonLinkRows(rows, ctx);
   if (id === "rules") return tabs.readRuleRows(rows, ctx);
@@ -164,6 +165,7 @@ export function exportPackage(pkg: Package, byKey: Map<string, Item>): PackageSh
   const put = (id: TabId, rows: Row[]) => {
     if (rows.length > 0) sheetTabs[id] = rows;
   };
+  put("bibliography", ofKind("source").map((i) => tabs.writeSourceRow(i as Source)));
   put("races", ofKind("race-profile").map((i) => tabs.writeRaceRow(i as RaceProfile)));
   put("common links", ofKind("slot-kind").map((i) => tabs.writeCommonLinkRow(i as SlotKind)));
   put("rules", ofKind("special-rule").map((i) => tabs.writeRuleRow(i as SpecialRule)));

@@ -302,6 +302,20 @@ export const CompositionRule = z.strictObject({
 });
 export type CompositionRule = z.infer<typeof CompositionRule>;
 
-export const Item = z.discriminatedUnion("kind", [Game, Package, RaceProfile, Unit, Equipment, SpecialRule, SlotKind, ArmyList, CompositionRule]);
+// A source: a book, PDF or website the rules and lore cite (the bibliography).
+// Items cite it by name in their reference ("Forces of Fantasy;64").
+// Design: spec/pillars/background-and-narrative.md §3 (a source is the work; the reference sits on
+// the citing item). Editions, ISBNs and what the owner owns are in the tail (foundations/tail.md).
+export const Source = z.strictObject({
+  ...common,
+  kind: z.literal("source"),
+  sourceKind: z.string().optional(), // book, PDF, website …
+  by: z.string().optional(), // publisher or author
+  published: z.string().optional(), // year, or date
+  link: z.string().optional(),
+});
+export type Source = z.infer<typeof Source>;
+
+export const Item = z.discriminatedUnion("kind", [Game, Package, RaceProfile, Unit, Equipment, SpecialRule, SlotKind, ArmyList, CompositionRule, Source]);
 export type Item = z.infer<typeof Item>;
 export type ItemKind = Item["kind"];

@@ -13,8 +13,9 @@ import { BROWSE_KINDS } from "./BrowseScreen";
 type View = "sections" | "nesting" | PackageType;
 
 export function GameScreen({ data, nav, gameKey }: { data: AppData; nav: Nav; gameKey: string }) {
-  const [view, setView] = useState<View>("sections");
-  const [folded, setFolded] = useState<Set<string>>(new Set());
+  const [view, setView] = useState<View>("nesting");
+  // "Not entered yet" starts folded: it grows with every book that names things not yet entered.
+  const [folded, setFolded] = useState<Set<string>>(new Set(["stubs"]));
   const game = data.items.find((i): i is Game => i.key === gameKey && i.kind === "game");
   if (!game) return <p>Not on the device any more.</p>;
   const byKey = new Map(data.items.map((i) => [i.key, i]));
@@ -30,8 +31,8 @@ export function GameScreen({ data, nav, gameKey }: { data: AppData; nav: Nav; ga
         Statline {game.statlines.model.join(" ")} · categories {game.categories.join(", ")}
       </p>
       <div className="chips">
-        <button className={view === "sections" ? "on" : ""} onClick={() => setView("sections")}>All, by type</button>
         <button className={view === "nesting" ? "on" : ""} onClick={() => setView("nesting")}>As the books nest</button>
+        <button className={view === "sections" ? "on" : ""} onClick={() => setView("sections")}>All, by type</button>
         {present.map((t) => (
           <button key={t.type} className={view === t.type ? "on" : ""} onClick={() => setView(t.type)}>{t.title}</button>
         ))}
@@ -48,7 +49,7 @@ export function GameScreen({ data, nav, gameKey }: { data: AppData; nav: Nav; ga
           .filter((t) => view === "sections" || view === t.type)
           .map((t) => {
             const inSection = packages.filter((p) => typeOf(p) === t.type);
-            const open = !folded.has(t.type) || view === t.type;
+            const open = view === t.type || !folded.has(t.type);
             return (
               <div key={t.type}>
                 <h2 className="fold" onClick={() => toggle(t.type)}>
@@ -122,8 +123,10 @@ function StubList({ packages, items, nav }: { packages: Package[]; items: Item[]
     <>
       <p className="hint">Names used but not entered. Enter each in the package it belongs to (a lore in the rulebook, say) and its stub goes.</p>
       {packages.map((p) => (
-        <div key={p.key}>
-          <p className="sub">Named in {nameOf(p.stubsFor!, items)}</p>
+        <details key={p.key} className="stub-group">
+          <summary>
+            Named in {nameOf(p.stubsFor!, items)} <span className="sub">{p.members.length}</span>
+          </summary>
           <ul className="plain">
             {p.members.map((k) => (
               <li key={k}>
@@ -131,7 +134,7 @@ function StubList({ packages, items, nav }: { packages: Package[]; items: Item[]
               </li>
             ))}
           </ul>
-        </div>
+        </details>
       ))}
     </>
   );

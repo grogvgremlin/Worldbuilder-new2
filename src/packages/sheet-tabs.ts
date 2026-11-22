@@ -4,7 +4,7 @@
 //
 // Reading only reads cells: names are matched to items afterwards (resolve.ts).
 
-import type { ArmyList, CompositionRule, Equipment, RaceProfile, SlotKind, SpecialRule, Stats, Unit, UnitRow } from "../items/items";
+import type { ArmyList, CompositionRule, Equipment, RaceProfile, SlotKind, Source, SpecialRule, Stats, Unit, UnitRow } from "../items/items";
 import { itemKey } from "../items/keys";
 import type { Row } from "../sheets/csv";
 import { readOptions, writeOptions } from "../notation/options";
@@ -27,6 +27,7 @@ export type TabContext = {
 export const STATS = ["M", "WS", "BS", "S", "T", "W", "I", "A", "Ld"];
 
 export const COLUMNS = {
+  bibliography: ["Source", "Kind", "By", "Published", "Link", "Notes"],
   races: ["Race", "Tree", "Rank", ...STATS, "Rules", "Reference", "Notes"],
   equipment: ["Equipment", "Match Key", ...STATS, "Save", "Rules", "Alias", "Rules 2", "Type", "R", "AP", "Cost", "Reference"],
   rules: ["Rule", "Type", "Rules", "Rules 2", "Reference"],
@@ -68,6 +69,29 @@ function writeStats(stats: Stats, row: Row): void {
 function compact<T extends object>(record: T): T {
   for (const k of Object.keys(record) as (keyof T)[]) if (record[k] === undefined) delete record[k];
   return record;
+}
+
+// --- Bibliography -----------------------------------------------------------------------------
+
+export function readSourceRows(rows: Row[], ctx: TabContext): Source[] {
+  return rows.map((row) => {
+    const name = row["Source"].trim();
+    return compact<Source>({
+      key: itemKey(ctx.game, "source", name),
+      kind: "source",
+      name,
+      homePackage: ctx.packageKey,
+      sourceKind: v.readText(row["Kind"]),
+      by: v.readText(row["By"]),
+      published: v.readText(row["Published"]),
+      link: v.readText(row["Link"]),
+      notes: v.readText(row["Notes"]),
+    });
+  });
+}
+
+export function writeSourceRow(item: Source): Row {
+  return { Source: item.name, Kind: item.sourceKind ?? "", By: item.by ?? "", Published: item.published ?? "", Link: item.link ?? "", Notes: item.notes ?? "" };
 }
 
 // --- Races ------------------------------------------------------------------------------------

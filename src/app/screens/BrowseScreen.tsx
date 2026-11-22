@@ -7,13 +7,14 @@ import type { AppData } from "../app-data";
 import type { Nav } from "../App";
 import { nameOf } from "./GameScreen";
 
-export type BrowseKind = "special-rule" | "equipment" | "unit" | "race-profile";
+export type BrowseKind = "special-rule" | "equipment" | "unit" | "race-profile" | "source";
 
 export const BROWSE_KINDS: { kind: BrowseKind; title: string }[] = [
   { kind: "special-rule", title: "Rules" },
   { kind: "equipment", title: "Equipment" },
   { kind: "unit", title: "Units" },
   { kind: "race-profile", title: "Races" },
+  { kind: "source", title: "Bibliography" },
 ];
 
 type GroupBy = "book" | "source" | "type" | "status";
@@ -68,5 +69,6 @@ function groupLabel(item: Item, by: GroupBy, all: Item[], categoryOf: Map<string
   if (item.kind === "equipment") return item.type ?? "No type given";
   if (item.kind === "unit") return item.class === "mount" ? "Mount" : categoryOf.get(item.key) ?? "No category";
   if (item.kind === "race-profile") return item.race;
+  if (item.kind === "source") return item.sourceKind ?? "No kind given";
   return "—";
 }

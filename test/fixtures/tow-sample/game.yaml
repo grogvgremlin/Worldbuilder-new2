@@ -1,0 +1,28 @@
+# The game: Warhammer: the Old World.
+# What the game itself defines; its rules and content live in its packages (rulebook first).
+
+game: "Warhammer: the Old World"
+short name: tow
+
+statlines:
+  model: [M, WS, BS, S, T, W, I, A, Ld]
+  extra:
+    Armour save: {base: 7, better: lower}     # 7 = none ("-"); light armour +1 gives 6+
+    Ward save: {better: lower}
+  weapon: [Range, S, AP]
+bounds: {all: [1, 10], applied: at output}
+
+measures:
+  - {name: Points, short: pts, rounding: up}
+
+categories: [Characters, Core, Special, Rare, Mercenaries, Allies]
+sections: [Characters, Infantry, Cavalry, Chariots, Monsters, War Machines]   # the book's profile groups (p. 3)
+
+troop types: [Regular Infantry, Heavy Infantry, Light Cavalry, Heavy Cavalry, Monstrous Cavalry,
+              Monstrous Creature, Behemoth, Light Chariot, Heavy Chariot, War Machine, Swarm, War Beasts]
+
+roles: [General, Battle Standard Bearer]
+
+bag order: [set, add, multiply, cap, floor]
+
+core: [TOW rulebook]

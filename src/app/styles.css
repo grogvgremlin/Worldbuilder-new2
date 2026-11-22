@@ -144,3 +144,9 @@ h2.fold { cursor: pointer; user-select: none; }
 .stepper { display: inline-flex; gap: 6px; align-items: center; }
 .stepper button { width: 36px; height: 36px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--panel); font-size: 1.2rem; }
 .rules-on label { display: flex; gap: 8px; align-items: center; }
+.list-settings { margin: 8px 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+.list-settings summary { color: var(--link); cursor: pointer; }
+.settings select { margin: 4px 0; width: 100%; }
+.settings form { display: flex; gap: 8px; margin-top: 4px; }
+.settings form .filter { margin: 0; flex: 1; }
+.settings .label { display: block; color: var(--ink); font-weight: 600; } .settings .sub { display: block; }

@@ -268,6 +268,7 @@ export type Equipment = z.infer<typeof Equipment>;
 export const SpecialRule = z.strictObject({
   ...common,
   kind: z.literal("special-rule"),
+  ruleType: z.string().optional(), // psychology, movement, magic … (for grouping and the quick reference)
   text: z.string().optional(),
   effectsAsWritten: z.string().optional(), // the sheet's programmatic Rules column; not read yet
 });

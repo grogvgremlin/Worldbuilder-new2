@@ -8,6 +8,7 @@ import { downloadFullYaml, downloadGameSheetYaml, downloadGameWorkbook, download
 import type { AppData } from "../app-data";
 import type { Nav } from "../App";
 import { saveFile } from "../save-file";
+import { BROWSE_KINDS } from "./BrowseScreen";
 
 type View = "sections" | "nesting" | PackageType;
 
@@ -63,6 +64,13 @@ export function GameScreen({ data, nav, gameKey }: { data: AppData; nav: Nav; ga
             );
           })
       )}
+
+      <h2>Everything in the game, across books</h2>
+      <div className="buttons">
+        {BROWSE_KINDS.map((k) => (
+          <button key={k.kind} onClick={() => nav.open({ name: "browse", game: game.shortName, kind: k.kind })}>{k.title}</button>
+        ))}
+      </div>
 
       <h2>Download the whole game</h2>
       <div className="buttons">

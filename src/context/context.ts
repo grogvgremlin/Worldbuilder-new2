@@ -1,8 +1,9 @@
 // A context: a game and the packages switched on for it. What's on, what each package brings with it,
 // what can still be switched on, and anything that looks wrong.
 // Design: design/v2-reconciliation.md §1 (build rows: four groups, each in order — books → FAQs →
-// house rules → campaign; the game brings its core, which can't be switched off whole; a package in
-// another group's layer, or of another game, warns); design/army-lists.md §3 (composition packages);
+// house rules → campaign, each package in the group its layer says; the game brings its core, which
+// can't be switched off whole); design/army-lists.md §3 (composition packages); owner, 22 Nov: another
+// game's package never comes in, and being part of a book doesn't load the book;
 // build-log Part B decisions 21 (switching a package on brings what it needs, marked "needed by";
 // derived, not stored; a needed package switched off by hand stays off, with a warning), 26 (only the
 // context's game is offered), 29 (a pick-up game: no world, so no campaign packages).
@@ -76,6 +77,7 @@ export function readContext(context: Context, items: Item[]): ContextView {
       warnings.push(`${neededBy ? `${neededBy} needs ` : ""}a package that isn't on the device (${key})`);
       return;
     }
+    if (pkg.game !== context.game) return; // another game's package never comes in
     if (switchedOff.has(key) && how === "needed") {
       warnings.push(`${neededBy} needs ${pkg.name}, which is switched off here`);
       return;
@@ -88,44 +90,38 @@ export function readContext(context: Context, items: Item[]): ContextView {
   };
 
   for (const k of game?.core ?? []) add(k, "core", null, []);
+  // Each listed package is read in the group its layer says, whatever list it was written in.
+  const listedByGroup = new Map<Group, ContextPackage[]>(GROUPS.map(({ group }) => [group, []]));
+  for (const listed of allListed(context)) {
+    const pkg = byKey.get(listed.package);
+    const group = pkg?.kind === "package" ? groupFor(pkg, byKey) : "books";
+    listedByGroup.get(group)!.push(listed);
+  }
   for (const { group } of GROUPS) {
-    for (const listed of context[group]) {
+    for (const listed of listedByGroup.get(group)!) {
+      const pkg = byKey.get(listed.package);
+      if (pkg?.kind === "package" && pkg.game !== context.game) continue;
       if (listed.on) add(listed.package, "chosen", null, []);
       else if (!seen.has(listed.package)) order.push({ key: listed.package, name: byKey.get(listed.package)?.name ?? listed.package, how: "chosen", on: false, neededBy: [] });
     }
   }
 
-  for (const { group } of GROUPS) for (const listed of context[group]) warnings.push(...groupWarnings(listed, group, context, byKey));
+  if (!context.world) for (const listed of listedByGroup.get("campaign")!) warnings.push(`${byKey.get(listed.package)?.name ?? listed.package} is a campaign package: campaign rules need a world`);
   if (!context.composition.some((c) => c.on)) warnings.push("no composition set: only the army lists' own limits apply");
 
   return { game, packages: order, on: new Set(order.filter((p) => p.on).map((p) => p.key)), warnings };
 }
 
-// What a package needs: what it says (needs), the book it's part of, and what its items name.
+// What a package needs: what it says it needs, and the packages its items name. Being part of a book
+// is only where it shows in the Library: it never loads the book, nor the book's other armies (owner, 22 Nov).
 export function needsOf(pkg: Package, items: Item[]): string[] {
   const needs = [...pkg.needsStated];
-  if (pkg.partOf) needs.push(pkg.partOf);
   for (const k of foundNeeds(pkg, items).keys()) needs.push(k);
   return [...new Set(needs)];
 }
 
 function allListed(context: Context): ContextPackage[] {
   return GROUPS.flatMap(({ group }) => context[group]);
-}
-
-function groupWarnings(listed: ContextPackage, group: Group, context: Context, byKey: Map<string, Item>): string[] {
-  const pkg = byKey.get(listed.package);
-  if (!pkg || pkg.kind !== "package") return [];
-  const out: string[] = [];
-  if (pkg.game !== context.game) out.push(`${pkg.name} is for another game (${pkg.game})`);
-  const expected = groupFor(pkg, byKey);
-  if (expected !== group) out.push(`${pkg.name} is listed under ${title(group)}, but it's ${title(expected)}`);
-  if (group === "campaign" && !context.world) out.push(`${pkg.name} is a campaign package: campaign rules need a world`);
-  return out;
-}
-
-function title(group: Group): string {
-  return GROUPS.find((g) => g.group === group)!.title.toLowerCase();
 }
 
 // The group a package belongs in, by what it is.
@@ -158,7 +154,7 @@ export function offered(context: Context, items: Item[]): Map<Group, Package[]> 
 // Switches a package on, in the group it belongs to (listed again if it was switched off).
 export function switchOn(context: Context, packageKey: string, items: Item[]): Context {
   const pkg = items.find((i): i is Package => i.kind === "package" && i.key === packageKey);
-  if (!pkg) return context;
+  if (!pkg || pkg.game !== context.game) return context; // only this game's packages
   const group = groupFor(pkg, new Map(items.map((i) => [i.key, i])));
   const next = structuredClone(context);
   const listed = next[group].find((p) => p.package === packageKey);

@@ -12,7 +12,8 @@ import { cellDifferences, loadFolder, saveFolder } from "./helpers";
 import { hasTowData, readFolder, TOW_DATA } from "./read-folder";
 
 describe.skipIf(!hasTowData)("TOW data from the data repo", () => {
-  const files = readFolder(TOW_DATA);
+  // Read only where the data is checked out: a skipped suite's body still runs when tests are collected.
+  const files = hasTowData ? readFolder(TOW_DATA) : {};
   const first = loadFolder(files);
   const byKey = (items: Item[]) => new Map(items.map((i) => [i.key, i]));
 

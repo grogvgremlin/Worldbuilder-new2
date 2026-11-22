@@ -158,3 +158,10 @@ h2.fold { cursor: pointer; user-select: none; }
 .clash { padding: 8px 12px; margin: 6px 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
 .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .compare .text { font-size: .7rem; max-height: 240px; overflow: auto; }
+.config h3 { margin-top: 14px; }
+.config-row { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.arrows { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
+.arrows button { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 2px 8px; }
+.choice-edit { padding: 8px 0; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
+.choice-edit .filter { margin: 0; }
+.mono { font-family: var(--mono); font-size: .9rem; }

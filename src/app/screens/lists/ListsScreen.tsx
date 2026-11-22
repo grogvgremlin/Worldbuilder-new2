@@ -48,7 +48,7 @@ export function ListsScreen({ data, nav }: { data: AppData; nav: Nav }) {
 function NewContext({ data, games, onMade }: { data: AppData; games: Game[]; onMade: (c: Context) => void }) {
   const [gameKey, setGameKey] = useState(games[0].key);
   const game = games.find((g) => g.key === gameKey) ?? games[0];
-  const [preset, setPreset] = useState("");
+  const [preset, setPreset] = useState(game.presets?.[0]?.name ?? "");
   const [name, setName] = useState("");
   const make = async () => {
     const chosen = game.presets?.find((p) => p.name === preset) ?? null;
@@ -62,18 +62,19 @@ function NewContext({ data, games, onMade }: { data: AppData; games: Game[]; onM
       <h2>New</h2>
       <label className="stack">
         <span className="sub">Game</span>
-        <select value={game.key} onChange={(e) => (setGameKey(e.target.value), setPreset(""))}>
+        <select value={game.key} onChange={(e) => (setGameKey(e.target.value), setPreset(games.find((g) => g.key === e.target.value)?.presets?.[0]?.name ?? ""))}>
           {games.map((g) => <option key={g.key} value={g.key}>{g.name}</option>)}
         </select>
       </label>
-      <label className="stack">
-        <span className="sub">Start from</span>
-        <select value={preset} onChange={(e) => setPreset(e.target.value)}>
-          <option value="">Blank: the game's core only</option>
-          {(game.presets ?? []).map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
-        </select>
-        {game.presets?.find((p) => p.name === preset)?.about && <span className="sub">{game.presets.find((p) => p.name === preset)!.about}</span>}
-      </label>
+      {(game.presets ?? []).length > 0 && (
+        <label className="stack">
+          <span className="sub">Start from (the game's presets: Library → the game → Configuration)</span>
+          <select value={preset} onChange={(e) => setPreset(e.target.value)}>
+            {(game.presets ?? []).map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
+          </select>
+          {game.presets?.find((p) => p.name === preset)?.about && <span className="sub">{game.presets.find((p) => p.name === preset)!.about}</span>}
+        </label>
+      )}
       <input className="filter" placeholder="Name (e.g. Friday night)" value={name} onChange={(e) => setName(e.target.value)} />
       <div className="buttons">
         <button className="primary" onClick={make}>Start</button>

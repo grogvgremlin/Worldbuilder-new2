@@ -192,6 +192,7 @@ export const Package = z.strictObject({
   includes: z.array(z.string()), // other packages included whole
   needsStated: z.array(z.string()), // package keys it needs that references can't show
   corrects: z.string().optional(), // an FAQ: the package it corrects
+  stubsFor: z.string().optional(), // made by the app: stubs for names in this package that match nothing
 });
 export type Package = z.infer<typeof Package>;
 

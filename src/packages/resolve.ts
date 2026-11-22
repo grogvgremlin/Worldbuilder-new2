@@ -6,7 +6,7 @@
 import type { Item, Option, Options, Package, Term, Unit } from "../items/items";
 import { matchName } from "../items/keys";
 
-type Kind = "unit" | "equipment" | "special-rule" | "slot-kind";
+export type Kind = "unit" | "equipment" | "special-rule" | "slot-kind";
 
 // Every item of the matchable kinds, by kind and by matched name (including aliases).
 export class NameIndex {
@@ -47,21 +47,23 @@ export class NameIndex {
   }
 }
 
-// A name that matched nothing, and where.
-export type Unmatched = { name: string; where: string };
+// A name that matched nothing: where, in which package, and the kinds it was looked for in.
+export type Unmatched = { name: string; where: string; inPackage: string | undefined; kinds: Kind[] };
 
 // Fills in `item` on every name in the items given, against everything in `index`.
 export function resolveNames(items: Item[], index: NameIndex): Unmatched[] {
   const unmatched: Unmatched[] = [];
+  let inPackage: string | undefined;
   const look = (term: Term | Option, kinds: Kind[], where: string) => {
     term.item = index.find(term.name, kinds);
-    if (term.item === null) unmatched.push({ name: term.name, where });
+    if (term.item === null) unmatched.push({ name: term.name, where, inPackage, kinds });
   };
   const terms = (list: Term[] | undefined, kinds: Kind[], where: string) => list?.forEach((t) => look(t, kinds, where));
   const equipmentKinds = (t: Term | Option): Kind[] => (t.as === "Mount" ? ["unit"] : ["equipment", "unit"]);
 
   for (const item of items) {
     const where = item.name;
+    inPackage = item.homePackage;
     if (item.kind === "unit") {
       if (item.inherits) look(item.inherits, ["unit"], where + ", inherits");
       for (const row of item.rows) {
@@ -71,7 +73,7 @@ export function resolveNames(items: Item[], index: NameIndex): Unmatched[] {
         resolveOptions(row.rulesOptions, () => ["special-rule"], look, where + ", rules options");
         row.slots?.slots.forEach((s) => {
           s.item = index.find(s.code, ["slot-kind"]);
-          if (s.item === null) unmatched.push({ name: s.code, where: where + ", slots" });
+          if (s.item === null) unmatched.push({ name: s.code, where: where + ", slots", inPackage, kinds: ["slot-kind"] });
         });
       }
     }

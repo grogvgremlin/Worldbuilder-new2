@@ -2,21 +2,23 @@
 // form, both round trips, and the dependencies found.
 import { describe, expect, it } from "vitest";
 import { join } from "node:path";
-import { exportGameFolder, importGameFolder } from "../src/packages/game-folder";
+import { loadFolder, saveFolder, cellDifferences } from "./helpers";
+import { importFolder } from "../src/library/upload";
+import { planUpload } from "../src/library/library";
 import { readFullYaml, writeFullYaml } from "../src/packages/full-yaml";
 import { foundNeeds } from "../src/packages/resolve";
 import { readCsv } from "../src/sheets/csv";
-import type { ArmyList, Package, Unit } from "../src/items/items";
+import type { ArmyList, Item, Package, Unit } from "../src/items/items";
 import { readFolder } from "./read-folder";
 
 const files = readFolder(join(__dirname, "fixtures/tow-sample"));
-const result = importGameFolder(files);
-const item = (key: string) => result.items.find((i) => i.key === key);
+const result = loadFolder(files);
+const item = (key: string) => result.items.find((i: Item) => i.key === key);
 
 describe("the TOW sample", () => {
   it("imports with no problems and every name matched", () => {
     expect(result.problems).toEqual([]);
-    expect(result.unmatched).toEqual([]);
+    expect(result.stubbed).toEqual([]);
   });
 
   it("stores a unit in plain words", () => {
@@ -58,27 +60,37 @@ describe("the TOW sample", () => {
     expect(empire.partOf).toBe("tow.forces-of-fantasy");
   });
 
-  // The one change allowed: a space before a bracket in an options cell is dropped.
   it("gives back every cell as typed", () => {
-    const out = exportGameFolder(result.items);
-    for (const [path, text] of Object.entries(files)) {
-      if (!path.endsWith(".csv")) continue;
-      const tidy = (rows: Record<string, string>[]) => rows.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => k !== "Key").map(([k, v]) => [k, k.endsWith("Options") ? v.trim().replace(/ \(/g, "(") : v.trim()])));
-      expect(tidy(readCsv(out[path]).rows), path).toEqual(tidy(readCsv(text).rows));
-    }
+    expect(cellDifferences(files, saveFolder(result.items), readCsv)).toEqual([]);
   });
 
   it("round-trips through sheets and through full YAML", () => {
-    expect(importGameFolder(exportGameFolder(result.items)).items).toEqual(result.items);
+    expect(loadFolder(saveFolder(result.items)).items).toEqual(result.items);
     const back = readFullYaml(writeFullYaml(result.items));
     expect(back.problems).toEqual([]);
     expect(back.items).toEqual(result.items);
   });
 
   it("reports a bad file instead of stopping", () => {
-    const broken = { ...files, "game.yaml": "game: Warhammer: the Old World\n" };
-    const r = importGameFolder(broken);
-    expect(r.items).toEqual([]);
+    const r = loadFolder({ ...files, "game.yaml": "game: Warhammer: the Old World\n" });
     expect(r.problems[0].message).toMatch(/colon needs quotes/);
+  });
+
+  it("makes a stub for a name that matches nothing, and drops it when the real item arrives", () => {
+    const withoutCrossbow = { ...files };
+    withoutCrossbow["rulebook/equipment.csv"] = files["rulebook/equipment.csv"].split("\r\n").filter((l) => !l.startsWith("Crossbow,")).join("\r\n");
+    const r = loadFolder(withoutCrossbow);
+    expect(r.stubbed.map((u) => u.name)).toContain("Crossbow");
+    const stub = r.items.find((i: Item) => i.key === "tow.equipment.crossbow")!;
+    expect(stub).toMatchObject({ status: "stub", homePackage: "tow.the-empire.stubs" });
+    // Upload the rulebook again, Crossbow and all.
+    const rulebook = Object.fromEntries(Object.entries(files).filter(([p]) => p.startsWith("rulebook/") || p === "game.yaml"));
+    const again = importFolder(rulebook, r.items);
+    const plan = planUpload(r.items, again.items.filter((i) => i.homePackage === "tow.rulebook" || i.key === "tow.rulebook"));
+    expect(plan.changed.map((i) => i.key)).toContain("tow.equipment.crossbow"); // it was a stub
+    expect(plan.removed).toEqual([]);
+    const fix = { items: plan.library };
+    expect(fix.items.find((i: Item) => i.key === "tow.equipment.crossbow")).toMatchObject({ homePackage: "tow.rulebook" });
+    expect(fix.items.find((i: Item) => i.key === "tow.the-empire.stubs")).toBeUndefined();
   });
 });

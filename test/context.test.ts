@@ -15,7 +15,7 @@ describe("a pick-up game's context", () => {
 
   it("starts with the game's core and its default composition set, and no world", () => {
     expect(friday).toMatchObject({ key: "context.friday-night", game: "tow", books: [], composition: [{ package: "tow.standard-composition", on: true }] });
-    expect(friday.world).toBeUndefined();
+    expect(friday.sandbox).toBe("pickup");
     const view = readContext(friday, items);
     expect(keys(view)).toEqual(["tow.rulebook", "tow.races", "tow.standard-composition"]);
     expect(view.packages[0]).toMatchObject({ name: "Rulebook", how: "core" });

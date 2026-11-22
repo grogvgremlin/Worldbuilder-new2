@@ -79,6 +79,14 @@ function stubItem(kind: string, key: string, name: string, homePackage: string):
 
 // --- Uploads --------------------------------------------------------------------------------------
 
+// A name an upload brings that another book already has, with different content: the owner chooses.
+//   existing — keep the one already there; the new book's names point at it
+//   new      — take the new one; both books then use it
+//   both     — keep both; the new one lives in the new book (its names find it first)
+// Same name and same content isn't a clash: it's the same item, kept once (owner, 22 Nov).
+export type ClashChoice = "existing" | "new" | "both";
+export type Clash = { key: string; name: string; existing: Item; incoming: Item; choice?: ClashChoice };
+
 // What an upload would change, item by item, before it's accepted.
 export type UploadPlan = {
   library: Item[]; // the library as it would be
@@ -86,19 +94,76 @@ export type UploadPlan = {
   changed: Item[];
   unchanged: Item[];
   removed: Item[]; // items an uploaded package no longer has
+  shared: Item[]; // same name, same content as another book's: kept once
+  clashes: Clash[];
+  undecided: boolean; // a clash still needs a choice
   stubbed: Unmatched[];
 };
 
 // An uploaded package replaces the one on the device whole: items it no longer lists go.
-export function planUpload(current: Item[], uploaded: Item[]): UploadPlan {
+export function planUpload(current: Item[], uploadedIn: Item[], choices: Record<string, ClashChoice> = {}): UploadPlan {
+  let uploaded = structuredClone(uploadedIn);
   const uploadedPackages = new Set(uploaded.filter((i) => i.kind === "package").map((p) => p.key));
+  const currentByKey = new Map(current.map((i) => [i.key, i]));
+  const shared: Item[] = [];
+  const clashes: Clash[] = [];
+  const dropFromPackage = new Map<string, Set<string>>(); // package key -> member keys to drop
+  const renames = new Map<string, string>(); // old key -> new key, in the uploaded package
+  const drop = (pkg: string | undefined, key: string) => pkg && dropFromPackage.set(pkg, new Set([...(dropFromPackage.get(pkg) ?? []), key]));
+
+  for (const incoming of uploaded) {
+    const existing = currentByKey.get(incoming.key);
+    if (!existing || !existing.homePackage || !incoming.homePackage) continue;
+    if (existing.homePackage === incoming.homePackage || uploadedPackages.has(existing.homePackage)) continue;
+    if (existing.status === "stub") continue; // a name not entered yet: the real item simply takes its place
+    if (sameContent(existing, incoming)) {
+      shared.push(existing);
+      drop(incoming.homePackage, incoming.key);
+      continue;
+    }
+    // Kept both last time: the new book's own copy is already there under its own key.
+    const ownCopy = `${incoming.key}.${incoming.homePackage.split(".").pop()}`;
+    const choice = choices[incoming.key] ?? (currentByKey.get(ownCopy)?.homePackage === incoming.homePackage ? "both" : undefined);
+    clashes.push({ key: incoming.key, name: incoming.name, existing, incoming, choice });
+    if (choice === "new") drop(existing.homePackage, incoming.key);
+    else if (choice === "both") renames.set(incoming.key, ownCopy);
+    else drop(incoming.homePackage, incoming.key); // "existing", or not chosen yet
+  }
+
+  // Apply: drop what's kept elsewhere, rename what's kept twice, fix the package lists.
+  const dropped = new Set([...dropFromPackage.entries()].filter(([pkg]) => uploadedPackages.has(pkg)).flatMap(([, keys]) => [...keys]));
+  uploaded = uploaded
+    .filter((i) => !(dropped.has(i.key) && i.kind !== "package"))
+    .map((i) => {
+      if (renames.has(i.key)) return { ...i, key: renames.get(i.key)! } as Item;
+      if (i.kind === "package") {
+        const gone = dropFromPackage.get(i.key) ?? new Set();
+        return { ...i, members: i.members.filter((k) => !gone.has(k)).map((k) => renames.get(k) ?? k) };
+      }
+      return i;
+    });
+  const adjusted = current.map((i) => {
+    const gone = i.kind === "package" ? dropFromPackage.get(i.key) : undefined;
+    return gone && !uploadedPackages.has(i.key) ? ({ ...i, members: (i as { members: string[] }).members.filter((k) => !gone.has(k)) } as Item) : i;
+  });
+
   const uploadedKeys = new Set(uploaded.map((i) => i.key));
-  const removed = current.filter((i) => i.homePackage && uploadedPackages.has(i.homePackage) && !uploadedKeys.has(i.key));
-  const byKey = new Map(current.filter((i) => !removed.includes(i)).map((i) => [i.key, i]));
+  const removed = adjusted.filter((i) => i.homePackage && uploadedPackages.has(i.homePackage) && !uploadedKeys.has(i.key));
+  const byKey = new Map(adjusted.filter((i) => !removed.includes(i)).map((i) => [i.key, i]));
   for (const item of uploaded) byKey.set(item.key, item);
   const { items, stubbed } = refreshLibrary([...byKey.values()]);
   const before = new Map(current.map((i) => [i.key, JSON.stringify(i)]));
-  const plan: UploadPlan = { library: items, added: [], changed: [], unchanged: [], removed, stubbed: stubbed.filter((u) => uploadedKeys.has(u.inPackage ?? "")) };
+  const plan: UploadPlan = {
+    library: items,
+    added: [],
+    changed: [],
+    unchanged: [],
+    removed,
+    shared,
+    clashes,
+    undecided: clashes.some((c) => !c.choice),
+    stubbed: stubbed.filter((u) => uploadedPackages.has(u.inPackage ?? "")),
+  };
   for (const item of items) {
     if (!uploadedKeys.has(item.key)) continue;
     const old = before.get(item.key);
@@ -107,6 +172,12 @@ export function planUpload(current: Item[], uploaded: Item[]): UploadPlan {
     else plan.changed.push(item);
   }
   return plan;
+}
+
+// The same content: everything but where it lives and which items its names matched.
+function sameContent(a: Item, b: Item): boolean {
+  const plain = (i: Item) => JSON.stringify(i, (k, v) => (k === "homePackage" || k === "item" ? undefined : v));
+  return plain(a) === plain(b);
 }
 
 // --- Moving an item to another book -----------------------------------------------------------------

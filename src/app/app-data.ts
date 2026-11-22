@@ -3,26 +3,39 @@
 // Data structure: rebuild/data-structure.md §9.
 
 import type { Item } from "../items/items";
-import { moveItem, planUpload, removeGame, removePackages, type UploadPlan } from "../library/library";
+import { moveItem, planUpload, removeGame, removePackages, type ClashChoice, type UploadPlan } from "../library/library";
+import { pickupSandbox } from "../context/context";
+import { readFullYaml } from "../packages/full-yaml";
 import { readUploads, type UploadFile } from "../library/upload";
 import type { Problem } from "../packages/formats";
 import type { Store } from "../store/store";
 
 // An upload read and checked, waiting to be added or discarded.
-export type Draft = { fileNames: string[]; problems: Problem[]; plan: UploadPlan };
+export type Draft = { fileNames: string[]; problems: Problem[]; uploaded: Item[]; choices: Record<string, ClashChoice>; plan: UploadPlan };
 
 export class AppData {
   items: Item[] = [];
 
   constructor(private store: Store) {}
 
+  // Reads what's kept, and makes the permanent Pick-up sandbox if it isn't there.
   async load(): Promise<void> {
     this.items = await this.store.listItems();
+    if (!this.items.some((i) => i.kind === "sandbox" && i.key === "pickup")) {
+      this.items = [...this.items, pickupSandbox()];
+      await this.store.replaceItems(this.items);
+    }
   }
 
   async readDraft(files: UploadFile[]): Promise<Draft> {
     const read = await readUploads(files, this.items);
-    return { fileNames: files.map((f) => f.name), problems: read.problems, plan: planUpload(this.items, read.items) };
+    return { fileNames: files.map((f) => f.name), problems: read.problems, uploaded: read.items, choices: {}, plan: planUpload(this.items, read.items) };
+  }
+
+  // The same upload again, with the owner's choices for its clashes.
+  choose(draft: Draft, key: string, choice: ClashChoice): Draft {
+    const choices = { ...draft.choices, [key]: choice };
+    return { ...draft, choices, plan: planUpload(this.items, draft.uploaded, choices) };
   }
 
   async accept(draft: Draft): Promise<void> {
@@ -58,8 +71,32 @@ export class AppData {
     await this.store.replaceItems(this.items);
   }
 
+  // Everything on the device as one file (library, pick-up contexts, lists): a backup, or a move
+  // to another device.
+  everything(): Item[] {
+    return this.items;
+  }
+
+  // Replaces everything on the device with a backup file. Problems mean nothing was changed.
+  async restore(text: string): Promise<string[]> {
+    const read = readFullYaml(text);
+    if (read.problems.length) return read.problems;
+    if (read.items.length === 0) return ["the file holds nothing"];
+    this.items = read.items;
+    if (!this.items.some((i) => i.kind === "sandbox" && i.key === "pickup")) this.items.push(pickupSandbox());
+    await this.store.replaceItems(this.items);
+    return [];
+  }
+
+  // Removes the library (games, books, packages) but keeps pick-up contexts and lists.
+  async wipeLibrary(): Promise<void> {
+    this.items = this.items.filter((i) => i.kind === "context" || i.kind === "roster" || i.kind === "sandbox");
+    await this.store.replaceItems(this.items);
+  }
+
+  // Removes everything on the device.
   async wipe(): Promise<void> {
-    await this.store.replaceItems([]);
-    this.items = [];
+    this.items = [pickupSandbox()];
+    await this.store.replaceItems(this.items);
   }
 }

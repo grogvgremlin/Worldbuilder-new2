@@ -150,3 +150,11 @@ h2.fold { cursor: pointer; user-select: none; }
 .settings form { display: flex; gap: 8px; margin-top: 4px; }
 .settings form .filter { margin: 0; flex: 1; }
 .settings .label { display: block; color: var(--ink); font-weight: 600; } .settings .sub { display: block; }
+.form label.stack { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; } .form label.stack select { width: 100%; }
+.title-input { font: 600 1.4rem var(--font); border: 0; border-bottom: 1px dashed var(--line); background: none; color: var(--ink); width: 100%; padding: 4px 0; margin: 8px 0 4px; }
+.form > select { width: 100%; margin-bottom: 8px; }
+.list-settings h3 { margin: 10px 0 4px; font-size: .9rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.rules-on label span { flex: 1; }
+.clash { padding: 8px 12px; margin: 6px 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.compare .text { font-size: .7rem; max-height: 240px; overflow: auto; }

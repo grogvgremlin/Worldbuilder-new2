@@ -2,7 +2,7 @@
 // Data structure: rebuild/data-structure.md §2–5. Names are matched afterwards, across the whole
 // library, by `refreshLibrary` (library.ts), which also makes the stubs.
 
-import type { ArmyList, CompositionRule, Equipment, Game, GameSetting, Item, Package, RaceProfile, SettingValue, SlotKind, Source, SpecialRule, Unit } from "../items/items";
+import type { ArmyList, CompositionRule, Equipment, Game, GamePreset, GameSetting, Item, Package, RaceProfile, SettingValue, SlotKind, Source, SpecialRule, Unit } from "../items/items";
 import { slug } from "../items/keys";
 import type { Row } from "../sheets/csv";
 import { TABS, type GameSheets, type PackageSheets, type TabId } from "./package-sheets";
@@ -49,6 +49,7 @@ export function importSheets(sheets: GameSheets, known: Item[] = []): ImportResu
   for (const { pkg, info } of packages) {
     const where = `${pkg.key}, package settings`;
     if (typeof info["part of"] === "string") pkg.partOf = findPackage(info["part of"], where);
+    if (typeof info["corrects"] === "string") pkg.corrects = findPackage(info["corrects"], where);
     pkg.needsStated = asList(info["needs"]).map((n) => findPackage(n, where));
   }
 
@@ -123,6 +124,21 @@ function readGameInfo(y: Record<string, any>): Game {
     core: asList(y["core"]),
     defaultComposition: y["default composition"] === undefined ? undefined : asList(y["default composition"]),
     settings: Array.isArray(y["settings"]) ? y["settings"].map(readGameSetting) : undefined,
+    presets: Array.isArray(y["presets"]) ? y["presets"].map(readPreset) : undefined,
+  });
+}
+
+function readPreset(y: Record<string, any>): GamePreset {
+  const list = (v: unknown) => (v === undefined ? undefined : asList(v));
+  return dropUndefined<GamePreset>({
+    name: String(y["name"]),
+    about: y["about"] === undefined ? undefined : String(y["about"]),
+    books: list(y["books"]),
+    armies: y["armies"] === "all" ? "all" : undefined,
+    faqs: list(y["faqs"]),
+    house: list(y["house"]),
+    composition: list(y["composition"]),
+    settings: y["settings"] ?? undefined,
   });
 }
 
@@ -147,6 +163,7 @@ function readPackageInfo(sheet: PackageSheets, game: Game): Package {
     reference: typeof y["reference"] === "string" ? { source: y["reference"] } : undefined,
     notes: typeof y["notes"] === "string" ? y["notes"] : undefined,
     section: typeof y["section"] === "string" ? y["section"] : undefined,
+    version: y["version"] === undefined ? undefined : String(y["version"]),
     members: [],
     includes: [],
     needsStated: [],
@@ -195,6 +212,8 @@ export function exportPackage(pkg: Package, byKey: Map<string, Item>): PackageSh
     reference: pkg.reference?.source,
     needs: pkg.needsStated.length ? pkg.needsStated.map((k) => byKey.get(k)?.name ?? k) : undefined,
     section: pkg.section,
+    corrects: pkg.corrects ? byKey.get(pkg.corrects)?.name ?? pkg.corrects : undefined,
+    version: pkg.version,
     notes: pkg.notes,
   });
   return { folder: packageFolder(pkg, byKey), info, tabs: sheetTabs };
@@ -221,6 +240,7 @@ function writeGameInfo(game: Game, byKey: Map<string, Item>): Record<string, unk
     core: game.core.map((k) => byKey.get(k)?.name ?? k),
     "default composition": game.defaultComposition?.map((k) => byKey.get(k)?.name ?? k),
     settings: game.settings,
+    presets: game.presets,
   });
 }
 

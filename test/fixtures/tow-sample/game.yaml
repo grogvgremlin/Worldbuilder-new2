@@ -41,3 +41,15 @@ settings:
       "Nearest thousand (2,500 → 3)": nearest(target / 1000)
       "In proportion, rounded down": scale(target / 1000, down)
       "In proportion, rounded to nearest": scale(target / 1000, nearest)
+
+# Presets: ready-made starts for a new context (a game set-up in Pick-up). Each names books (with
+# "armies: all", every army in those books too), FAQs, house rules, composition sets and settings.
+# A package that isn't loaded yet is listed as missing and skipped.
+presets:
+  - name: TOW core only
+    about: "The rulebook and races: build your own from there"
+  - name: TOW basic
+    about: Forces of Fantasy and Ravening Hordes with every army in them, Standard composition
+    books: [Forces of Fantasy, Ravening Hordes]
+    armies: all
+    composition: [Standard composition]

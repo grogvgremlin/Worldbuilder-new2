@@ -14,7 +14,7 @@ export type Files = Record<string, string>; // path -> text
 export type Problem = { where: string; message: string };
 
 // The settings a package carries, in the order they're written.
-const PACKAGE_FIELDS = ["package", "folder", "game", "layer", "part of", "section", "reference", "needs", "notes"];
+const PACKAGE_FIELDS = ["package", "folder", "game", "layer", "part of", "corrects", "version", "section", "reference", "needs", "notes"];
 
 // --- Folder (and zip) ---------------------------------------------------------------------------
 
@@ -195,7 +195,7 @@ export function parseYaml(text: string, where: string, problems: Problem[]): Rec
 // Tabs: "Game" (its settings, one per row), "Packages" (one row per package), then a tab per kind
 // with an "In package" column first saying which package each row belongs to.
 
-const PACKAGES_COLUMNS = ["Package", "Folder", "Game", "Layer", "Part of", "Section", "Reference", "Needs", "Notes"];
+const PACKAGES_COLUMNS = ["Package", "Folder", "Game", "Layer", "Part of", "Corrects", "Version", "Section", "Reference", "Needs", "Notes"];
 const IN_PACKAGE = "In package";
 
 export function gameToWorkbook(sheets: GameSheets): Uint8Array {

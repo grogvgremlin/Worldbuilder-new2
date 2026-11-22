@@ -2,7 +2,7 @@
 // Data structure: rebuild/data-structure.md §2–5. Names are matched afterwards, across the whole
 // library, by `refreshLibrary` (library.ts), which also makes the stubs.
 
-import type { ArmyList, CompositionRule, Equipment, Game, Item, Package, RaceProfile, SlotKind, Source, SpecialRule, Unit } from "../items/items";
+import type { ArmyList, CompositionRule, Equipment, Game, GameSetting, Item, Package, RaceProfile, SettingValue, SlotKind, Source, SpecialRule, Unit } from "../items/items";
 import { slug } from "../items/keys";
 import type { Row } from "../sheets/csv";
 import { TABS, type GameSheets, type PackageSheets, type TabId } from "./package-sheets";
@@ -81,6 +81,7 @@ function readPackageTabs(sheet: PackageSheets, pkg: Package, game: Game, problem
 
 function readTab(id: TabId, rows: Row[], ctx: tabs.TabContext, categories: string[], onArmyList: (list: ArmyList) => void): Item[] {
   if (id === "bibliography") return tabs.readSourceRows(rows, ctx);
+  if (id === "settings") return tabs.readSettingRows(rows, ctx);
   if (id === "races") return tabs.readRaceRows(rows, ctx);
   if (id === "common links") return tabs.readCommonLinkRows(rows, ctx);
   if (id === "rules") return tabs.readRuleRows(rows, ctx);
@@ -121,7 +122,16 @@ function readGameInfo(y: Record<string, any>): Game {
     bagOrder: y["bag order"] ?? [],
     core: asList(y["core"]),
     defaultComposition: y["default composition"] === undefined ? undefined : asList(y["default composition"]),
+    settings: Array.isArray(y["settings"]) ? y["settings"].map(readGameSetting) : undefined,
   });
+}
+
+function readGameSetting(y: Record<string, any>): GameSetting {
+  const choices: Record<string, string> = {};
+  for (const [label, value] of Object.entries(y["choices"] ?? {})) choices[label] = String(value);
+  const setting: GameSetting = { name: String(y["name"]), default: String(y["default"] ?? ""), choices };
+  if (y["about"]) setting.about = String(y["about"]);
+  return setting;
 }
 
 function readPackageInfo(sheet: PackageSheets, game: Game): Package {
@@ -169,6 +179,7 @@ export function exportPackage(pkg: Package, byKey: Map<string, Item>): PackageSh
     if (rows.length > 0) sheetTabs[id] = rows;
   };
   put("bibliography", ofKind("source").map((i) => tabs.writeSourceRow(i as Source)));
+  put("settings", ofKind("setting").map((i) => tabs.writeSettingRow(i as SettingValue)));
   put("races", ofKind("race-profile").map((i) => tabs.writeRaceRow(i as RaceProfile)));
   put("common links", ofKind("slot-kind").map((i) => tabs.writeCommonLinkRow(i as SlotKind)));
   put("rules", ofKind("special-rule").map((i) => tabs.writeRuleRow(i as SpecialRule)));
@@ -209,6 +220,7 @@ function writeGameInfo(game: Game, byKey: Map<string, Item>): Record<string, unk
     "bag order": game.bagOrder,
     core: game.core.map((k) => byKey.get(k)?.name ?? k),
     "default composition": game.defaultComposition?.map((k) => byKey.get(k)?.name ?? k),
+    settings: game.settings,
   });
 }
 

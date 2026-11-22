@@ -4,7 +4,7 @@
 //
 // Reading only reads cells: names are matched to items afterwards (resolve.ts).
 
-import type { ArmyList, CompositionRule, Equipment, RaceProfile, SlotKind, Source, SpecialRule, Stats, Unit, UnitRow } from "../items/items";
+import type { ArmyList, CompositionRule, Equipment, RaceProfile, SettingValue, SlotKind, Source, SpecialRule, Stats, Unit, UnitRow } from "../items/items";
 import { itemKey } from "../items/keys";
 import type { Row } from "../sheets/csv";
 import { readOptions, writeOptions } from "../notation/options";
@@ -28,6 +28,7 @@ export const STATS = ["M", "WS", "BS", "S", "T", "W", "I", "A", "Ld"];
 
 export const COLUMNS = {
   bibliography: ["Source", "Kind", "By", "Published", "Link", "Notes"],
+  settings: ["Setting", "Value", "Notes"],
   races: ["Race", "Tree", "Rank", ...STATS, "Rules", "Reference", "Notes"],
   equipment: ["Equipment", "Match Key", ...STATS, "Save", "Rules", "Alias", "Rules 2", "Type", "R", "AP", "Cost", "Reference"],
   rules: ["Rule", "Type", "Rules", "Rules 2", "Reference"],
@@ -69,6 +70,27 @@ function writeStats(stats: Stats, row: Row): void {
 function compact<T extends object>(record: T): T {
   for (const k of Object.keys(record) as (keyof T)[]) if (record[k] === undefined) delete record[k];
   return record;
+}
+
+// --- Settings: a package's values for the game's settings ---------------------------------------
+
+export function readSettingRows(rows: Row[], ctx: TabContext): SettingValue[] {
+  return rows.map((row) => {
+    const setting = row["Setting"].trim();
+    return compact<SettingValue>({
+      key: itemKey(ctx.game, "setting", ctx.packageKey.split(".").pop()!, setting),
+      kind: "setting",
+      name: setting,
+      homePackage: ctx.packageKey,
+      setting,
+      value: row["Value"].trim(),
+      notes: v.readText(row["Notes"]),
+    });
+  });
+}
+
+export function writeSettingRow(item: SettingValue): Row {
+  return { Setting: item.setting, Value: item.value, Notes: item.notes ?? "" };
 }
 
 // --- Bibliography -----------------------------------------------------------------------------

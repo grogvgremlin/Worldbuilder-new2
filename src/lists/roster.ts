@@ -8,7 +8,8 @@
 //
 // Pure: a roster and the library in, a view out. Magic items and other allowances aren't picked yet.
 
-import type { ArmyList, CompositionRule, Context, Cost, Item, Limit, OptionGroup, Roster, RosterUnit, SlotKind, Unit } from "../items/items";
+import type { ArmyList, CompositionRule, Context, Cost, Game, Item, Limit, OptionGroup, Roster, RosterUnit, SlotKind, Unit } from "../items/items";
+import { applyScaling, settingForLimit, settingValue } from "../settings/settings";
 import { matchName } from "../items/keys";
 import { readContext } from "../context/context";
 import { optionKey, unitAsTaken, type UnitAsTaken } from "./unit-as-taken";
@@ -71,8 +72,10 @@ export function viewRoster(roster: Roster, items: Item[]): RosterView {
 
   const rules = compositionRules(armyList, reach);
   const categories = categoryTotals(units, rules, roster.target, issues);
-  for (const rule of rules) for (const limit of rule.limits.limits) checkArmyLimit(rule.name, limit, units, roster.target, issues);
-  checkEntryLimits(units, roster.target, issues);
+  const game = items.find((i): i is Game => i.kind === "game" && i.shortName === context?.game);
+  const allowed = allowedBy(game, items, context, roster, issues);
+  for (const rule of rules) for (const limit of rule.limits.limits) checkArmyLimit(rule.name, limit, units, allowed, issues);
+  checkEntryLimits(units, allowed, issues);
   for (const u of units) issues.push(...u.issues);
   return { roster, armyList, units, total, categories, issues: dedupe(issues) };
 }
@@ -221,13 +224,31 @@ function bounds(limit: Limit, target: number): { min: number | null; max: number
   return { min: scale(limit.amount.min, Math.ceil), max: scale(limit.amount.max, Math.floor) };
 }
 
-// How many a "per 1,000 points" limit allows at this target: per full 1,000 (build log: Q-C2 open).
-function allowed(limit: Limit, target: number): { min: number | null; max: number | null } {
-  const times = limit.perPoints ? Math.floor(target / limit.perPoints) : 1;
-  return { min: limit.amount.min === null ? null : limit.amount.min * (limit.perPoints ? Math.max(times, 1) : 1), max: limit.amount.max === null ? null : limit.amount.max * times };
+// How many a limit allows at this target. A "per 1,000 points" limit reads the game's setting of
+// that name, from the most specific place that sets it (src/settings/settings.ts); with no setting,
+// full thousands.
+type Allowed = (limit: Limit) => { min: number | null; max: number | null };
+
+function allowedBy(game: Game | undefined, items: Item[], context: Context | undefined, roster: Roster, issues: Issue[]): Allowed {
+  return (limit) => {
+    const name = settingForLimit(limit.perPoints, limit.basis);
+    if (!name) return limit.amount;
+    const found = settingValue(name, game, items, context, roster);
+    const value = found?.value ?? (limit.perPoints ? `full(target / ${limit.perPoints})` : null);
+    if (!value) {
+      issues.push({ severity: "warning", message: `no setting called “${name}”: the limit is read as written`, units: [] });
+      return limit.amount;
+    }
+    const scaled = applyScaling(value, roster.target, limit.amount);
+    if ("error" in scaled) {
+      issues.push({ severity: "warning", message: `${name} (${found?.from}): ${scaled.error}`, units: [] });
+      return limit.amount;
+    }
+    return scaled;
+  };
 }
 
-function checkArmyLimit(ruleName: string, limit: Limit, units: UnitView[], target: number, issues: Issue[]): void {
+function checkArmyLimit(ruleName: string, limit: Limit, units: UnitView[], allowed: Allowed, issues: Issue[]): void {
   if (limit.counts === "points") return; // category percentages: done above
   let counted: UnitView[] = [];
   if (limit.counts === "unit" && limit.of) counted = units.filter((u) => u.taken && limit.of!.some((n) => matchName(n) === matchName(u.taken!.name)));
@@ -236,13 +257,13 @@ function checkArmyLimit(ruleName: string, limit: Limit, units: UnitView[], targe
     counted = units.filter((u) => u.rosterUnit.general);
     for (const u of counted) if (limit.where?.toLowerCase().includes("character") && !u.taken?.character) issues.push({ severity: "illegal", message: `${u.taken?.name}: the General must be a character`, units: [u.rosterUnit.id] });
   } else return;
-  report(ruleName, counted, allowed(limit, target), limit, issues);
+  report(ruleName, counted, allowed(limit), limit, issues);
 }
 
 // A unit's own limits: "unit~0-1~1000 roster target" (this entry), "rules options~0-1~…" (this entry
 // taking any special-rule option). An army rule about the same units is checked as well; the
 // tighter one shows.
-function checkEntryLimits(units: UnitView[], target: number, issues: Issue[]): void {
+function checkEntryLimits(units: UnitView[], allowed: Allowed, issues: Issue[]): void {
   const byEntry = new Map<string, UnitView[]>();
   for (const u of units) if (u.taken) byEntry.set(u.taken.unit.key, [...(byEntry.get(u.taken.unit.key) ?? []), u]);
   for (const entry of byEntry.values()) {
@@ -252,7 +273,7 @@ function checkEntryLimits(units: UnitView[], target: number, issues: Issue[]): v
       if (limit.counts === "unit") counted = entry;
       else if (limit.counts === "rules options") counted = entry.filter((u) => u.rosterUnit.picks.some((p) => p.startsWith("rules options|")));
       else continue; // limits on a slot's items wait for magic items
-      report(`${taken.name} (${limit.counts})`, counted, allowed(limit, target), limit, issues);
+      report(`${taken.name} (${limit.counts})`, counted, allowed(limit), limit, issues);
     }
   }
 }

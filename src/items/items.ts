@@ -160,6 +160,16 @@ const common = {
   notes: z.string().optional(),
 };
 
+// A setting the game offers: changed for a game or a list without code (owner, 22 Nov).
+// Its value is text in the setting's own shorthand ("full(target / 1000)"); `choices` fill a dropdown.
+export const GameSetting = z.strictObject({
+  name: z.string(), // "Per 1,000 points"
+  about: z.string().optional(),
+  default: z.string(),
+  choices: z.record(z.string(), z.string()), // label -> value
+});
+export type GameSetting = z.infer<typeof GameSetting>;
+
 // The game: what an edition counts. Its rules and content are in its packages.
 export const Game = z.strictObject({
   ...common,
@@ -179,6 +189,7 @@ export const Game = z.strictObject({
   bagOrder: z.array(z.string()),
   core: z.array(z.string()), // package keys always on
   defaultComposition: z.array(z.string()).optional(), // composition sets a new context starts with
+  settings: z.array(GameSetting).optional(),
 });
 export type Game = z.infer<typeof Game>;
 
@@ -318,6 +329,16 @@ export const Source = z.strictObject({
 });
 export type Source = z.infer<typeof Source>;
 
+// A package's value for one of the game's settings (a row of its Settings tab): a house rule saying
+// "per 1,000 points counts started thousands", say.
+export const SettingValue = z.strictObject({
+  ...common,
+  kind: z.literal("setting"),
+  setting: z.string(), // the setting's name
+  value: z.string(),
+});
+export type SettingValue = z.infer<typeof SettingValue>;
+
 // A context: a game and the packages switched on for it, in groups — what a roster is built against.
 // A pick-up game is a context with no world; a world holds one context per game played in it.
 // Design: design/v2-reconciliation.md §1 (build rows: a manifest context names its game and lists its
@@ -340,6 +361,7 @@ export const Context = z.strictObject({
   house: z.array(ContextPackage),
   campaign: z.array(ContextPackage), // only in a world
   composition: z.array(ContextPackage), // composition sets: Standard, Grand Melee, a tournament pack …
+  settings: z.record(z.string(), z.string()).optional(), // this game's own values: setting name -> value
 });
 export type Context = z.infer<typeof Context>;
 
@@ -362,9 +384,10 @@ export const Roster = z.strictObject({
   armyList: z.string(), // the army list's key
   target: z.number(), // points
   units: z.array(RosterUnit),
+  settings: z.record(z.string(), z.string()).optional(), // this list's own values: setting name -> value
 });
 export type Roster = z.infer<typeof Roster>;
 
-export const Item = z.discriminatedUnion("kind", [Game, Package, RaceProfile, Unit, Equipment, SpecialRule, SlotKind, ArmyList, CompositionRule, Source, Context, Roster]);
+export const Item = z.discriminatedUnion("kind", [Game, Package, RaceProfile, Unit, Equipment, SpecialRule, SlotKind, ArmyList, CompositionRule, Source, SettingValue, Context, Roster]);
 export type Item = z.infer<typeof Item>;
 export type ItemKind = Item["kind"];

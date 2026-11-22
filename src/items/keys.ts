@@ -31,6 +31,7 @@ const KIND_IN_KEY: Record<string, string> = {
   "composition-rule": "composition",
   "race-profile": "race",
   source: "source",
+  setting: "setting",
 };
 
 export function itemKey(game: string, kind: string, ...nameParts: string[]): string {

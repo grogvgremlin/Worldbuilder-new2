@@ -27,3 +27,17 @@ bag order: [set, add, multiply, cap, floor]
 
 core: [Rulebook, Races]
 default composition: [Standard composition]
+
+# Settings: what can be changed for a game or a list without code. Each has a default and the
+# choices offered in a dropdown; any value can also be written by hand. A package's Settings tab,
+# a pick-up game or a list can set its own value (the most specific wins).
+settings:
+  - name: Per 1,000 points
+    about: "How many times a 'per 1,000 points' limit applies at the points target"
+    default: full(target / 1000)
+    choices:
+      "Full thousands (2,500 → 2)": full(target / 1000)
+      "Started thousands (2,100 → 3)": started(target / 1000)
+      "Nearest thousand (2,500 → 3)": nearest(target / 1000)
+      "In proportion, rounded down": scale(target / 1000, down)
+      "In proportion, rounded to nearest": scale(target / 1000, nearest)

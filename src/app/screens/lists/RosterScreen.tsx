@@ -7,6 +7,8 @@ import { inReach } from "../../../lists/roster";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { SwipeRow } from "../../swipe";
+import { SettingsPanel } from "./SettingsPanel";
+import type { Context, Game } from "../../../items/items";
 
 export function RosterScreen({ data, nav, rosterKey }: { data: AppData; nav: Nav; rosterKey: string }) {
   const [adding, setAdding] = useState<string | null>(null);
@@ -39,6 +41,18 @@ export function RosterScreen({ data, nav, rosterKey }: { data: AppData; nav: Nav
           </li>
         ))}
       </ul>
+      {context?.kind === "context" && (
+        <details className="list-settings">
+          <summary>List settings</summary>
+          <SettingsPanel
+            game={data.items.find((i): i is Game => i.kind === "game" && i.shortName === (context as Context).game)}
+            items={data.items}
+            context={context as Context}
+            roster={roster}
+            onChange={(settings) => save({ ...roster, settings })}
+          />
+        </details>
+      )}
       {view.issues.length > 0 && (
         <details className="issues" open={view.issues.length <= 3}>
           <summary>{view.issues.length} to fix</summary>

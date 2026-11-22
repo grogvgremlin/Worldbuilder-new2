@@ -7,6 +7,7 @@ import { armyListsIn, newRoster, viewRoster } from "../../../lists/roster";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { SwipeRow } from "../../swipe";
+import { SettingsPanel } from "./SettingsPanel";
 
 export function PickupGameScreen({ data, nav, contextKey }: { data: AppData; nav: Nav; contextKey: string }) {
   const [, setChanged] = useState(0);
@@ -53,6 +54,9 @@ export function PickupGameScreen({ data, nav, contextKey }: { data: AppData; nav
         })}
       </ul>
       <NewList data={data} context={context} lists={armyListsIn(context, data.items)} onMade={(r) => nav.open({ name: "roster", key: r.key })} />
+
+      <h2>Settings</h2>
+      <SettingsPanel game={view.game} items={data.items} context={context} onChange={(settings) => save({ ...context, settings })} />
 
       <h2>Rules in this game</h2>
       <ul className="plain rules-on">

@@ -1,8 +1,9 @@
-// Lists: your pick-up games, and starting a new one. A pick-up game is a context with no world
-// (rebuild build log, 22 Nov); its world field is never shown here.
+// Lists → Pick-up: the permanent sandbox with no world features. Its contexts (a game and its
+// packages, each holding lists) persist; start a new one from a game and one of its presets.
+// The sandbox field is never shown here (owner, 22 Nov).
 import { useState } from "react";
-import type { Context, Game, Roster } from "../../../items/items";
-import { newContext } from "../../../context/context";
+import { PICKUP, type Context, type Game, type Roster } from "../../../items/items";
+import { fromPreset } from "../../../context/context";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { SwipeRow } from "../../swipe";
@@ -10,7 +11,7 @@ import { SwipeRow } from "../../swipe";
 export function ListsScreen({ data, nav }: { data: AppData; nav: Nav }) {
   const [, setChanged] = useState(0);
   const games = data.items.filter((i): i is Game => i.kind === "game");
-  const pickups = data.items.filter((i): i is Context => i.kind === "context" && !i.world);
+  const contexts = data.items.filter((i): i is Context => i.kind === "context" && (i.sandbox ?? PICKUP) === PICKUP);
   const rostersIn = (c: Context) => data.items.filter((i): i is Roster => i.kind === "roster" && i.context === c.key);
 
   const remove = async (c: Context) => {
@@ -22,10 +23,10 @@ export function ListsScreen({ data, nav }: { data: AppData; nav: Nav }) {
 
   return (
     <section>
-      <h1>Pick-up games</h1>
+      <h1>Pick-up</h1>
       {games.length === 0 && <p className="hint">No game loaded yet: add one in Settings → Library first.</p>}
       <ul className="list">
-        {pickups.map((c) => (
+        {contexts.map((c) => (
           <li key={c.key}>
             <SwipeRow action="Remove" onAction={() => remove(c)}>
               <button onClick={() => nav.open({ name: "pickup", key: c.key })}>
@@ -38,29 +39,42 @@ export function ListsScreen({ data, nav }: { data: AppData; nav: Nav }) {
           </li>
         ))}
       </ul>
-      {games.length > 0 && <NewPickupGame data={data} games={games} onMade={(c) => nav.open({ name: "pickup", key: c.key })} />}
+      {games.length > 0 && <NewContext data={data} games={games} onMade={(c) => nav.open({ name: "pickup", key: c.key })} />}
     </section>
   );
 }
 
-function NewPickupGame({ data, games, onMade }: { data: AppData; games: Game[]; onMade: (c: Context) => void }) {
+// Game first, then a preset (or blank), then a name.
+function NewContext({ data, games, onMade }: { data: AppData; games: Game[]; onMade: (c: Context) => void }) {
+  const [gameKey, setGameKey] = useState(games[0].key);
+  const game = games.find((g) => g.key === gameKey) ?? games[0];
+  const [preset, setPreset] = useState("");
   const [name, setName] = useState("");
-  const [game, setGame] = useState(games[0].key);
   const make = async () => {
-    const g = games.find((x) => x.key === game)!;
-    const context = newContext(name.trim() || "Pick-up game", g, data.items);
+    const chosen = game.presets?.find((p) => p.name === preset) ?? null;
+    const { context, missing } = fromPreset(name.trim() || chosen?.name || game.name, game, chosen, data.items);
     await data.putItem(context);
+    if (missing.length) alert(`Not loaded yet, so left out: ${missing.join(", ")}`);
     onMade(context);
   };
   return (
     <div className="form">
-      <h2>New pick-up game</h2>
-      <input className="filter" placeholder="Name (e.g. Friday night)" value={name} onChange={(e) => setName(e.target.value)} />
-      {games.length > 1 && (
-        <select value={game} onChange={(e) => setGame(e.target.value)}>
+      <h2>New</h2>
+      <label className="stack">
+        <span className="sub">Game</span>
+        <select value={game.key} onChange={(e) => (setGameKey(e.target.value), setPreset(""))}>
           {games.map((g) => <option key={g.key} value={g.key}>{g.name}</option>)}
         </select>
-      )}
+      </label>
+      <label className="stack">
+        <span className="sub">Start from</span>
+        <select value={preset} onChange={(e) => setPreset(e.target.value)}>
+          <option value="">Blank: the game's core only</option>
+          {(game.presets ?? []).map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
+        </select>
+        {game.presets?.find((p) => p.name === preset)?.about && <span className="sub">{game.presets.find((p) => p.name === preset)!.about}</span>}
+      </label>
+      <input className="filter" placeholder="Name (e.g. Friday night)" value={name} onChange={(e) => setName(e.target.value)} />
       <div className="buttons">
         <button className="primary" onClick={make}>Start</button>
       </div>

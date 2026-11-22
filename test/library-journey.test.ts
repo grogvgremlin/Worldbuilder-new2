@@ -22,13 +22,13 @@ describe("Library journey", () => {
       const store = await open();
       const app = new AppData(store);
       await app.load();
-      expect(app.items).toEqual([]);
+      expect(app.items.map((i) => i.key)).toEqual(["pickup"]); // only the permanent Pick-up sandbox
 
       const draft = await app.readDraft([{ name: "tow.zip", bytes: zip }]);
       expect(draft.problems).toEqual([]);
       expect(draft.plan.added.length).toBeGreaterThan(20);
       expect(draft.plan.changed).toEqual([]);
-      expect(app.items).toEqual([]); // nothing lands before it's accepted
+      expect(app.items.map((i) => i.key)).toEqual(["pickup"]); // nothing lands before it's accepted
 
       await app.accept(draft);
       const reopened = new AppData(store);

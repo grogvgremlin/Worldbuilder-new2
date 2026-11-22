@@ -10,38 +10,38 @@ export type Kind = "unit" | "equipment" | "special-rule" | "slot-kind";
 
 // Every item of the matchable kinds, by kind and by matched name (including aliases).
 export class NameIndex {
-  private byKind = new Map<Kind, Map<string, string>>();
+  // kind -> matched name -> every item of that name, real ones before stubs
+  private byKind = new Map<Kind, Map<string, { key: string; home: string | undefined }[]>>();
 
   constructor(items: Item[]) {
-    // Real items first, so a stub never hides one of the same name.
     const ordered = [...items.filter((i) => i.status !== "stub"), ...items.filter((i) => i.status === "stub")];
     for (const item of ordered) {
-      if (item.kind === "unit") this.add("unit", item.name, item.key);
+      if (item.kind === "unit") this.add("unit", item.name, item);
       if (item.kind === "equipment") {
-        this.add("equipment", item.name, item.key);
-        for (const alias of item.aliases) this.add("equipment", alias, item.key);
+        this.add("equipment", item.name, item);
+        for (const alias of item.aliases) this.add("equipment", alias, item);
       }
-      if (item.kind === "special-rule") this.add("special-rule", item.name, item.key);
-      if (item.kind === "slot-kind") this.add("slot-kind", item.code, item.key);
+      if (item.kind === "special-rule") this.add("special-rule", item.name, item);
+      if (item.kind === "slot-kind") this.add("slot-kind", item.code, item);
     }
   }
 
-  private add(kind: Kind, name: string, key: string): void {
+  private add(kind: Kind, name: string, item: Item): void {
     if (!this.byKind.has(kind)) this.byKind.set(kind, new Map());
     const names = this.byKind.get(kind)!;
     const m = matchName(name);
-    // A real item wins over a stub of the same name; otherwise the first one entered.
-    if (!names.has(m)) names.set(m, key);
+    names.set(m, [...(names.get(m) ?? []), { key: item.key, home: item.homePackage }]);
   }
 
-  // The key for a name, trying each kind in order; null if nothing matches.
-  find(name: string, kinds: Kind[]): string | null {
+  // The key for a name, trying each kind in order; null if nothing matches. Where two books both
+  // have the name, the one in the asking item's own book wins (closest first).
+  find(name: string, kinds: Kind[], fromPackage?: string): string | null {
     const m = matchName(name);
     for (const kind of kinds) {
       const names = this.byKind.get(kind);
       if (!names) continue;
-      if (names.has(m)) return names.get(m)!;
-      if (m.endsWith("s") && names.has(m.slice(0, -1))) return names.get(m.slice(0, -1))!;
+      const found = names.get(m) ?? (m.endsWith("s") ? names.get(m.slice(0, -1)) : undefined);
+      if (found?.length) return (found.find((c) => c.home === fromPackage) ?? found[0]).key;
     }
     return null;
   }
@@ -55,7 +55,7 @@ export function resolveNames(items: Item[], index: NameIndex): Unmatched[] {
   const unmatched: Unmatched[] = [];
   let inPackage: string | undefined;
   const look = (term: Term | Option, kinds: Kind[], where: string) => {
-    term.item = index.find(term.name, kinds);
+    term.item = index.find(term.name, kinds, inPackage);
     if (term.item === null) unmatched.push({ name: term.name, where, inPackage, kinds });
   };
   const terms = (list: Term[] | undefined, kinds: Kind[], where: string) => list?.forEach((t) => look(t, kinds, where));

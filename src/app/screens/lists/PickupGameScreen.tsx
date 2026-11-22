@@ -1,8 +1,10 @@
-// A pick-up game: the game's rules switched on for it (its core always, your books, FAQs, house rules,
-// a composition set), what each brings with it, and the lists built in it.
+// A context in Pick-up, in the order you set one up (owner, 22 Nov): the game; its books, FAQs (a
+// book brings its latest FAQ) and house rules; settings, folded — Basic (composition) and Advanced
+// (the game's settings); then start a list, and the lists already in it.
 import { useState } from "react";
-import type { ArmyList, Context, Roster } from "../../../items/items";
-import { GROUPS, offered, readContext, removeFromContext, switchOff, switchOn } from "../../../context/context";
+import type { ArmyList, Context, Item, Package, Roster } from "../../../items/items";
+import { chooseComposition, copyContext, groupFor, offered, readContext, removeFromContext, switchOff, switchOn, type Group, type PackageInContext } from "../../../context/context";
+import { isCompositionSet } from "../../../library/package-types";
 import { armyListsIn, newRoster, viewRoster } from "../../../lists/roster";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
@@ -13,21 +15,102 @@ export function PickupGameScreen({ data, nav, contextKey }: { data: AppData; nav
   const [, setChanged] = useState(0);
   const context = data.items.find((i): i is Context => i.kind === "context" && i.key === contextKey);
   if (!context) return <p>Not on the device any more.</p>;
+  const byKey = new Map(data.items.map((i) => [i.key, i]));
   const view = readContext(context, data.items);
   const offer = offered(context, data.items);
   const save = async (next: Context) => {
     await data.putItem(next);
     setChanged((n) => n + 1);
   };
+  const groupOf = (p: PackageInContext): Group | "core" => {
+    if (p.how === "core") return "core";
+    const pkg = byKey.get(p.key);
+    return pkg?.kind === "package" ? groupFor(pkg, byKey) : "books";
+  };
   const rosters = data.items.filter((i): i is Roster => i.kind === "roster" && i.context === context.key);
-  const listed = new Set(GROUPS.flatMap(({ group }) => context[group].map((p) => p.package)));
+  const shown = view.packages.filter((p) => !(byKey.get(p.key) as Package | undefined)?.stubsFor);
+  const listedOn = (key: string) => [...context.books, ...context.faqs, ...context.house, ...context.campaign].some((p) => p.package === key);
+  const compositionSets = data.items.filter((i): i is Package => i.kind === "package" && i.game === context.game && isCompositionSet(i, byKey));
+  const chosenComposition = context.composition.filter((c) => c.on).map((c) => c.package);
+
+  const section = (group: Group, title: string) => {
+    const here = shown.filter((p) => groupOf(p) === group);
+    const more = offer.get(group) ?? [];
+    if (here.length === 0 && more.length === 0) return null;
+    return (
+      <div>
+        <h2>{title}</h2>
+        <ul className="plain rules-on">
+          {here.map((p) => (
+            <li key={p.key}>
+              {listedOn(p.key) ? (
+                <label>
+                  <input type="checkbox" checked={p.on} onChange={() => save(p.on ? switchOff(context, p.key, data.items) : switchOn(context, p.key, data.items))} />
+                  <span>
+                    {p.name} {describe(byKey.get(p.key), byKey)}
+                  </span>
+                </label>
+              ) : (
+                <span>
+                  {p.name} <span className="sub">needed by {p.neededBy.join(", ")}</span>
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+        {more.length > 0 && (
+          <div className="buttons">
+            {more.map((p) => (
+              <button key={p.key} onClick={() => save(switchOn(context, p.key, data.items))}>+ {p.name}</button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <section>
-      <h1>{context.name}</h1>
-      <p className="sub">{view.game?.name ?? context.game}</p>
+      <input className="title-input" value={context.name} onChange={(e) => save({ ...context, name: e.target.value })} aria-label="Name" />
+      <p className="sub">
+        {view.game?.name ?? context.game} · {shown.filter((p) => p.how === "core").map((p) => p.name).join(", ")} always on
+      </p>
+
+      {section("books", "Books")}
+      {section("faqs", "FAQs")}
+      {section("house", "House rules")}
+      {view.warnings.length > 0 && <ul className="plain problems">{view.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>}
+      {[...context.books, ...context.faqs, ...context.house].some((p) => !p.on) && (
+        <p className="sub">
+          Switched off here:{" "}
+          {[...context.books, ...context.faqs, ...context.house].filter((p) => !p.on).map((p) => (
+            <button key={p.package} className="link" onClick={() => save(removeFromContext(context, p.package))}>
+              {byKey.get(p.package)?.name ?? p.package} (forget){" "}
+            </button>
+          ))}
+        </p>
+      )}
+
+      <details className="list-settings">
+        <summary>Settings</summary>
+        <h3>Basic</h3>
+        <div className="field block settings">
+          <span className="label">Composition</span>
+          <select
+            value={chosenComposition.length === 1 ? chosenComposition[0] : chosenComposition.length === 0 ? "" : "__several"}
+            onChange={(e) => e.target.value !== "__several" && save(chooseComposition(context, e.target.value ? [e.target.value] : []))}
+          >
+            {compositionSets.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
+            <option value="">None: only the army lists' own limits</option>
+            {chosenComposition.length > 1 && <option value="__several">Several</option>}
+          </select>
+        </div>
+        <h3>Advanced</h3>
+        <SettingsPanel game={view.game} items={data.items} context={context} onChange={(settings) => save({ ...context, settings })} />
+      </details>
 
       <h2>Lists</h2>
+      <NewList data={data} context={context} lists={armyListsIn(context, data.items)} onMade={(r) => nav.open({ name: "roster", key: r.key })} />
       <ul className="list">
         {rosters.map((r) => {
           const rv = viewRoster(r, data.items);
@@ -53,79 +136,55 @@ export function PickupGameScreen({ data, nav, contextKey }: { data: AppData; nav
           );
         })}
       </ul>
-      <NewList data={data} context={context} lists={armyListsIn(context, data.items)} onMade={(r) => nav.open({ name: "roster", key: r.key })} />
 
-      <h2>Settings</h2>
-      <SettingsPanel game={view.game} items={data.items} context={context} onChange={(settings) => save({ ...context, settings })} />
-
-      <h2>Rules in this game</h2>
-      <ul className="plain rules-on">
-        {view.packages.filter((p) => !(data.items.find((i) => i.key === p.key) as { stubsFor?: string } | undefined)?.stubsFor).map((p) => (
-          <li key={p.key}>
-            {p.how === "chosen" && listed.has(p.key) ? (
-              <label>
-                <input type="checkbox" checked={p.on} onChange={() => save(p.on ? switchOff(context, p.key, data.items) : switchOn(context, p.key, data.items))} /> {p.name}
-              </label>
-            ) : (
-              <span className={p.on ? "" : "sub"}>
-                {p.name} <span className="sub">{p.how === "core" ? "always on" : p.neededBy.length ? `needed by ${p.neededBy.join(", ")}` : ""}</span>
-              </span>
-            )}
-          </li>
-        ))}
-      </ul>
-      {view.warnings.length > 0 && <ul className="plain problems">{view.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>}
-
-      {GROUPS.filter((g) => offer.get(g.group)?.length).map((g) => (
-        <div key={g.group}>
-          <h2>Add: {g.title}</h2>
-          <div className="buttons">
-            {offer.get(g.group)!.map((p) => (
-              <button key={p.key} onClick={() => save(switchOn(context, p.key, data.items))}>+ {p.name}</button>
-            ))}
-          </div>
-        </div>
-      ))}
-      {GROUPS.some(({ group }) => context[group].some((p) => !p.on)) && (
-        <p className="sub">
-          Switched off here:{" "}
-          {GROUPS.flatMap(({ group }) => context[group].filter((p) => !p.on)).map((p) => (
-            <button key={p.package} className="link" onClick={() => save(removeFromContext(context, p.package))}>
-              {data.items.find((i) => i.key === p.package)?.name ?? p.package} (forget)
-            </button>
-          ))}
-        </p>
-      )}
+      <div className="buttons">
+        <button
+          onClick={async () => {
+            const copy = copyContext(context, data.items);
+            await data.putItem(copy);
+            nav.open({ name: "pickup", key: copy.key });
+          }}
+        >
+          Copy this set-up
+        </button>
+      </div>
     </section>
   );
 }
 
+// "(corrects Forces of Fantasy, 1.2)" for an FAQ; "(part of Forces of Fantasy)" for an army book.
+function describe(item: Item | undefined, byKey: Map<string, Item>): string {
+  if (item?.kind !== "package") return "";
+  if (item.corrects) return `(corrects ${byKey.get(item.corrects)?.name ?? item.corrects}${item.version ? `, ${item.version}` : ""})`;
+  if (item.partOf) return `(in ${byKey.get(item.partOf)?.name ?? item.partOf})`;
+  return "";
+}
+
+// Army list first, then a name and the points; Start opens the list.
 function NewList({ data, context, lists, onMade }: { data: AppData; context: Context; lists: ArmyList[]; onMade: (r: Roster) => void }) {
-  const [name, setName] = useState("");
   const [list, setList] = useState(lists[0]?.key ?? "");
+  const [name, setName] = useState("");
   const [target, setTarget] = useState(1000);
-  if (lists.length === 0) return <p className="hint">Switch on an army book below to start a list.</p>;
+  if (lists.length === 0) return <p className="hint">Switch on an army book above to start a list.</p>;
   const make = async () => {
-    const armyList = lists.find((l) => l.key === (list || lists[0].key))!;
+    const armyList = lists.find((l) => l.key === list) ?? lists[0];
     const roster = newRoster(name.trim() || `${armyList.name} ${target}`, context, armyList, target, data.items);
     await data.putItem(roster);
     onMade(roster);
   };
   return (
     <div className="form">
+      <select value={list} onChange={(e) => setList(e.target.value)}>
+        {lists.map((l) => <option key={l.key} value={l.key}>{l.name}</option>)}
+      </select>
       <div className="row">
         <input className="filter" placeholder="List name" value={name} onChange={(e) => setName(e.target.value)} />
       </div>
       <div className="row">
-        {lists.length > 1 && (
-          <select value={list} onChange={(e) => setList(e.target.value)}>
-            {lists.map((l) => <option key={l.key} value={l.key}>{l.name}</option>)}
-          </select>
-        )}
         <label className="points">
           <input type="number" inputMode="numeric" value={target} onChange={(e) => setTarget(Number(e.target.value) || 0)} /> pts
         </label>
-        <button className="primary" onClick={make}>New list</button>
+        <button className="primary" onClick={make}>Start the list</button>
       </div>
     </div>
   );

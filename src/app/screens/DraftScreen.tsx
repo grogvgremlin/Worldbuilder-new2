@@ -1,11 +1,15 @@
 // An upload waiting: what it would add, change and remove, names it couldn't match, problems.
 // Nothing reaches the library until it's added.
+import YAML from "yaml";
 import type { Item } from "../../items/items";
+import type { ClashChoice } from "../../library/library";
 import type { Draft } from "../app-data";
 
-export function DraftScreen({ draft, onAccept, onDiscard }: { draft: Draft; onAccept: () => void; onDiscard: () => void }) {
+type Props = { draft: Draft; onAccept: () => void; onDiscard: () => void; onChoose: (key: string, choice: ClashChoice) => void };
+
+export function DraftScreen({ draft, onAccept, onDiscard, onChoose }: Props) {
   const { plan, problems } = draft;
-  const nothing = plan.added.length + plan.changed.length + plan.removed.length === 0;
+  const nothing = plan.added.length + plan.changed.length + plan.removed.length === 0 && plan.clashes.length === 0;
   return (
     <section>
       <h1>Upload to review</h1>
@@ -22,10 +26,41 @@ export function DraftScreen({ draft, onAccept, onDiscard }: { draft: Draft; onAc
           </ul>
         </>
       )}
+      {plan.clashes.length > 0 && (
+        <>
+          <h2 className="warn">Same name, different content ({plan.clashes.length})</h2>
+          <p className="hint">Another book already has these names. Choose for each; nothing is added until every one is chosen.</p>
+          {plan.clashes.map((c) => (
+            <div key={c.key} className="clash">
+              <b>{c.name}</b>
+              <details>
+                <summary className="sub">Compare</summary>
+                <div className="compare">
+                  <pre className="text">{YAML.stringify(strip(c.existing))}</pre>
+                  <pre className="text">{YAML.stringify(strip(c.incoming))}</pre>
+                </div>
+              </details>
+              {(
+                [
+                  ["existing", `Keep the one in ${c.existing.homePackage?.split(".").pop()}: the new book uses it`],
+                  ["new", "Take the new one: both books use it"],
+                  ["both", "Keep both: each book uses its own"],
+                ] as [ClashChoice, string][]
+              ).map(([value, label]) => (
+                <label key={value} className="choice">
+                  <input type="radio" name={`clash-${c.key}`} checked={c.choice === value} onChange={() => onChoose(c.key, value)} />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+          ))}
+        </>
+      )}
       <Group title="New" items={plan.added} />
       <Group title="Changed" items={plan.changed} />
       <Group title="Removed (no longer in the package)" items={plan.removed} />
       {plan.unchanged.length > 0 && <p className="sub">{plan.unchanged.length} unchanged</p>}
+      {plan.shared.length > 0 && <p className="sub">Already in another book, the same: {plan.shared.map((i) => i.name).join(", ")} (kept once)</p>}
       {plan.stubbed.length > 0 && (
         <>
           <h2>Names that match nothing ({new Set(plan.stubbed.map((u) => u.name)).size})</h2>
@@ -40,8 +75,8 @@ export function DraftScreen({ draft, onAccept, onDiscard }: { draft: Draft; onAc
         </>
       )}
       <div className="buttons sticky">
-        <button className="primary" disabled={nothing} onClick={onAccept}>
-          {nothing ? "Nothing to add" : "Add to library"}
+        <button className="primary" disabled={nothing || plan.undecided} onClick={onAccept}>
+          {nothing ? "Nothing to add" : plan.undecided ? "Choose for each clash first" : "Add to library"}
         </button>
         <button onClick={onDiscard}>Discard</button>
       </div>
@@ -67,4 +102,9 @@ function Group({ title, items }: { title: string; items: Item[] }) {
       </ul>
     </>
   );
+}
+
+// An item as compared: its content, without the keys the app works out.
+function strip(item: Item): unknown {
+  return JSON.parse(JSON.stringify(item, (k, v) => (k === "item" || k === "key" ? undefined : v)));
 }

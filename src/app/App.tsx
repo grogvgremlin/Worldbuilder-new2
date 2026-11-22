@@ -48,7 +48,7 @@ const TOOLS: { id: Tool; label: string; comingNext: string }[] = [
 const ROOTS: Record<Tool, Screen | null> = { world: null, lists: { name: "lists" }, battle: null, campaign: null, settings: { name: "library" } };
 
 export function App({ data }: { data: AppData }) {
-  const [tool, setTool] = useState<Tool>(data.items.length ? "lists" : "settings");
+  const [tool, setTool] = useState<Tool>(data.items.some((i) => i.kind === "game") ? "lists" : "settings");
   const [stacks, setStacks] = useState<Record<Tool, Screen[]>>({ world: [], lists: [{ name: "lists" }], battle: [], campaign: [], settings: [{ name: "library" }] });
   const [draft, setDraft] = useState<Draft | null>(null);
   const [, setVersion] = useState(0);
@@ -128,6 +128,7 @@ function render(screen: Screen, data: AppData, nav: Nav, draft: Draft | null, se
       return draft ? (
         <DraftScreen
           draft={draft}
+          onChoose={(key, choice) => setDraft(data.choose(draft, key, choice))}
           onAccept={async () => (await data.accept(draft), setDraft(null), refresh(), nav.home())}
           onDiscard={() => (setDraft(null), nav.home())}
         />

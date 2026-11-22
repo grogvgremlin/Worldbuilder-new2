@@ -170,6 +170,20 @@ export const GameSetting = z.strictObject({
 });
 export type GameSetting = z.infer<typeof GameSetting>;
 
+// A ready-made start for a new context, by package names (resolved when used: a package not loaded
+// yet is reported missing). "armies: all" also switches on every army in the books listed.
+export const GamePreset = z.strictObject({
+  name: z.string(),
+  about: z.string().optional(),
+  books: z.array(z.string()).optional(),
+  armies: z.literal("all").optional(),
+  faqs: z.array(z.string()).optional(),
+  house: z.array(z.string()).optional(),
+  composition: z.array(z.string()).optional(),
+  settings: z.record(z.string(), z.string()).optional(),
+});
+export type GamePreset = z.infer<typeof GamePreset>;
+
 // The game: what an edition counts. Its rules and content are in its packages.
 export const Game = z.strictObject({
   ...common,
@@ -190,6 +204,7 @@ export const Game = z.strictObject({
   core: z.array(z.string()), // package keys always on
   defaultComposition: z.array(z.string()).optional(), // composition sets a new context starts with
   settings: z.array(GameSetting).optional(),
+  presets: z.array(GamePreset).optional(),
 });
 export type Game = z.infer<typeof Game>;
 
@@ -206,6 +221,7 @@ export const Package = z.strictObject({
   corrects: z.string().optional(), // an FAQ: the package it corrects
   stubsFor: z.string().optional(), // made by the app: stubs for names in this package that match nothing
   section: z.string().optional(), // a heading it's shown under in the Library ("App specific")
+  version: z.string().optional(), // an FAQ's version ("1.2"): the latest is switched on with its book
 });
 export type Package = z.infer<typeof Package>;
 
@@ -339,6 +355,17 @@ export const SettingValue = z.strictObject({
 });
 export type SettingValue = z.infer<typeof SettingValue>;
 
+// A sandbox: the space contexts live in. "Pick-up" is permanent and has no world features (no
+// places, log or dates); a world will be a sandbox with them (owner, 22 Nov).
+export const Sandbox = z.strictObject({
+  ...common,
+  kind: z.literal("sandbox"),
+  world: z.boolean(), // has world features (things, links, events, a log)
+  permanent: z.boolean().optional(),
+});
+export type Sandbox = z.infer<typeof Sandbox>;
+export const PICKUP = "pickup";
+
 // A context: a game and the packages switched on for it, in groups — what a roster is built against.
 // A pick-up game is a context with no world; a world holds one context per game played in it.
 // Design: design/v2-reconciliation.md §1 (build rows: a manifest context names its game and lists its
@@ -355,7 +382,7 @@ export const Context = z.strictObject({
   ...common,
   kind: z.literal("context"),
   game: z.string(), // the game's short name: its core is always on
-  world: z.string().optional(), // the world it belongs to; absent for a pick-up game (not shown when list building)
+  sandbox: z.string().optional(), // the sandbox it's in; absent = Pick-up (never shown when list building)
   books: z.array(ContextPackage),
   faqs: z.array(ContextPackage),
   house: z.array(ContextPackage),
@@ -388,6 +415,6 @@ export const Roster = z.strictObject({
 });
 export type Roster = z.infer<typeof Roster>;
 
-export const Item = z.discriminatedUnion("kind", [Game, Package, RaceProfile, Unit, Equipment, SpecialRule, SlotKind, ArmyList, CompositionRule, Source, SettingValue, Context, Roster]);
+export const Item = z.discriminatedUnion("kind", [Game, Package, RaceProfile, Unit, Equipment, SpecialRule, SlotKind, ArmyList, CompositionRule, Source, SettingValue, Sandbox, Context, Roster]);
 export type Item = z.infer<typeof Item>;
 export type ItemKind = Item["kind"];

@@ -54,7 +54,7 @@ describe("the TOW sample", () => {
   it("finds what The Empire needs, and keeps what's stated", () => {
     const empire = item("tow.the-empire") as Package;
     const needs = foundNeeds(empire, result.items);
-    expect([...needs.keys()]).toEqual(["tow.rulebook"]);
+    expect([...needs.keys()].sort()).toEqual(["tow.races", "tow.rulebook"]); // the race cells its units sit on, and the rulebook
     expect(needs.get("tow.rulebook")).toEqual(expect.arrayContaining(["Close Order", "Hand Weapon", "Crossbow"]));
     expect(empire.needsStated).toEqual(["tow.forces-of-fantasy"]);
     expect(empire.partOf).toBe("tow.forces-of-fantasy");
@@ -108,5 +108,14 @@ describe("moving an item to another book", () => {
     expect(JSON.stringify(smt)).toContain('"item":"tow.equipment.hochland-long-rifle"');
     // and it downloads into the rulebook's folder now
     expect(saveFolder(moved)["rulebook/equipment.csv"]).toContain("Hochland Long Rifle");
+  });
+});
+
+describe("bibliography", () => {
+  it("reads each book's own row, and items cite it by name", () => {
+    const { items } = loadFolder(files);
+    const fof = items.find((i) => i.key === "tow.source.forces-of-fantasy")!;
+    expect(fof).toMatchObject({ kind: "source", sourceKind: "book", by: "Games Workshop", homePackage: "tow.forces-of-fantasy" });
+    expect(items.filter((i) => i.reference?.source === "Forces of Fantasy").length).toBeGreaterThan(3);
   });
 });

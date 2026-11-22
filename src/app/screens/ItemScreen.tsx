@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import YAML from "yaml";
-import type { ArmyList, CompositionRule, Equipment, Item, Limit, Options as OptionsCell, Package, RaceProfile, SlotKind, SpecialRule, Stat, Stats, Term, Unit, UnitRow } from "../../items/items";
+import type { ArmyList, CompositionRule, Equipment, Item, Limit, Source, Options as OptionsCell, Package, RaceProfile, SlotKind, SpecialRule, Stat, Stats, Term, Unit, UnitRow } from "../../items/items";
 import { writeStat } from "../../notation/values";
 import type { AppData } from "../app-data";
 import type { Nav } from "../App";
@@ -31,7 +31,12 @@ export function ItemScreen({ data, nav, itemKey }: { data: AppData; nav: Nav; it
             <button className="link" onClick={() => nav.open({ name: "package", key: item.homePackage! })}>{nameOf(item.homePackage, data.items)}</button>
           </>
         )}
-        {item.reference && <> · {words.referenceText(item.reference)}</>}
+        {citation(item) && (
+          <>
+            {" · "}
+            <SourceLink reference={citation(item)!} ctx={ctx} />
+          </>
+        )}
       </p>
       {item.status === "stub" && <p className="stub">Not entered yet: only its name is known.</p>}
       <nav className="segments">
@@ -64,6 +69,8 @@ function Card({ item, ctx, view }: { item: Item; ctx: Ctx; view: View }) {
       return <CompositionCard rule={item} />;
     case "package":
       return <PackageCard pkg={item} ctx={ctx} />;
+    case "source":
+      return <SourceCard source={item} ctx={ctx} />;
     default:
       return null;
   }
@@ -360,6 +367,53 @@ function MoveToBook({ item, data, onMoved }: { item: Item; data: AppData; onMove
         {books.map((b) => <option key={b.key} value={b.key}>{b.name}</option>)}
       </select>
     </div>
+  );
+}
+
+// Where an item is printed: its own reference, or for a unit its own line's.
+function citation(item: Item): Item["reference"] {
+  return item.reference ?? (item.kind === "unit" ? item.rows[0].reference : undefined);
+}
+
+// "Forces of Fantasy, p. 64", with the book a link to its bibliography entry when there is one.
+function SourceLink({ reference, ctx }: { reference: NonNullable<Item["reference"]>; ctx: Ctx }) {
+  const source = ctx.items.find((i): i is Source => i.kind === "source" && i.name === reference.source);
+  return (
+    <>
+      {source ? <ItemLink name={reference.source} itemKey={source.key} ctx={ctx} /> : reference.source}
+      {reference.page && `, p. ${reference.page}`}
+    </>
+  );
+}
+
+// A book (or PDF, website) and everything that cites it, by kind.
+function SourceCard({ source, ctx }: { source: Source; ctx: Ctx }) {
+  const citing = ctx.items.filter((i) => citation(i)?.source === source.name);
+  const byKind = new Map<string, Item[]>();
+  for (const i of citing) byKind.set(i.kind, [...(byKind.get(i.kind) ?? []), i]);
+  return (
+    <>
+      <Field label="Kind">{source.sourceKind}</Field>
+      <Field label="By">{source.by}</Field>
+      <Field label="Published">{source.published}</Field>
+      <Field label="Link">{source.link && <a href={source.link}>{source.link}</a>}</Field>
+      <h2>Cited by ({citing.length})</h2>
+      {[...byKind].map(([kind, list]) => (
+        <details key={kind} className="stub-group">
+          <summary>
+            {kind.replace("-", " ")} <span className="sub">{list.length}</span>
+          </summary>
+          <ul className="plain">
+            {list.map((i) => (
+              <li key={i.key}>
+                <ItemLink name={i.name} itemKey={i.key} ctx={ctx} />
+                {citation(i)?.page && <span className="sub"> p. {citation(i)!.page}</span>}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ))}
+    </>
   );
 }
 

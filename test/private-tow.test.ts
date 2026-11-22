@@ -72,7 +72,7 @@ describe.skipIf(!hasTowData)("TOW data from the data repo", () => {
   it("finds what The Empire needs from what its units name", () => {
     const empire = first.items.find((i) => i.key === "tow.the-empire") as Package;
     const needs = foundNeeds(empire, first.items);
-    expect([...needs.keys()].sort()).toEqual(["tow.rulebook", "tow.the-empire.stubs"]);
+    expect([...needs.keys()].sort()).toEqual(["tow.races", "tow.rulebook", "tow.the-empire.stubs"]);
     expect(needs.get("tow.rulebook")).toContain("Close Order");
     expect(empire.needsStated).toEqual(["tow.forces-of-fantasy"]);
   });

@@ -30,6 +30,7 @@ const KIND_IN_KEY: Record<string, string> = {
   "army-list": "army-list",
   "composition-rule": "composition",
   "race-profile": "race",
+  source: "source",
 };
 
 export function itemKey(game: string, kind: string, ...nameParts: string[]): string {

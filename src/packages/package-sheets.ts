@@ -8,6 +8,7 @@ import { COLUMNS } from "./sheet-tabs";
 
 // The tabs, in the order they're read (things a tab names come before it).
 export const TABS = [
+  { id: "bibliography", file: "bibliography.csv", title: "Bibliography", columns: COLUMNS.bibliography },
   { id: "races", file: "races.csv", title: "Races", columns: COLUMNS.races },
   { id: "common links", file: "common-links.csv", title: "Common Links", columns: COLUMNS.commonLinks },
   { id: "rules", file: "rules.csv", title: "Rules", columns: COLUMNS.rules },

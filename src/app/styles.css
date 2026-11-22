@@ -121,3 +121,4 @@ h2.fold { cursor: pointer; user-select: none; }
 .list li.branch > button:not(.twisty) { flex: 1; }
 .twisty { flex: 0 0 28px; width: 28px; background: none; border: 0; color: var(--muted); padding: 0; margin-bottom: 6px; }
 .card .field select { flex: 1; min-width: 0; width: 100%; }
+.stub-group { margin: 4px 0; } .stub-group summary { cursor: pointer; padding: 4px 0; }

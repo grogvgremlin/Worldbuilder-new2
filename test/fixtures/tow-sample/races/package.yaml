@@ -1,0 +1,6 @@
+package: TOW races
+game: tow
+layer: core
+reference: "Forces of Fantasy, pp. 48-77"
+contents: [races]
+notes: "The app's own: race · tree · rank cells worked out from the book's profiles (owner, 21 Nov: races are an app, not strictly rules)."

@@ -4,7 +4,7 @@
 // trailing "s" matches the name without it (Halberds -> Halberd); an item's aliases match too.
 
 import type { Item, Option, Options, Package, Term, Unit } from "../items/items";
-import { matchName } from "../items/keys";
+import { itemKey, matchName } from "../items/keys";
 
 export type Kind = "unit" | "equipment" | "special-rule" | "slot-kind";
 
@@ -140,6 +140,8 @@ export function referencesOf(item: Item): string[] {
   if (item.kind === "unit") {
     out.push(item.inherits?.item);
     for (const row of (item as Unit).rows) {
+      // A row's race cell (blank tree = Core, blank rank = Base) is something the unit draws on.
+      if (row.race) out.push(itemKey(item.key.split(".")[0], "race-profile", row.race, row.tree ?? "Core", row.rank ?? "Base"));
       terms(row.equipment);
       terms(row.rules);
       options(row.equipmentOptions);

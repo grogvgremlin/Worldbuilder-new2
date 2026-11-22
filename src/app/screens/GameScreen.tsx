@@ -9,6 +9,8 @@ import type { AppData } from "../app-data";
 import type { Nav } from "../App";
 import { saveFile } from "../save-file";
 import { BROWSE_KINDS } from "./BrowseScreen";
+import { SwipeRow } from "../swipe";
+import { needsOf } from "../../context/context";
 
 type View = "sections" | "nesting" | PackageType;
 
@@ -16,12 +18,21 @@ export function GameScreen({ data, nav, gameKey }: { data: AppData; nav: Nav; ga
   const [view, setView] = useState<View>("nesting");
   // "Not entered yet" starts folded: it grows with every book that names things not yet entered.
   const [folded, setFolded] = useState<Set<string>>(new Set(["stubs"]));
+  const [, setChanged] = useState(0);
   const game = data.items.find((i): i is Game => i.key === gameKey && i.kind === "game");
   if (!game) return <p>Not on the device any more.</p>;
   const byKey = new Map(data.items.map((i) => [i.key, i]));
   const packages = data.items.filter((i): i is Package => i.kind === "package" && i.game === game.shortName);
   const typeOf = (p: Package) => packageType(p, byKey);
   const present = PACKAGE_TYPES.filter((t) => packages.some((p) => typeOf(p) === t.type));
+  // Swiping a package away removes it (and what lives in it) from the device, after a check.
+  const remove = async (pkg: Package) => {
+    const needing = packages.filter((p) => p.key !== pkg.key && !p.stubsFor && needsOf(p, data.items).includes(pkg.key)).map((p) => p.name);
+    const also = needing.length ? `\n\n${needing.join(", ")} need${needing.length === 1 ? "s" : ""} it: names in ${needing.length === 1 ? "it" : "them"} will become “not entered yet”.` : "";
+    if (!confirm(`Remove ${pkg.name} and the ${pkg.members.length} items in it from this device?${also}`)) return;
+    await data.removePackage(pkg.key);
+    setChanged((n) => n + 1);
+  };
   const toggle = (id: string) => setFolded((f) => (f.has(id) ? new Set([...f].filter((x) => x !== id)) : new Set([...f, id])));
 
   return (
@@ -39,11 +50,22 @@ export function GameScreen({ data, nav, gameKey }: { data: AppData; nav: Nav; ga
       </div>
 
       {view === "nesting" ? (
-        <ul className="list">
-          {packages.filter((p) => !p.partOf && !p.stubsFor).map((p) => (
-            <Branch key={p.key} pkg={p} all={packages.filter((x) => !x.stubsFor)} nav={nav} depth={0} folded={folded} toggle={toggle} />
-          ))}
-        </ul>
+        sectionsOf(packages.filter((p) => !p.partOf && !p.stubsFor)).map(([section, tops]) => (
+          <div key={section ?? ""}>
+            {section && (
+              <h2 className="fold" onClick={() => toggle("section:" + section)}>
+                {folded.has("section:" + section) ? "▸" : "▾"} {section}
+              </h2>
+            )}
+            {!folded.has("section:" + section) && (
+              <ul className="list">
+                {tops.map((p) => (
+                  <Branch key={p.key} pkg={p} all={packages.filter((x) => !x.stubsFor)} nav={nav} depth={0} folded={folded} toggle={toggle} onRemove={remove} />
+                ))}
+              </ul>
+            )}
+          </div>
+        ))
       ) : (
         present
           .filter((t) => view === "sections" || view === t.type)
@@ -58,7 +80,7 @@ export function GameScreen({ data, nav, gameKey }: { data: AppData; nav: Nav; ga
                 {open && t.type === "stubs" && <StubList packages={inSection} items={data.items} nav={nav} />}
                 {open && t.type !== "stubs" && (
                   <ul className="list">
-                    {inSection.map((p) => <PackageButton key={p.key} pkg={p} items={data.items} nav={nav} />)}
+                    {inSection.map((p) => <PackageButton key={p.key} pkg={p} items={data.items} nav={nav} onRemove={remove} />)}
                   </ul>
                 )}
               </div>
@@ -84,32 +106,43 @@ export function GameScreen({ data, nav, gameKey }: { data: AppData; nav: Nav; ga
   );
 }
 
-function PackageButton({ pkg, items, nav }: { pkg: Package; items: Item[]; nav: Nav }) {
+function PackageButton({ pkg, items, nav, onRemove }: { pkg: Package; items: Item[]; nav: Nav; onRemove: (p: Package) => void }) {
   return (
     <li>
-      <button onClick={() => nav.open({ name: "package", key: pkg.key })}>
-        <span className="title">{pkg.name}</span>
-        <span className="sub">
-          {pkg.partOf ? `in ${nameOf(pkg.partOf, items)} · ` : ""}
-          {pkg.members.length} items
-        </span>
-      </button>
+      <SwipeRow action="Remove" onAction={() => onRemove(pkg)}>
+        <button onClick={() => nav.open({ name: "package", key: pkg.key })}>
+          <span className="title">{pkg.name}</span>
+          <span className="sub">
+            {pkg.partOf ? `in ${nameOf(pkg.partOf, items)} · ` : ""}
+            {pkg.members.length} items
+          </span>
+        </button>
+      </SwipeRow>
     </li>
   );
 }
 
-function Branch(props: { pkg: Package; all: Package[]; nav: Nav; depth: number; folded: Set<string>; toggle: (id: string) => void }) {
-  const { pkg, all, nav, depth, folded, toggle } = props;
+// Top-level packages under their Library heading ("App specific"); those with none come first.
+function sectionsOf(packages: Package[]): [string | undefined, Package[]][] {
+  const groups = new Map<string | undefined, Package[]>();
+  for (const p of packages) groups.set(p.section, [...(groups.get(p.section) ?? []), p]);
+  return [...groups].sort(([a], [b]) => (a === undefined ? -1 : b === undefined ? 1 : a.localeCompare(b)));
+}
+
+function Branch(props: { pkg: Package; all: Package[]; nav: Nav; depth: number; folded: Set<string>; toggle: (id: string) => void; onRemove: (p: Package) => void }) {
+  const { pkg, all, nav, depth, folded, toggle, onRemove } = props;
   const children = all.filter((p) => p.partOf === pkg.key);
   const open = !folded.has(pkg.key);
   return (
     <>
       <li className="branch" style={{ paddingLeft: depth * 18 }}>
         {children.length > 0 ? <button className="twisty" onClick={() => toggle(pkg.key)}>{open ? "▾" : "▸"}</button> : <span className="twisty" />}
-        <button onClick={() => nav.open({ name: "package", key: pkg.key })}>
-          <span className="title">{pkg.name}</span>
-          <span className="sub">{pkg.layer} · {pkg.members.length} items</span>
-        </button>
+        <SwipeRow action="Remove" onAction={() => onRemove(pkg)}>
+          <button onClick={() => nav.open({ name: "package", key: pkg.key })}>
+            <span className="title">{pkg.name}</span>
+            <span className="sub">{pkg.layer} · {pkg.members.length} items</span>
+          </button>
+        </SwipeRow>
       </li>
       {open && children.map((c) => <Branch key={c.key} {...props} pkg={c} depth={depth + 1} />)}
     </>

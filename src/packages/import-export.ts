@@ -45,6 +45,7 @@ export function importSheets(sheets: GameSheets, known: Item[] = []): ImportResu
     return key ?? name;
   };
   if (game) game.core = game.core.map((n) => findPackage(n, "game.yaml, core"));
+  if (game?.defaultComposition) game.defaultComposition = game.defaultComposition.map((n) => findPackage(n, "game.yaml, default composition"));
   for (const { pkg, info } of packages) {
     const where = `${pkg.key}, package settings`;
     if (typeof info["part of"] === "string") pkg.partOf = findPackage(info["part of"], where);
@@ -119,6 +120,7 @@ function readGameInfo(y: Record<string, any>): Game {
     roles: y["roles"],
     bagOrder: y["bag order"] ?? [],
     core: asList(y["core"]),
+    defaultComposition: y["default composition"] === undefined ? undefined : asList(y["default composition"]),
   });
 }
 
@@ -134,6 +136,7 @@ function readPackageInfo(sheet: PackageSheets, game: Game): Package {
     layer: (y["layer"] as Package["layer"]) ?? "book",
     reference: typeof y["reference"] === "string" ? { source: y["reference"] } : undefined,
     notes: typeof y["notes"] === "string" ? y["notes"] : undefined,
+    section: typeof y["section"] === "string" ? y["section"] : undefined,
     members: [],
     includes: [],
     needsStated: [],
@@ -180,6 +183,7 @@ export function exportPackage(pkg: Package, byKey: Map<string, Item>): PackageSh
     "part of": parent?.name,
     reference: pkg.reference?.source,
     needs: pkg.needsStated.length ? pkg.needsStated.map((k) => byKey.get(k)?.name ?? k) : undefined,
+    section: pkg.section,
     notes: pkg.notes,
   });
   return { folder: packageFolder(pkg, byKey), info, tabs: sheetTabs };
@@ -204,6 +208,7 @@ function writeGameInfo(game: Game, byKey: Map<string, Item>): Record<string, unk
     roles: game.roles,
     "bag order": game.bagOrder,
     core: game.core.map((k) => byKey.get(k)?.name ?? k),
+    "default composition": game.defaultComposition?.map((k) => byKey.get(k)?.name ?? k),
   });
 }
 

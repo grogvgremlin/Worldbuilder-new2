@@ -125,3 +125,21 @@ export function moveItem(items: Item[], key: string, toPackage: string): Item[] 
   });
   return refreshLibrary(moved).items;
 }
+
+// --- Removing packages from the device ------------------------------------------------------------
+
+// The packages go, and every item that lives in them; names elsewhere that pointed at them become stubs
+// on the refresh. Contexts that listed them say so (a package that isn't on the device).
+export function removePackages(items: Item[], packageKeys: string[]): Item[] {
+  const gone = new Set(packageKeys);
+  const kept = items.filter((i) => !gone.has(i.key) && !(i.homePackage && gone.has(i.homePackage)));
+  return refreshLibrary(kept).items;
+}
+
+// A game goes with all its packages; contexts made for it stay (they say the game is missing).
+export function removeGame(items: Item[], gameKey: string): Item[] {
+  const game = items.find((i) => i.key === gameKey);
+  if (!game || game.kind !== "game") return items;
+  const packages = items.filter((i) => i.kind === "package" && i.game === game.shortName).map((p) => p.key);
+  return removePackages(items.filter((i) => i.key !== gameKey), packages);
+}

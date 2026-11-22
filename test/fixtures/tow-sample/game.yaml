@@ -25,4 +25,5 @@ roles: [General, Battle Standard Bearer]
 
 bag order: [set, add, multiply, cap, floor]
 
-core: [TOW rulebook, TOW races]
+core: [Rulebook, Races]
+default composition: [Standard composition]

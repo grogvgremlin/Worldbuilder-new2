@@ -2,5 +2,5 @@ package: Forces of Fantasy
 game: tow
 layer: book
 reference: Forces of Fantasy
-needs: [TOW rulebook]
+needs: [Rulebook]
 contents: [bibliography, composition]          # p. 3: rules shared by every army in the book

@@ -12,6 +12,7 @@ import { GridScreen } from "./screens/GridScreen";
 import { ItemScreen } from "./screens/ItemScreen";
 import { DraftScreen } from "./screens/DraftScreen";
 import { DataScreen } from "./screens/DataScreen";
+import { useBackSwipe } from "./swipe";
 import { BrowseScreen, type BrowseKind } from "./screens/BrowseScreen";
 
 export type Screen =
@@ -48,12 +49,13 @@ export function App({ data }: { data: AppData }) {
     home: () => setStack([{ name: "library" }]),
   };
   const screen = stack[stack.length - 1];
+  const backSwipe = useBackSwipe(() => tool === "settings" && nav.back());
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [screen, tool]);
 
   return (
-    <div className="app">
+    <div className="app" {...backSwipe}>
       <header className="top">
         {tool === "settings" && stack.length > 1 ? (
           <button className="link back" onClick={nav.back}>‹ Back</button>

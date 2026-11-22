@@ -122,3 +122,9 @@ h2.fold { cursor: pointer; user-select: none; }
 .twisty { flex: 0 0 28px; width: 28px; background: none; border: 0; color: var(--muted); padding: 0; margin-bottom: 6px; }
 .card .field select { flex: 1; min-width: 0; width: 100%; }
 .stub-group { margin: 4px 0; } .stub-group summary { cursor: pointer; padding: 4px 0; }
+.swipe-row { position: relative; overflow: hidden; border-radius: var(--radius); margin-bottom: 6px; }
+.swipe-row .swipe-action { position: absolute; top: 0; right: 0; bottom: 0; border: 0; background: #b3261e; color: #fff; font-weight: 600; border-radius: var(--radius); }
+.swipe-row .swipe-body { position: relative; transition: transform .15s ease-out; background: var(--ground); }
+.swipe-row .swipe-body > button, .swipe-row .swipe-body li > button { margin-bottom: 0 !important; }
+.list li .swipe-row button { margin-bottom: 0; }
+.list li.branch > .swipe-row { flex: 1; margin-bottom: 6px; }

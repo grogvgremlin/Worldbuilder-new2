@@ -3,7 +3,7 @@
 // Data structure: rebuild/data-structure.md §9.
 
 import type { Item } from "../items/items";
-import { moveItem, planUpload, type UploadPlan } from "../library/library";
+import { moveItem, planUpload, removeGame, removePackages, type UploadPlan } from "../library/library";
 import { readUploads, type UploadFile } from "../library/upload";
 import type { Problem } from "../packages/formats";
 import type { Store } from "../store/store";
@@ -32,6 +32,16 @@ export class AppData {
 
   async moveItem(key: string, toPackage: string): Promise<void> {
     this.items = moveItem(this.items, key, toPackage);
+    await this.store.replaceItems(this.items);
+  }
+
+  async removePackage(key: string): Promise<void> {
+    this.items = removePackages(this.items, [key]);
+    await this.store.replaceItems(this.items);
+  }
+
+  async removeGame(key: string): Promise<void> {
+    this.items = removeGame(this.items, key);
     await this.store.replaceItems(this.items);
   }
 

@@ -3,8 +3,15 @@ import { useRef, useState } from "react";
 import type { Game } from "../../items/items";
 import type { AppData, Draft } from "../app-data";
 import type { Nav } from "../App";
+import { SwipeRow } from "../swipe";
 
 export function LibraryScreen({ data, nav, onDraft }: { data: AppData; nav: Nav; onDraft: (d: Draft) => void }) {
+  const [, setChanged] = useState(0);
+  const removeGame = async (g: Game) => {
+    if (!confirm(`Remove ${g.name} and every package in it from this device?`)) return;
+    await data.removeGame(g.key);
+    setChanged((n) => n + 1);
+  };
   const games = data.items.filter((i): i is Game => i.kind === "game");
   return (
     <section>
@@ -20,10 +27,12 @@ export function LibraryScreen({ data, nav, onDraft }: { data: AppData; nav: Nav;
           const packages = data.items.filter((i) => i.kind === "package" && i.game === g.shortName && !i.stubsFor);
           return (
             <li key={g.key}>
-              <button onClick={() => nav.open({ name: "game", key: g.key })}>
-                <span className="title">{g.name}</span>
-                <span className="sub">{packages.length} packages</span>
-              </button>
+              <SwipeRow action="Remove" onAction={() => removeGame(g)}>
+                <button onClick={() => nav.open({ name: "game", key: g.key })}>
+                  <span className="title">{g.name}</span>
+                  <span className="sub">{packages.length} packages</span>
+                </button>
+              </SwipeRow>
             </li>
           );
         })}

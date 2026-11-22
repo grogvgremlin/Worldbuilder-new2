@@ -119,3 +119,13 @@ describe("bibliography", () => {
     expect(items.filter((i) => i.reference?.source === "Forces of Fantasy").length).toBeGreaterThan(3);
   });
 });
+
+describe("removing from the device", () => {
+  it("a package goes with its items; names that pointed at them become stubs", async () => {
+    const { removePackages } = await import("../src/library/library");
+    const { items } = loadFolder(files);
+    const after = removePackages(items, ["tow.rulebook"]);
+    expect(after.find((i) => i.key === "tow.rulebook")).toBeUndefined();
+    expect(after.find((i) => i.key === "tow.equipment.hand-weapon")).toMatchObject({ status: "stub", homePackage: "tow.the-empire.stubs" });
+  });
+});

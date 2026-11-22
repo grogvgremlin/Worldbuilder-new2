@@ -178,6 +178,7 @@ export const Game = z.strictObject({
   roles: z.array(z.string()).optional(),
   bagOrder: z.array(z.string()),
   core: z.array(z.string()), // package keys always on
+  defaultComposition: z.array(z.string()).optional(), // composition sets a new context starts with
 });
 export type Game = z.infer<typeof Game>;
 
@@ -193,6 +194,7 @@ export const Package = z.strictObject({
   needsStated: z.array(z.string()), // package keys it needs that references can't show
   corrects: z.string().optional(), // an FAQ: the package it corrects
   stubsFor: z.string().optional(), // made by the app: stubs for names in this package that match nothing
+  section: z.string().optional(), // a heading it's shown under in the Library ("App specific")
 });
 export type Package = z.infer<typeof Package>;
 
@@ -316,6 +318,31 @@ export const Source = z.strictObject({
 });
 export type Source = z.infer<typeof Source>;
 
-export const Item = z.discriminatedUnion("kind", [Game, Package, RaceProfile, Unit, Equipment, SpecialRule, SlotKind, ArmyList, CompositionRule, Source]);
+// A context: a game and the packages switched on for it, in groups — what a roster is built against.
+// A pick-up game is a context with no world; a world holds one context per game played in it.
+// Design: design/v2-reconciliation.md §1 (build rows: a manifest context names its game and lists its
+// packages in four groups, each in order: books → FAQs → house rules → campaign; the game brings its
+// core); design/army-lists.md §3 (composition packages attach at the roster or above); build-log
+// Part B decisions 21, 26, 29; rebuild build log (composition sets chosen per context).
+export const ContextPackage = z.strictObject({
+  package: z.string(), // package key
+  on: z.boolean(), // listed but switched off stays listed
+});
+export type ContextPackage = z.infer<typeof ContextPackage>;
+
+export const Context = z.strictObject({
+  ...common,
+  kind: z.literal("context"),
+  game: z.string(), // the game's short name: its core is always on
+  world: z.string().optional(), // the world it belongs to; absent for a pick-up game (not shown when list building)
+  books: z.array(ContextPackage),
+  faqs: z.array(ContextPackage),
+  house: z.array(ContextPackage),
+  campaign: z.array(ContextPackage), // only in a world
+  composition: z.array(ContextPackage), // composition sets: Standard, Grand Melee, a tournament pack …
+});
+export type Context = z.infer<typeof Context>;
+
+export const Item = z.discriminatedUnion("kind", [Game, Package, RaceProfile, Unit, Equipment, SpecialRule, SlotKind, ArmyList, CompositionRule, Source, Context]);
 export type Item = z.infer<typeof Item>;
 export type ItemKind = Item["kind"];

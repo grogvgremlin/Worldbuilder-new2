@@ -42,30 +42,42 @@ export function optionText(option: Option): string {
   if (option.count) extras.push(`${rangeText(option.count)} may take it`);
   for (const c of option.conditions ?? []) extras.push(`${c.name.toLowerCase() === "only" ? "only" : "may be"} ${c.detail ?? ""}`.trim());
   if (option.grants?.length) extras.push("gives " + option.grants.map(termText).join(", "));
-  if (option.addsToInherited) extras.push("as well as the inherited options");
   return extras.length ? `${parts[0]} (${extras.join("; ")})` : parts[0];
 }
 
-export function groupText(group: OptionGroup): string {
-  if (group.options.length === 1) return optionText(group.options[0]) + (group.required ? " — required" : "");
-  return `Choose one${group.required ? " (required)" : ""}: ${group.options.map(optionText).join(" or ")}`;
+// An options cell as blocks: a heading ("Choose one (required):") and the choices under it.
+export type OptionBlock = { heading: string | null; choices: string[] };
+
+export function optionBlocks(cell: Options | undefined): OptionBlock[] {
+  if (!cell) return [];
+  const blocks: OptionBlock[] = [];
+  if (cell.removeAllInherited) blocks.push({ heading: null, choices: ["None of the inherited options"] });
+  for (const t of cell.removeInherited ?? []) blocks.push({ heading: null, choices: [`Not ${termText(t)} (inherited)`] });
+  for (const group of cell.groups) {
+    const block = groupBlock(group);
+    const last = blocks[blocks.length - 1];
+    // Single options one after another read as one list.
+    if (last && last.heading === null && block.heading === null) last.choices.push(...block.choices);
+    else blocks.push(block);
+  }
+  return blocks;
 }
 
-// Every line an options cell reads as, removals first.
-export function optionLines(cell: Options | undefined): string[] {
-  if (!cell) return [];
-  const lines: string[] = [];
-  if (cell.removeAllInherited) lines.push("None of the inherited options");
-  for (const t of cell.removeInherited ?? []) lines.push(`Not ${termText(t)} (inherited)`);
-  for (const group of cell.groups) lines.push(groupText(group));
-  return lines;
+function groupBlock(group: OptionGroup): OptionBlock {
+  const choices = group.options.map(optionText);
+  if (choices.length === 1) return { heading: group.required ? "Required:" : null, choices };
+  return { heading: `Choose one${group.required ? " (required)" : ""}:`, choices: choices.map((c, i) => (i < choices.length - 1 ? `${c} or` : c)) };
 }
 
 export function limitText(limit: Limit): string {
   let what = limit.counts;
   if (limit.of?.length) what += ` (${limit.of.join(", ")})`;
   if (limit.where) what += ` [${limit.where}]`;
-  const r = limit.amount;
+  return `${what}: ${limitAmountText(limit)}`;
+}
+
+// Only how many and per what: "0–1 per 1,000 pts of the roster target".
+export function limitAmountText(limit: Limit): string {  const r = limit.amount;
   const unit = limit.percent ? "%" : "";
   let amount: string;
   if (r.min !== null && r.max !== null) amount = r.min === r.max ? `${r.min}${unit}` : `${r.min}–${r.max}${unit}`;
@@ -74,13 +86,14 @@ export function limitText(limit: Limit): string {
   else amount = "any";
   let per = "";
   if (limit.perPoints) per = ` per ${limit.perPoints.toLocaleString("en-GB")} pts`;
-  if (limit.basis) per += `${limit.perPoints ? " of the" : " of the"} ${limit.basis}`;
-  return `${what}: ${amount}${per}`;
+  if (limit.basis) per += ` of the ${limit.basis}`;
+  return `${amount}${per}`;
 }
 
-export function slotText(slot: Slot, slotNames: Map<string, string>): string {
-  const name = slotNames.get(slot.code) ?? slot.code;
-  if (slot.fromUnitRows) return name;
-  const extras = [costText(slot.cost), slot.count ? rangeText(slot.count) : "", slot.type ?? ""].filter((x) => x !== "");
-  return extras.length ? `${name} (${extras.join(", ")})` : name;
+// A command slot by its own name and cost: "Preceptor +6 pts". A slot written "C(slots)" takes both
+// from the unit's own row for C; otherwise the slot kind's name and the cost written on the slot.
+export function slotText(slot: Slot, ownRow: { name?: string; cost?: Cost } | undefined, slotNames: Map<string, string>): string {
+  const name = ownRow?.name ?? slotNames.get(slot.code) ?? slot.code;
+  const cost = costText(ownRow?.cost ?? slot.cost);
+  return cost ? `${name} ${cost}` : name;
 }

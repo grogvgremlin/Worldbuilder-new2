@@ -82,3 +82,22 @@ describe("cells", () => {
     limits("units[not Character; Troop Type not Swarm,War Beasts,War Machine]~3-~army");
   });
 });
+
+describe("card words", async () => {
+  const { optionBlocks, slotText, limitAmountText } = await import("../src/app/words");
+  const { readOptions } = await import("../src/notation/options");
+  it("lays out a choice one option per line, and single options as one list", () => {
+    const knights = readOptions("[Great Weapons(add;+1~pi) OR Lances(add;+1~pi);Mandatory];Drilled(1~pi);Stubborn(2~pi)", [])!;
+    expect(optionBlocks(knights)).toEqual([
+      { heading: "Choose one (required):", choices: ["Great Weapons (+1 pts per model) or", "Lances (+1 pts per model)"] },
+      { heading: null, choices: ["Drilled (1 pts per model)", "Stubborn (2 pts per model)"] },
+    ]);
+  });
+  it("names a command slot by its own row, with its cost", () => {
+    expect(slotText({ code: "C", fromUnitRows: true }, { name: "Preceptor", cost: { points: 6, per: "unit", adds: true } }, new Map([["C", "Champion"]]))).toBe("Preceptor +6 pts");
+    expect(slotText({ code: "M", count: { min: 0, max: 1 }, type: "upgrade", cost: { points: 6, per: "unit", adds: true } }, undefined, new Map([["M", "Musician"]]))).toBe("Musician +6 pts");
+  });
+  it("words a limit", () => {
+    expect(limitAmountText({ counts: "rules options", amount: { min: 0, max: 1 }, percent: false, perPoints: 1000, basis: "roster target" })).toBe("0–1 per 1,000 pts of the roster target");
+  });
+});

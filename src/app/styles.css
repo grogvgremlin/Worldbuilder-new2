@@ -105,5 +105,7 @@ table { border-collapse: collapse; font-size: .85rem; }
 .card .field .label { flex: 0 0 110px; color: var(--muted); }
 .card .field.block { flex-direction: column; gap: 2px; }
 .card .field.block .label { flex: none; }
+.card .option-block { margin: 4px 0; }
+.card .option-block .plain { margin: 2px 0; }
 .card .slot { margin-top: 14px; padding: 10px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
 .text { font: .8rem/1.4 var(--mono); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; overflow-x: auto; white-space: pre; }

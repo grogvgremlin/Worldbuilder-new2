@@ -1,0 +1,3 @@
+Package,SubPackage,Rule Type,Unit,Key,Type,Link Key,Name,Tier,M,WS,BS,S,T,W,I,A,Ld,Cost,Equipment,Min/Max,Troop Type,Base Size,Slots,Equipment Options,Reference,Unit Limit,Rules,Rules Options,Status,Race,Rank,Tree,Save,Notes
+Forces of Fantasy,Common,Composition,,,Composition,,Minimum Three Units,,,,,,,,,,,,,,,,,,Forces of Fantasy;3,"units[not Character; Troop Type not Swarm,War Beasts,War Machine]~3-~army",,,,,,,,
+Forces of Fantasy,Common,Composition,,,Composition,,The General,,,,,,,,,,,,,,,,,,Forces of Fantasy;3,General[Character]~1~army,,,,,,,,

@@ -74,3 +74,31 @@ describe("whole-game workbook", () => {
     expect(draft.plan.library).toEqual(app.items);
   });
 });
+
+describe("Friday pick-up game journey", () => {
+  it("starts a game, switches on the Empire, builds a list, and finds it all after reopening", async () => {
+    const { newContext, switchOn } = await import("../src/context/context");
+    const { addUnit, armyListsIn, newRoster, viewRoster } = await import("../src/lists/roster");
+    const store = new MemoryStore();
+    const app = new AppData(store);
+    await app.accept(await app.readDraft([{ name: "tow.zip", bytes: zip }]));
+    const tow = app.items.find((i): i is Game => i.kind === "game")!;
+    const friday = switchOn(newContext("Friday night", tow, app.items), "tow.the-empire", app.items);
+    await app.putItem(friday);
+    const empire = armyListsIn(friday, app.items)[0];
+    let roster = newRoster("Empire 1,000", friday, empire, 1000, app.items);
+    roster = addUnit(roster, app.items.find((i) => i.key === "tow.unit.state-missile-troops") as never, app.items);
+    await app.putItem(roster);
+
+    const reopened = new AppData(store);
+    await reopened.load();
+    const back = reopened.items.find((i) => i.key === roster.key)!;
+    expect(viewRoster(back as never, reopened.items).total).toBe(70);
+
+    // A new upload of the library leaves pick-up games and lists alone.
+    const again = await reopened.readDraft([{ name: "tow.zip", bytes: zip }]);
+    await reopened.accept(again);
+    expect(reopened.items.find((i) => i.key === roster.key)).toBeDefined();
+    expect(reopened.items.find((i) => i.key === friday.key)).toBeDefined();
+  });
+});

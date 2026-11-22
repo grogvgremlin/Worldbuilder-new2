@@ -45,6 +45,19 @@ export class AppData {
     await this.store.replaceItems(this.items);
   }
 
+  // Saves one item (a context, a roster), replacing any with the same key.
+  async putItem(item: Item): Promise<void> {
+    this.items = [...this.items.filter((i) => i.key !== item.key), item];
+    await this.store.replaceItems(this.items);
+  }
+
+  // Removes items by key (a roster; a pick-up game with its rosters).
+  async removeItems(keys: string[]): Promise<void> {
+    const gone = new Set(keys);
+    this.items = this.items.filter((i) => !gone.has(i.key));
+    await this.store.replaceItems(this.items);
+  }
+
   async wipe(): Promise<void> {
     await this.store.replaceItems([]);
     this.items = [];

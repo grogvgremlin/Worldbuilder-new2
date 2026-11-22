@@ -343,6 +343,28 @@ export const Context = z.strictObject({
 });
 export type Context = z.infer<typeof Context>;
 
-export const Item = z.discriminatedUnion("kind", [Game, Package, RaceProfile, Unit, Equipment, SpecialRule, SlotKind, ArmyList, CompositionRule, Source, Context]);
+// A roster: what the user chose, never worked-out values (design/rosters.md §1–3). Built against a
+// context (a pick-up game, or later a world's context) from one army list, to a points target.
+export const RosterUnit = z.strictObject({
+  id: z.string(), // unique within the roster
+  unit: z.string(), // the unit's key
+  size: z.number().int().min(1),
+  picks: z.array(z.string()), // options taken, by where and name: "options|Handguns instead of Crossbow", "slot:Sergeant|…"
+  slots: z.array(z.string()), // command taken, by name: "Sergeant", "Musician"
+  general: z.boolean(), // holds the General role
+});
+export type RosterUnit = z.infer<typeof RosterUnit>;
+
+export const Roster = z.strictObject({
+  ...common,
+  kind: z.literal("roster"),
+  context: z.string(), // the context's key
+  armyList: z.string(), // the army list's key
+  target: z.number(), // points
+  units: z.array(RosterUnit),
+});
+export type Roster = z.infer<typeof Roster>;
+
+export const Item = z.discriminatedUnion("kind", [Game, Package, RaceProfile, Unit, Equipment, SpecialRule, SlotKind, ArmyList, CompositionRule, Source, Context, Roster]);
 export type Item = z.infer<typeof Item>;
 export type ItemKind = Item["kind"];

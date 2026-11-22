@@ -1,0 +1,107 @@
+// A list being built: points against the target, each category against its limits, what needs
+// fixing, and the units by section with Add. Building never blocks: issues are shown, not refused.
+import { useState } from "react";
+import type { Roster, Unit } from "../../../items/items";
+import { addUnit, removeUnit, viewRoster } from "../../../lists/roster";
+import { inReach } from "../../../lists/roster";
+import type { AppData } from "../../app-data";
+import type { Nav } from "../../App";
+import { SwipeRow } from "../../swipe";
+
+export function RosterScreen({ data, nav, rosterKey }: { data: AppData; nav: Nav; rosterKey: string }) {
+  const [adding, setAdding] = useState<string | null>(null);
+  const [, setChanged] = useState(0);
+  const roster = data.items.find((i): i is Roster => i.kind === "roster" && i.key === rosterKey);
+  if (!roster) return <p>Not on the device any more.</p>;
+  const view = viewRoster(roster, data.items);
+  const save = async (next: Roster) => {
+    await data.putItem(next);
+    setChanged((n) => n + 1);
+  };
+  const context = data.items.find((i) => i.key === roster.context);
+  const reach = context?.kind === "context" ? inReach(context, data.items) : [];
+  const entries = view.armyList?.entries ?? [];
+  const sections = [...new Set(entries.map((e) => e.category))];
+  const flagged = new Set(view.issues.flatMap((i) => i.units));
+
+  return (
+    <section>
+      <h1>{roster.name}</h1>
+      <p className="sub">{view.armyList?.name}</p>
+      <div className={"total" + (view.total > roster.target ? " over" : "")}>
+        <b>{view.total}</b> of{" "}
+        <input type="number" inputMode="numeric" value={roster.target} onChange={(e) => save({ ...roster, target: Number(e.target.value) || 0 })} /> pts
+      </div>
+      <ul className="plain categories">
+        {view.categories.map((c) => (
+          <li key={c.category} className={c.ok ? "ok" : "bad"}>
+            {c.category} {c.points} <span className="sub">{c.limit}</span>
+          </li>
+        ))}
+      </ul>
+      {view.issues.length > 0 && (
+        <details className="issues" open={view.issues.length <= 3}>
+          <summary>{view.issues.length} to fix</summary>
+          <ul className="plain problems">{view.issues.map((i, n) => <li key={n}>{i.message}</li>)}</ul>
+        </details>
+      )}
+
+      {sections.map((section) => {
+        const inSection = view.units.filter((u) => u.category === section);
+        const points = inSection.reduce((n, u) => n + u.points, 0);
+        return (
+          <div key={section}>
+            <h2>
+              {section} <span className="sub">{points} pts</span>
+            </h2>
+            <ul className="list">
+              {inSection.map((u) => (
+                <li key={u.rosterUnit.id}>
+                  <SwipeRow action="Remove" onAction={() => save(removeUnit(roster, u.rosterUnit.id))}>
+                    <button onClick={() => nav.open({ name: "roster-unit", roster: roster.key, unit: u.rosterUnit.id })}>
+                      <span className="title">
+                        {flagged.has(u.rosterUnit.id) && <span className="warn">⚠ </span>}
+                        {u.taken?.name ?? u.rosterUnit.unit}
+                        {u.rosterUnit.size > 1 && <span className="sub"> ×{u.rosterUnit.size}</span>}
+                        {u.rosterUnit.general && <span className="sub"> · General</span>}
+                      </span>
+                      <span className="sub">{u.points} pts</span>
+                    </button>
+                  </SwipeRow>
+                </li>
+              ))}
+            </ul>
+            {adding === section ? (
+              <ul className="plain add-list">
+                {entries
+                  .filter((e) => e.category === section)
+                  .map((e) => reach.find((i): i is Unit => i.kind === "unit" && i.key === e.unit))
+                  .filter((u): u is Unit => u !== undefined)
+                  .map((u) => (
+                    <li key={u.key}>
+                      <button
+                        className="link"
+                        onClick={async () => {
+                          const next = addUnit(roster, u, reach);
+                          await save(next);
+                          setAdding(null);
+                          nav.open({ name: "roster-unit", roster: roster.key, unit: next.units[next.units.length - 1].id });
+                        }}
+                      >
+                        + {u.name}
+                      </button>
+                    </li>
+                  ))}
+                <li>
+                  <button className="link sub" onClick={() => setAdding(null)}>Close</button>
+                </li>
+              </ul>
+            ) : (
+              <button className="add" onClick={() => setAdding(section)}>+ Add to {section}</button>
+            )}
+          </div>
+        );
+      })}
+    </section>
+  );
+}

@@ -12,6 +12,7 @@ import { GridScreen } from "./screens/GridScreen";
 import { ItemScreen } from "./screens/ItemScreen";
 import { DraftScreen } from "./screens/DraftScreen";
 import { DataScreen } from "./screens/DataScreen";
+import { BrowseScreen, type BrowseKind } from "./screens/BrowseScreen";
 
 export type Screen =
   | { name: "library" }
@@ -19,6 +20,7 @@ export type Screen =
   | { name: "package"; key: string }
   | { name: "grid"; packageKey: string; tab: TabId }
   | { name: "item"; key: string }
+  | { name: "browse"; game: string; kind: BrowseKind }
   | { name: "draft" }
   | { name: "data" };
 
@@ -105,6 +107,8 @@ function render(screen: Screen, data: AppData, nav: Nav, draft: Draft | null, se
       return <GridScreen data={data} nav={nav} packageKey={screen.packageKey} tab={screen.tab} />;
     case "item":
       return <ItemScreen data={data} nav={nav} itemKey={screen.key} />;
+    case "browse":
+      return <BrowseScreen data={data} nav={nav} game={screen.game} kind={screen.kind} />;
     case "draft":
       return draft ? (
         <DraftScreen

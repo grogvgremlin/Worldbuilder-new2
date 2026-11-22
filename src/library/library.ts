@@ -108,3 +108,20 @@ export function planUpload(current: Item[], uploaded: Item[]): UploadPlan {
   }
   return plan;
 }
+
+// --- Moving an item to another book -----------------------------------------------------------------
+
+// The item's home changes and it's listed in the new package instead of the old one. Its key stays,
+// so everything that names it still finds it; dependencies follow on the next read.
+export function moveItem(items: Item[], key: string, toPackage: string): Item[] {
+  const item = items.find((i) => i.key === key);
+  if (!item || !item.homePackage || item.homePackage === toPackage) return items;
+  const from = item.homePackage;
+  const moved = items.map((i) => {
+    if (i.key === key) return { ...i, homePackage: toPackage } as Item;
+    if (i.kind === "package" && i.key === from) return { ...i, members: i.members.filter((k) => k !== key) };
+    if (i.kind === "package" && i.key === toPackage) return { ...i, members: [...i.members, key] };
+    return i;
+  });
+  return refreshLibrary(moved).items;
+}

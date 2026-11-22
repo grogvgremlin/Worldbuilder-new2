@@ -29,7 +29,7 @@ export const STATS = ["M", "WS", "BS", "S", "T", "W", "I", "A", "Ld"];
 export const COLUMNS = {
   races: ["Race", "Tree", "Rank", ...STATS, "Rules", "Reference", "Notes"],
   equipment: ["Equipment", "Match Key", ...STATS, "Save", "Rules", "Alias", "Rules 2", "Type", "R", "AP", "Cost", "Reference"],
-  rules: ["Rule", "Rules", "Rules 2", "Reference"],
+  rules: ["Rule", "Type", "Rules", "Rules 2", "Reference"],
   commonLinks: ["Link Key", "Name", "Equipment", "Alias", "Reference"],
   armyEntry: [
     "Package", "SubPackage", "Rule Type", "Unit", "Key", "Type", "Link Key", "Name", "Tier", ...STATS,
@@ -159,6 +159,7 @@ export function readRuleRows(rows: Row[], ctx: TabContext): SpecialRule[] {
       homePackage: ctx.packageKey,
       status: text === NOT_ENTERED ? "stub" : undefined,
       text: text === NOT_ENTERED ? undefined : text,
+      ruleType: v.readText(row["Type"]),
       effectsAsWritten: v.readText(row["Rules"]),
       reference: v.readReference(row["Reference"]),
     });
@@ -168,6 +169,7 @@ export function readRuleRows(rows: Row[], ctx: TabContext): SpecialRule[] {
 export function writeRuleRow(item: SpecialRule): Row {
   return {
     Rule: item.name,
+    Type: item.ruleType ?? "",
     Rules: item.effectsAsWritten ?? "",
     "Rules 2": item.status === "stub" && item.text === undefined ? NOT_ENTERED : item.text ?? "",
     Reference: v.writeReference(item.reference),

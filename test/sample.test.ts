@@ -94,3 +94,19 @@ describe("the TOW sample", () => {
     expect(fix.items.find((i: Item) => i.key === "tow.the-empire.stubs")).toBeUndefined();
   });
 });
+
+describe("moving an item to another book", () => {
+  it("changes its home and package lists, keeps its key, and everything still finds it", async () => {
+    const { moveItem } = await import("../src/library/library");
+    const { items } = loadFolder(files);
+    const moved = moveItem(items, "tow.equipment.hochland-long-rifle", "tow.rulebook");
+    const rifle = moved.find((i) => i.key === "tow.equipment.hochland-long-rifle")!;
+    expect(rifle.homePackage).toBe("tow.rulebook");
+    expect((moved.find((i) => i.key === "tow.rulebook") as Package).members).toContain(rifle.key);
+    expect((moved.find((i) => i.key === "tow.the-empire") as Package).members).not.toContain(rifle.key);
+    const smt = moved.find((i) => i.key === "tow.unit.state-missile-troops") as Unit;
+    expect(JSON.stringify(smt)).toContain('"item":"tow.equipment.hochland-long-rifle"');
+    // and it downloads into the rulebook's folder now
+    expect(saveFolder(moved)["rulebook/equipment.csv"]).toContain("Hochland Long Rifle");
+  });
+});

@@ -13,9 +13,11 @@ import { workOutLines } from "../../rules/lines";
 import { nameOf } from "./GameScreen";
 
 type Ctx = { items: Item[]; byKey: Map<string, Item>; nav: Nav };
+type View = "entered" | "worked" | "stored";
 
 export function ItemScreen({ data, nav, itemKey }: { data: AppData; nav: Nav; itemKey: string }) {
-  const [asText, setAsText] = useState(false);
+  const [view, setView] = useState<View>("entered");
+  const [, setMoved] = useState(0);
   const item = data.items.find((i) => i.key === itemKey);
   if (!item) return <p>Not on the device any more.</p>;
   const ctx: Ctx = { items: data.items, byKey: new Map(data.items.map((i) => [i.key, i])), nav };
@@ -34,20 +36,24 @@ export function ItemScreen({ data, nav, itemKey }: { data: AppData; nav: Nav; it
       </p>
       {item.status === "stub" && <p className="stub">Not entered yet: only its name is known.</p>}
       <nav className="segments">
-        <button className={!asText ? "on" : ""} onClick={() => setAsText(false)}>Card</button>
-        <button className={asText ? "on" : ""} onClick={() => setAsText(true)}>Stored form</button>
+        <button className={view === "entered" ? "on" : ""} onClick={() => setView("entered")}>As entered</button>
+        {item.kind === "unit" && (
+          <button className={view === "worked" ? "on" : ""} onClick={() => setView("worked")}>Worked out</button>
+        )}
+        <button className={view === "stored" ? "on" : ""} onClick={() => setView("stored")}>Stored form</button>
       </nav>
-      {asText ? <pre className="text">{YAML.stringify(item, { lineWidth: 0 })}</pre> : <Card item={item} ctx={ctx} />}
+      {view === "stored" ? <pre className="text">{YAML.stringify(item, { lineWidth: 0 })}</pre> : <Card item={item} ctx={ctx} view={view} />}
       {item.notes && <p className="hint">{item.notes}</p>}
       <UsedBy item={item} ctx={ctx} />
+      {item.homePackage && item.status !== "stub" && <MoveToBook item={item} data={data} onMoved={() => setMoved((n) => n + 1)} />}
     </section>
   );
 }
 
-function Card({ item, ctx }: { item: Item; ctx: Ctx }) {
+function Card({ item, ctx, view }: { item: Item; ctx: Ctx; view: View }) {
   switch (item.kind) {
     case "unit":
-      return <UnitCard unit={item} ctx={ctx} />;
+      return <UnitCard unit={item} ctx={ctx} worked={view === "worked"} />;
     case "equipment":
       return <EquipmentCard eq={item} ctx={ctx} />;
     case "special-rule":
@@ -143,15 +149,21 @@ function StatTable({ lines }: { lines: { name: string; stats: Stats; save?: Stat
 
 // --- Cards ----------------------------------------------------------------------------------------
 
-function UnitCard({ unit, ctx }: { unit: Unit; ctx: Ctx }) {
+// "As entered" shows the lines as typed (a champion's change as "+1"); "Worked out" shows every line
+// in full, standardised: what a roster's card reads from.
+function UnitCard({ unit, ctx, worked: showWorked }: { unit: Unit; ctx: Ctx; worked: boolean }) {
   const own = unit.rows[0];
   const category = ctx.items.find((i): i is ArmyList => i.kind === "army-list" && i.entries.some((e) => e.unit === unit.key))?.entries.find((e) => e.unit === unit.key)?.category;
   const slotNames = new Map(ctx.items.filter((i): i is SlotKind => i.kind === "slot-kind").map((s) => [s.code, s.name]));
   const slotCodes = new Set(unit.rows.map((r) => r.slotCode).filter((c): c is string => !!c));
   // Worked out from the race cell, the unit it's based on, the line as entered and kit; a plain
   // standard bearer has no line of its own; mounts and steeds have theirs.
-  const worked = unit.status === "stub" ? [] : workOutLines(unit, ctx.items);
-  const lines = worked.map((w) => ({ name: w.kind === "mount" ? `${w.name} (mount)` : w.name, stats: w.line as Stats }));
+  const worked = !showWorked || unit.status === "stub" ? [] : workOutLines(unit, ctx.items);
+  const lines = showWorked
+    ? worked.map((w) => ({ name: w.kind === "mount" ? `${w.name} (mount)` : w.name, stats: w.line as Stats, save: undefined as Stat | undefined }))
+    : unit.rows
+        .filter((r) => r === own || Object.keys(r.stats).length > 0)
+        .map((r) => ({ name: r.name ?? (r === own ? unit.name : r.type), stats: r.stats, save: r.save }));
   const limits = own.limits?.limits ?? [];
   const unitLimits = limits.filter((l) => !isOptionsLimit(l) && !slotCodes.has(l.counts));
   return (
@@ -344,6 +356,29 @@ function PackageCard({ pkg, ctx }: { pkg: Package; ctx: Ctx }) {
     <p>
       <button className="link" onClick={() => ctx.nav.open({ name: "package", key: pkg.key })}>Open the package</button>
     </p>
+  );
+}
+
+// Moving an item to another book (its home: the folder it downloads into). Its key doesn't change,
+// so everything that names it still finds it.
+function MoveToBook({ item, data, onMoved }: { item: Item; data: AppData; onMoved: () => void }) {
+  const game = item.key.split(".")[0];
+  const books = data.items.filter((i): i is Package => i.kind === "package" && i.game === game && !i.stubsFor && i.key !== item.homePackage);
+  const move = async (to: string) => {
+    if (!to) return;
+    const target = books.find((b) => b.key === to)!;
+    if (!confirm(`Move ${item.name} to ${target.name}?`)) return;
+    await data.moveItem(item.key, to);
+    onMoved();
+  };
+  return (
+    <div className="field">
+      <span className="label">Lives in</span>
+      <select value="" onChange={(e) => move(e.target.value)}>
+        <option value="">{nameOf(item.homePackage!, data.items)} — move to another book…</option>
+        {books.map((b) => <option key={b.key} value={b.key}>{b.name}</option>)}
+      </select>
+    </div>
   );
 }
 

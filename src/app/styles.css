@@ -114,6 +114,7 @@ table { border-collapse: collapse; font-size: .85rem; }
 .how ol { margin: 4px 0 8px; padding-left: 20px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
 .chips button { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); font-size: .9rem; cursor: pointer; }
+select { font: inherit; padding: 6px 8px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--panel); color: var(--ink); max-width: 100%; }
 .chips button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 h2.fold { cursor: pointer; user-select: none; }
 .list li.branch { display: flex; align-items: center; gap: 4px; }

@@ -54,6 +54,15 @@ describe.skipIf(!hasTowData)("TOW data from the data repo", () => {
     }
   });
 
+  it("round-trips the whole game through one workbook", async () => {
+    const { readXlsx } = await import("../src/sheets/xlsx");
+    const tabs = await readXlsx(formats.gameToWorkbook(exportSheets(first.items)));
+    const problems: formats.Problem[] = [];
+    const sheets = formats.workbookTabsToGame(tabs, "tow.xlsx", problems);
+    expect(problems).toEqual([]);
+    expect(refreshLibrary(importSheets(sheets).items).items).toEqual(first.items);
+  });
+
   it("writes full YAML and reads back the same items", () => {
     const back = readFullYaml(writeFullYaml(first.items));
     expect(back.problems).toEqual([]);

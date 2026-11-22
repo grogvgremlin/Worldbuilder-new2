@@ -70,7 +70,7 @@ export function PackageScreen({ data, nav, packageKey }: { data: AppData; nav: N
         <>
           <h2>Download</h2>
           <div className="buttons">
-            <button onClick={() => saveFile(downloadPackageWorkbook(data.items, pkg))}>Workbook (.xlsx)</button>
+            <button onClick={() => saveFile(downloadPackageWorkbook(data.items, pkg))}>Workbook (Excel, Google Sheets)</button>
             <button onClick={() => saveFile(downloadPackageSheetYaml(data.items, pkg))}>Sheet YAML</button>
             <button onClick={() => saveFile(downloadFullYaml([pkg, ...members], `${pkg.key}-stored.yaml`))}>Stored form (YAML)</button>
           </div>

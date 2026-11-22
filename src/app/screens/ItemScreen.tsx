@@ -9,6 +9,7 @@ import { writeStat } from "../../notation/values";
 import type { AppData } from "../app-data";
 import type { Nav } from "../App";
 import * as words from "../words";
+import { workOutLines } from "../../rules/lines";
 import { nameOf } from "./GameScreen";
 
 type Ctx = { items: Item[]; byKey: Map<string, Item>; nav: Nav };
@@ -107,6 +108,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 const STATS = ["M", "WS", "BS", "S", "T", "W", "I", "A", "Ld"];
 
+// A worked-out value ("-" for none) or an entered one.
+function cell(value: unknown): string {
+  if (value === undefined) return "";
+  if (value === "-") return "-";
+  return writeStat(value as Stat);
+}
+
 function StatTable({ lines }: { lines: { name: string; stats: Stats; save?: Stat }[] }) {
   const hasSave = lines.some((l) => l.save !== undefined);
   return (
@@ -123,7 +131,7 @@ function StatTable({ lines }: { lines: { name: string; stats: Stats; save?: Stat
           {lines.map((l, i) => (
             <tr key={i}>
               <th>{l.name}</th>
-              {STATS.map((s) => <td key={s}>{writeStat(l.stats[s])}</td>)}
+              {STATS.map((s) => <td key={s}>{cell(l.stats[s])}</td>)}
               {hasSave && <td>{writeStat(l.save)}</td>}
             </tr>
           ))}
@@ -140,10 +148,10 @@ function UnitCard({ unit, ctx }: { unit: Unit; ctx: Ctx }) {
   const category = ctx.items.find((i): i is ArmyList => i.kind === "army-list" && i.entries.some((e) => e.unit === unit.key))?.entries.find((e) => e.unit === unit.key)?.category;
   const slotNames = new Map(ctx.items.filter((i): i is SlotKind => i.kind === "slot-kind").map((s) => [s.code, s.name]));
   const slotCodes = new Set(unit.rows.map((r) => r.slotCode).filter((c): c is string => !!c));
-  // Lines with something printed; a standard bearer with no changes has none.
-  const lines = unit.rows
-    .filter((r) => r === own || Object.keys(r.stats).length > 0)
-    .map((r) => ({ name: r.name ?? (r === own ? unit.name : r.type), stats: r.stats, save: r.save }));
+  // Worked out from the race cell, the unit it's based on, the line as entered and kit; a plain
+  // standard bearer has no line of its own; mounts and steeds have theirs.
+  const worked = unit.status === "stub" ? [] : workOutLines(unit, ctx.items);
+  const lines = worked.map((w) => ({ name: w.kind === "mount" ? `${w.name} (mount)` : w.name, stats: w.line as Stats }));
   const limits = own.limits?.limits ?? [];
   const unitLimits = limits.filter((l) => !isOptionsLimit(l) && !slotCodes.has(l.counts));
   return (
@@ -160,6 +168,18 @@ function UnitCard({ unit, ctx }: { unit: Unit; ctx: Ctx }) {
       <Field label="Base">{own.baseSize && (own.baseSize.text ?? `${own.baseSize.width}×${own.baseSize.depth} ${own.baseSize.unit ?? ""}`)}</Field>
       <Field label="Profile">{[own.race, own.tree, own.rank].filter(Boolean).join(" · ")}</Field>
       {lines.some((l) => Object.keys(l.stats).length > 0) && <StatTable lines={lines} />}
+      {worked.length > 0 && (
+        <details className="how">
+          <summary>How each line is worked out</summary>
+          {worked.map((w, i) => (
+            <div key={i}>
+              <b>{w.name}</b>
+              <ol>{w.steps.map((s, j) => <li key={j}>{s}</li>)}</ol>
+              {w.kind === "model" && <p className="sub">{w.differs.length ? `Entered differs from the race cell: ${w.differs.join(", ")}` : "Entered as the race cell gives it."}</p>}
+            </div>
+          ))}
+        </details>
+      )}
       <Field label="Equipment">{own.equipment.length > 0 && <Links terms={own.equipment} ctx={ctx} />}</Field>
       <Field label="Special rules">{own.rules.length > 0 && <Links terms={own.rules} ctx={ctx} />}</Field>
       <Field label="Status">{own.statuses.length > 0 && <Links terms={own.statuses} ctx={ctx} />}</Field>

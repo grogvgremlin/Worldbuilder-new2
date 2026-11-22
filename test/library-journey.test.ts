@@ -60,3 +60,17 @@ describe("Library journey", () => {
     expect(fromYaml.plan.changed).toEqual([]);
   });
 });
+
+describe("whole-game workbook", () => {
+  it("downloads the game as one workbook and uploads it back unchanged", async () => {
+    const { downloadGameWorkbook } = await import("../src/library/upload");
+    const app = new AppData(new MemoryStore());
+    await app.accept(await app.readDraft([{ name: "tow.zip", bytes: zip }]));
+    const game = app.items.find((i): i is Game => i.kind === "game")!;
+    const book = downloadGameWorkbook(app.items, game);
+    const fresh = new AppData(new MemoryStore());
+    const draft = await fresh.readDraft([{ name: book.fileName, bytes: book.bytes }]);
+    expect(draft.problems).toEqual([]);
+    expect(draft.plan.library).toEqual(app.items);
+  });
+});

@@ -47,7 +47,8 @@ export function UploadButton({ data, onDraft, label = "Upload…" }: { data: App
   };
   return (
     <>
-      <input ref={input} type="file" multiple accept=".zip,.xlsx,.yaml,.yml" hidden onChange={(e) => read(e.target.files)} />
+      {/* No "accept" filter: on an iPhone it greys out .zip and .yaml files in Files. The reader says if a file isn't one it reads. */}
+      <input ref={input} type="file" multiple hidden onChange={(e) => read(e.target.files)} />
       <button className="primary" disabled={busy} onClick={() => input.current?.click()}>
         {busy ? "Reading…" : label}
       </button>

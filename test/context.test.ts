@@ -47,10 +47,28 @@ describe("a pick-up game's context", () => {
     expect(view.warnings).toContain("no composition set: only the army lists' own limits apply");
   });
 
-  it("warns about a package of another game", () => {
+  it("never lets another game's package in", () => {
     const other: Item[] = [...items, { key: "wfb6.house", kind: "package", name: "6th house rules", game: "wfb6", layer: "house", members: [], includes: [], needsStated: [] }];
+    expect(switchOn(friday, "wfb6.house", other)).toEqual(friday);
     const view = readContext({ ...friday, house: [{ package: "wfb6.house", on: true }] }, other);
-    expect(view.warnings).toContain("6th house rules is for another game (wfb6)");
+    expect(view.on.has("wfb6.house")).toBe(false);
+    expect(offered(friday, other).get("house")).toBeUndefined();
+  });
+
+  it("the book an army is part of isn't loaded because of it, nor the book's other armies", () => {
+    const bretonnia: Item = { key: "tow.bretonnia", kind: "package", name: "Kingdom of Bretonnia", game: "tow", layer: "book", partOf: "tow.forces-of-fantasy", members: [], includes: [], needsStated: ["tow.forces-of-fantasy"] };
+    const withBretonnia = [...items, bretonnia];
+    const view = readContext(switchOn(friday, "tow.the-empire", withBretonnia), withBretonnia);
+    expect(view.on.has("tow.bretonnia")).toBe(false);
+    // Forces of Fantasy comes in because the Empire says it needs it (its book-wide rules), not for being its book.
+    const unstated = withBretonnia.map((i) => (i.key === "tow.the-empire" ? { ...i, needsStated: [] } : i)) as Item[];
+    expect(readContext(switchOn(friday, "tow.the-empire", unstated), unstated).on.has("tow.forces-of-fantasy")).toBe(false);
+  });
+
+  it("files a package by its layer, whichever list it was written in", () => {
+    const view = readContext({ ...friday, faqs: [{ package: "tow.the-empire", on: true }] }, items);
+    expect(view.on.has("tow.the-empire")).toBe(true);
+    expect(view.warnings).toEqual([]);
   });
 });
 

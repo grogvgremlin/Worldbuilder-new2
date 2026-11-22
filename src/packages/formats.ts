@@ -190,3 +190,92 @@ export function parseYaml(text: string, where: string, problems: Problem[]): Rec
   }
   return null;
 }
+
+// --- Workbook: a whole game --------------------------------------------------------------------
+// Tabs: "Game" (its settings, one per row), "Packages" (one row per package), then a tab per kind
+// with an "In package" column first saying which package each row belongs to.
+
+const PACKAGES_COLUMNS = ["Package", "Folder", "Game", "Layer", "Part of", "Reference", "Needs", "Notes"];
+const IN_PACKAGE = "In package";
+
+export function gameToWorkbook(sheets: GameSheets): Uint8Array {
+  const tabs: WorkbookTab[] = [];
+  if (sheets.game) {
+    const rows: string[][] = [["Field", "Value"]];
+    for (const [field, value] of Object.entries(sheets.game)) rows.push([field, typeof value === "string" ? value : YAML.stringify(value, { collectionStyle: "flow" }).trim()]);
+    tabs.push({ name: "Game", rows });
+  }
+  const packageRows = sheets.packages.map((p) => {
+    const info: Record<string, unknown> = { ...p.info, folder: p.folder };
+    return PACKAGES_COLUMNS.map((c) => {
+      const v = info[c.toLowerCase()];
+      return v === undefined ? "" : Array.isArray(v) ? v.join("; ") : String(v);
+    });
+  });
+  tabs.push({ name: "Packages", rows: [PACKAGES_COLUMNS, ...packageRows] });
+  for (const tab of TABS) {
+    const rows: string[][] = [];
+    for (const p of sheets.packages) for (const r of p.tabs[tab.id] ?? []) rows.push([String(p.info["package"]), ...tab.columns.map((c) => r[c] ?? "")]);
+    if (rows.length) tabs.push({ name: tab.title, rows: [[IN_PACKAGE, ...tab.columns], ...rows] });
+  }
+  return writeXlsx(tabs);
+}
+
+export function isGameWorkbook(tabs: WorkbookTab[]): boolean {
+  return tabs.some((t) => t.name.trim().toLowerCase() === "packages");
+}
+
+export function workbookTabsToGame(tabs: WorkbookTab[], fileName: string, problems: Problem[]): GameSheets {
+  const sheets: GameSheets = { packages: [] };
+  const byName = new Map<string, PackageSheets>();
+  for (const tab of tabs) {
+    const title = tab.name.trim().toLowerCase();
+    const [header = [], ...body] = tab.rows;
+    const columns = header.map((c) => c.trim());
+    const rows = body.filter((r) => r.some((c) => c.trim() !== "")).map((r) => Object.fromEntries(columns.map((c, i) => [c, r[i] ?? ""])));
+    if (title === "game") {
+      sheets.game = {};
+      for (const r of rows) sheets.game[r["Field"]] = readSettingValue(r["Value"]);
+    } else if (title === "packages") {
+      for (const r of rows) {
+        const info: Record<string, unknown> = {};
+        for (const c of PACKAGES_COLUMNS) if (r[c] && c !== "Folder") info[c.toLowerCase()] = r[c];
+        const pkg: PackageSheets = { folder: r["Folder"] ?? "", info, tabs: {} };
+        byName.set(r["Package"], pkg);
+        sheets.packages.push(pkg);
+      }
+    } else {
+      const known = tabByTitle(tab.name);
+      if (!known) {
+        problems.push({ where: `${fileName}, tab ${tab.name}`, message: "not a tab the app reads (left out)" });
+        continue;
+      }
+      for (const r of rows) {
+        const pkg = byName.get(r[IN_PACKAGE]);
+        if (!pkg) {
+          problems.push({ where: `${fileName}, tab ${tab.name}`, message: `"${r[IN_PACKAGE]}" isn't on the Packages tab` });
+          continue;
+        }
+        (pkg.tabs[known.id] ??= []).push(r);
+      }
+    }
+  }
+  return sheets;
+}
+
+// A setting written as text, or as YAML for a list or a map ("[M, WS, BS]").
+function readSettingValue(text: string): unknown {
+  const t = text.trim();
+  if (!/^[[{]/.test(t)) return t;
+  try {
+    return YAML.parse(t);
+  } catch {
+    return t;
+  }
+}
+
+// One tab of one package as CSV.
+export function tabToCsv(pkg: PackageSheets, tab: TabId): string {
+  const def = TABS.find((t) => t.id === tab)!;
+  return writeCsv({ columns: [...def.columns], rows: pkg.tabs[tab] ?? [] });
+}

@@ -6,6 +6,8 @@ import { TABS, type TabId } from "../../packages/package-sheets";
 import type { AppData } from "../app-data";
 import type { Nav } from "../App";
 import { gridFor } from "../grid-rows";
+import { downloadTabCsv } from "../../library/upload";
+import { saveFile } from "../save-file";
 
 export function GridScreen({ data, nav, packageKey, tab }: { data: AppData; nav: Nav; packageKey: string; tab: TabId }) {
   const [filter, setFilter] = useState("");
@@ -36,6 +38,11 @@ export function GridScreen({ data, nav, packageKey, tab }: { data: AppData; nav:
         </table>
       </div>
       <p className="sub">{keys.size} of {new Set(grid.rows.map((r) => r.key)).size}</p>
+      {!pkg.stubsFor && (
+        <div className="buttons">
+          <button onClick={() => saveFile(downloadTabCsv(data.items, pkg, tab))}>Download this tab (CSV)</button>
+        </div>
+      )}
     </section>
   );
 }

@@ -11,6 +11,7 @@ import { saveFile } from "../save-file";
 import { BROWSE_KINDS } from "./BrowseScreen";
 import { SwipeRow } from "../swipe";
 import { needsOf } from "../../context/context";
+import { GameConfig } from "./config/GameConfig";
 
 type View = "sections" | "nesting" | PackageType;
 
@@ -41,6 +42,7 @@ export function GameScreen({ data, nav, gameKey }: { data: AppData; nav: Nav; ga
       <p className="sub">
         Statline {game.statlines.model.join(" ")} · categories {game.categories.join(", ")}
       </p>
+      <GameConfig data={data} nav={nav} game={game} onSaved={() => setChanged((n) => n + 1)} />
       <div className="chips">
         <button className={view === "nesting" ? "on" : ""} onClick={() => setView("nesting")}>As the books nest</button>
         <button className={view === "sections" ? "on" : ""} onClick={() => setView("sections")}>All, by type</button>

@@ -10,6 +10,7 @@ import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { SwipeRow } from "../../swipe";
 import { SettingsPanel } from "./SettingsPanel";
+import { presetFromContext, withPreset } from "../../../context/game-config";
 
 export function PickupGameScreen({ data, nav, contextKey }: { data: AppData; nav: Nav; contextKey: string }) {
   const [, setChanged] = useState(0);
@@ -146,6 +147,19 @@ export function PickupGameScreen({ data, nav, contextKey }: { data: AppData; nav
           }}
         >
           Copy this set-up
+        </button>
+        <button
+          onClick={async () => {
+            const name = prompt("Name for the preset", context.name);
+            if (!name || !view.game) return;
+            const game = view.game;
+            const at = (game.presets ?? []).findIndex((p) => p.name === name);
+            if (at >= 0 && !confirm(`Replace the preset ${name}?`)) return;
+            await data.putItem(withPreset(game, at >= 0 ? at : (game.presets ?? []).length, presetFromContext(context, data.items, name)));
+            alert(`Saved: “${name}” is now offered under Start from.`);
+          }}
+        >
+          Save as a preset
         </button>
       </div>
     </section>

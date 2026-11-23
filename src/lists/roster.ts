@@ -33,6 +33,7 @@ export type UnitView = {
   breakdown: string[]; // "10 × 7 = 70", "Handguns instead of Crossbow: 10 × 1 = 10", "Sergeant +5"
   choices: ChoiceGroup[];
   issues: Issue[];
+  limits: string[]; // the limits on it, in words, with how many are taken: "This entry: 0–1 per 1,000 pts · 1 taken, at most 1 at 1,000 pts"
 };
 
 export type CategoryView = { category: string; points: number; limit: string; ok: boolean };
@@ -88,13 +89,14 @@ export function viewRoster(roster: Roster, items: Item[]): RosterView {
   for (const rule of rules) for (const limit of rule.limits.limits) checkArmyLimit(rule.name, limit, units, entries, allowed, roster.target, issues);
   checkEntryLimits(units, allowed, roster.target, issues);
   const full = fullEntries(rules, units, entries, allowed, roster.target);
+  describeLimits(units, rules, allowed, roster.target);
   for (const u of units) issues.push(...u.issues);
   return { roster, armyList, units, total, categories, issues: dedupe(issues), full };
 }
 
 function viewUnit(ru: RosterUnit, reach: Item[], patches: Patch[], categoryOf: Map<string, string>, slotKinds: Map<string, string>): UnitView {
   const unit = reach.find((i): i is Unit => i.kind === "unit" && i.key === ru.unit);
-  const view: UnitView = { rosterUnit: ru, taken: null, category: categoryOf.get(ru.unit) ?? "Other", points: 0, breakdown: [], choices: [], issues: [] };
+  const view: UnitView = { rosterUnit: ru, taken: null, category: categoryOf.get(ru.unit) ?? "Other", points: 0, breakdown: [], choices: [], issues: [], limits: [] };
   if (!unit) {
     view.issues.push({ severity: "warning", message: "this unit isn't in any package switched on", units: [ru.id] });
     return view;
@@ -356,12 +358,41 @@ function report(what: string, counted: UnitView[], range: { min: number | null; 
   if (range.min !== null && n < range.min) issues.push({ severity: "illegal", message: `${what}: ${n} taken, needs ${range.min}`, units: [], categories });
 }
 
+// Each unit's limits in words, for its card (owner, 23 Nov: "limits and such like in the units"):
+// its entry's own, and army rules that name it.
+function describeLimits(units: UnitView[], rules: CompositionRule[], allowed: Allowed, target: number): void {
+  for (const u of units) {
+    if (!u.taken) continue;
+    const sameEntry = units.filter((x) => x.taken?.unit.key === u.taken!.unit.key);
+    const line = (label: string, limit: Limit, n: number | null) => {
+      const max = allowed(limit).max;
+      const now = n === null ? "not checked yet" : `${n} taken${max !== null ? `, ${allowedText(max, limit, target)}` : ""}`;
+      u.limits.push(`${label}: ${amountText(limit)} · ${now}`);
+    };
+    for (const limit of u.taken.limits) {
+      if (limit.counts === "unit") line("This entry", limit, sameEntry.length);
+      else if (limit.counts === "rules options") line("Units with a special rule option", limit, sameEntry.filter((x) => x.rosterUnit.picks.some((p) => p.startsWith("rules options|"))).length);
+      else line(`${limit.counts}${limit.of ? ` (${limit.of.join(", ")})` : ""}`, limit, null);
+    }
+    for (const rule of rules)
+      for (const limit of rule.limits.limits.filter((l) => l.counts === "unit" && l.of?.some((n) => matchName(n) === matchName(u.taken!.name)))) {
+        const named = (name: string) => limit.of!.some((n) => matchName(n) === matchName(name));
+        line(`${rule.name} (${limit.of!.join(", ")})`, limit, units.filter((x) => x.taken && named(x.taken.name)).length);
+      }
+  }
+}
+
+// "0–1 per 1,000 pts", "3", "at least 3".
+function amountText(limit: Limit): string {
+  const { min, max } = limit.amount;
+  const amount = min !== null && max !== null ? (min === max ? `${min}` : `${min}–${max}`) : min !== null ? `at least ${min}` : `up to ${max}`;
+  return amount + (limit.perPoints ? ` per ${limit.perPoints.toLocaleString("en-GB")} pts` : "");
+}
+
 // "at most 1 at 1,000 pts (0–1 per 1,000 pts)"; "at most 3".
 function allowedText(max: number, limit: Limit, target: number): string {
   if (!limit.perPoints) return `at most ${max}`;
-  const per = limit.perPoints.toLocaleString("en-GB");
-  const amount = `${limit.amount.min ?? 0}${limit.amount.max === limit.amount.min ? "" : "–" + (limit.amount.max ?? "")} per ${per} pts`;
-  return `at most ${max} at ${target.toLocaleString("en-GB")} pts (${amount})`;
+  return `at most ${max} at ${target.toLocaleString("en-GB")} pts (${amountText(limit)})`;
 }
 
 function dedupe(issues: Issue[]): Issue[] {

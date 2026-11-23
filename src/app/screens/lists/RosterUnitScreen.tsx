@@ -40,6 +40,12 @@ export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppDa
       </p>
       {/* What's wrong with this unit: its own issues and the list's issues that name it. */}
       {problems.length > 0 && <ul className="plain problems">{problems.map((m, n) => <li key={n}>{m}</li>)}</ul>}
+      {u.limits.length > 0 && (
+        <div className="field block">
+          <span className="label">Limits</span>
+          <ul className="plain">{u.limits.map((l, i) => <li key={i} className="sub">{l}</li>)}</ul>
+        </div>
+      )}
 
       {!fixedSize && (
         <div className="field">

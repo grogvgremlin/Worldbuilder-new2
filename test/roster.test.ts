@@ -143,6 +143,15 @@ describe.skipIf(!hasTowData)("a legal 1,000-point Empire list (private data)", (
     expect(full["tow.unit.state-troops"]).toBeUndefined();
   });
 
+  it("a unit's card lists its limits with how many are taken", () => {
+    let r = newRoster("Friday", context, empire, 1000, all);
+    r = add(r, all, "tow.unit.veteran-state-troops", 10);
+    r = add(r, all, "tow.unit.general-of-the-empire");
+    const units = viewRoster(r, all).units;
+    expect(units[0].limits).toEqual(["This entry: 0–1 per 1,000 pts · 1 taken, at most 1 at 1,000 pts (0–1 per 1,000 pts)"]);
+    expect(units[1].limits).toContain("Generals (General of the Empire, Grand Master): 0–1 per 1,000 pts · 1 taken, at most 1 at 1,000 pts (0–1 per 1,000 pts)");
+  });
+
   it("two Helblasters at 1,000 points break the army's 0–1 per 1,000", () => {
     let r = newRoster("Friday", context, empire, 1000, all);
     r = add(add(r, all, "tow.unit.helblaster-volley-gun"), all, "tow.unit.helblaster-volley-gun");

@@ -1,7 +1,7 @@
 // One unit in a list: its size, the General, its options and command, what it costs and why.
 import { useState } from "react";
 import type { Roster } from "../../../items/items";
-import { removeUnit, toggleChoice, updateUnit, viewRoster } from "../../../lists/roster";
+import { removeUnit, toggleChoice, updateUnit, viewRoster, type ChoiceGroup } from "../../../lists/roster";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { NumberBox } from "../../number-box";
@@ -20,6 +20,16 @@ export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppDa
   const size = u.taken?.size;
   const fixedSize = size && size.min !== null && size.min === size.max;
   const problems = [...new Set([...u.issues, ...view.issues.filter((i) => i.units.includes(ru.id))].map((i) => i.message))];
+  // Choices shown under one heading where they belong together: take-it-or-not choices of the same
+  // kind (Drilled, Veteran) sit under one "Special rules" (owner, 23 Nov).
+  const shown = u.choices.filter((g) => !(g.where.startsWith("slot:") && !ru.slots.includes(g.where.slice(5))) && (g.choices.length > 0 || g.allowance || g.full));
+  const blocks: ChoiceGroup[][] = [];
+  for (const g of shown) {
+    const last = blocks[blocks.length - 1]?.[0];
+    const together = last && last.where === g.where && !last.oneOf && !g.oneOf && !last.required && !g.required;
+    if (together) blocks[blocks.length - 1].push(g);
+    else blocks.push([g]);
+  }
   const isOn = (group: string, pick: string) => (group === "command" ? ru.slots.includes(pick.split("|")[1]) : ru.picks.includes(pick));
 
   return (
@@ -50,25 +60,28 @@ export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppDa
         </div>
       )}
 
-      {u.choices.map((g, gi) => {
-        if (g.where.startsWith("slot:") && !ru.slots.includes(g.where.slice(5))) return null;
-        if (g.choices.length === 0 && !g.allowance && !g.full) return null;
+      {blocks.map((block, bi) => {
+        const first = block[0];
         return (
-          <div key={gi} className="field block">
+          <div key={bi} className="field block">
             <span className="label">
-              {g.title}
-              {g.oneOf && <span className="sub">{g.title ? " · c" : "C"}hoose one{g.required ? " (required)" : ""}</span>}
-              {!g.oneOf && g.required && <span className="sub"> · required</span>}
+              {first.title}
+              {first.oneOf && <span className="sub">{first.title ? " · c" : "C"}hoose one{first.required ? " (required)" : ""}</span>}
+              {!first.oneOf && first.required && <span className="sub"> · required</span>}
             </span>
-            {g.choices.map((c) => (
-              <label key={c.pick} className="choice">
-                <input type={g.oneOf ? "radio" : "checkbox"} name={`${ru.id}-${gi}`} checked={isOn(g.where, c.pick)} onClick={() => save(toggleChoice(roster, ru.id, g, c))} onChange={() => {}} />
-                <span>{c.label}</span>
-                <span className="sub">{c.costText}</span>
-              </label>
+            {block.map((g) => (
+              <div key={u.choices.indexOf(g)}>
+                {g.choices.map((c) => (
+                  <label key={c.pick} className="choice">
+                    <input type={g.oneOf ? "radio" : "checkbox"} name={`${ru.id}-${u.choices.indexOf(g)}`} checked={isOn(g.where, c.pick)} onClick={() => save(toggleChoice(roster, ru.id, g, c))} onChange={() => {}} />
+                    <span>{c.label}</span>
+                    <span className="sub">{c.costText}</span>
+                  </label>
+                ))}
+                {g.allowance && <span className="sub">{g.allowance}</span>}
+                {g.full && <span className="full-note">{g.full}</span>}
+              </div>
             ))}
-            {g.allowance && <span className="sub">{g.allowance}</span>}
-            {g.full && <span className="full-note">{g.full}</span>}
           </div>
         );
       })}

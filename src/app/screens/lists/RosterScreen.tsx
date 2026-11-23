@@ -13,6 +13,7 @@ import type { Context, Game } from "../../../items/items";
 
 export function RosterScreen({ data, nav, rosterKey }: { data: AppData; nav: Nav; rosterKey: string }) {
   const [adding, setAdding] = useState<string | null>(null);
+  const [openWhy, setOpenWhy] = useState<string | null>(null); // the section whose reasons are showing
   const [, setChanged] = useState(0);
   const roster = data.items.find((i): i is Roster => i.kind === "roster" && i.key === rosterKey);
   if (!roster) return <p>Not on the device any more.</p>;
@@ -37,7 +38,7 @@ export function RosterScreen({ data, nav, rosterKey }: { data: AppData; nav: Nav
       </div>
       <ul className="plain categories">
         {view.categories.map((c) => (
-          <li key={c.category} className={c.ok ? "ok" : "bad"}>
+          <li key={c.category} className={c.ok && !view.issues.some((i) => i.categories?.includes(c.category)) ? "ok" : "bad"}>
             {c.category} {c.points} <span className="sub">{c.limit}</span>
           </li>
         ))}
@@ -65,14 +66,17 @@ export function RosterScreen({ data, nav, rosterKey }: { data: AppData; nav: Nav
         const inSection = view.units.filter((u) => u.category === section);
         const points = inSection.reduce((n, u) => n + u.points, 0);
         // Red when the list falls short here: its own limit, or a rule about this category's units.
-        const about = view.issues.filter((i) => i.categories?.includes(section));
-        const bad = about.length > 0 || view.categories.some((c) => c.category === section && !c.ok);
+        const limit = view.categories.find((c) => c.category === section);
+        const about = [...(limit && !limit.ok ? [`${section}: ${points} pts, ${limit.limit}`] : []), ...view.issues.filter((i) => i.categories?.includes(section)).map((i) => i.message)];
+        const bad = about.length > 0;
         return (
           <div key={section}>
-            <h2 className={bad ? "bad" : ""}>
-              {section} <span className="sub">{points} pts</span>
+            {/* Red when the list falls short here; tap the heading for why (owner: keep it uncrowded). */}
+            <h2 className={bad ? "bad fold" : ""} onClick={() => bad && setOpenWhy(openWhy === section ? null : section)}>
+              {section} <span className="sub">{points} pts{limit ? ` · ${limit.limit}` : ""}</span>
+              {bad && <span className="why-mark"> ⓘ</span>}
             </h2>
-            {about.length > 0 && <p className="section-issues">{about.map((i) => i.message).join(" · ")}</p>}
+            {bad && openWhy === section && <p className="section-issues">{about.join(" · ")}</p>}
             <ul className="list">
               {inSection.map((u) => (
                 <li key={u.rosterUnit.id}>
@@ -95,7 +99,7 @@ export function RosterScreen({ data, nav, rosterKey }: { data: AppData; nav: Nav
                 {entries
                   .filter((e) => e.category === section)
                   .map((e) => reach.find((i): i is Unit => i.kind === "unit" && i.key === e.unit))
-                  .filter((u): u is Unit => u !== undefined)
+                  .filter((u): u is Unit => u !== undefined && !view.full[u.key])
                   .map((u) => (
                     <li key={u.key}>
                       <button
@@ -110,6 +114,11 @@ export function RosterScreen({ data, nav, rosterKey }: { data: AppData; nav: Nav
                         + {u.name}
                       </button>
                     </li>
+                  ))}
+                {entries
+                  .filter((e) => e.category === section && view.full[e.unit])
+                  .map((e) => (
+                    <li key={e.unit} className="full-note">{view.full[e.unit]}</li>
                   ))}
                 <li>
                   <button className="link sub" onClick={() => setAdding(null)}>Close</button>

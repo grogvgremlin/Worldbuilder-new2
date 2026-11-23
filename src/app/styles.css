@@ -184,3 +184,5 @@ h2.bad { color: #b3261e; }
 .section-issues { margin: -2px 0 6px; font-size: .85rem; color: #b3261e; }
 .full-note { color: var(--muted); font-size: .85rem; }
 .needed-flag { color: var(--muted); font-size: .85rem; }
+.why-mark { font-size: .85rem; }
+h2 .sub { text-transform: none; letter-spacing: normal; }

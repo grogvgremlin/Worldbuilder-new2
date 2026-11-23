@@ -80,8 +80,9 @@ export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppDa
         <div className="field">
           <span className="label">General</span>
           <label>
-            <input type="checkbox" checked={ru.general} onChange={() => save(updateUnit(roster, ru.id, { general: !ru.general }))} /> this character is the General
+            <input type="checkbox" checked={ru.general} disabled={!ru.general && !!view.generalFull} onChange={() => save(updateUnit(roster, ru.id, { general: !ru.general }))} /> this character is the General
           </label>
+          {!ru.general && view.generalFull && <span className="full-note"> {view.generalFull}: take it off the other first</span>}
         </div>
       )}
 

@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import YAML from "yaml";
-import type { ArmyList, CompositionRule, Equipment, Item, Limit, Source, Options as OptionsCell, Package, Patch, RaceProfile, SlotKind, SpecialRule, Stat, Stats, Term, Unit, UnitRow } from "../../items/items";
+import type { ArmyList, CompositionRule, Equipment, Game, Item, Limit, Source, Options as OptionsCell, Package, Patch, RaceProfile, SlotKind, SpecialRule, Stat, Stats, Term, Unit, UnitRow } from "../../items/items";
 import { writeStat } from "../../notation/values";
 import { changeText } from "../../packages/patch-tabs";
 import type { AppData } from "../app-data";
@@ -134,7 +134,13 @@ function cell(value: unknown): string {
   return writeStat(value as Stat);
 }
 
-function StatTable({ lines }: { lines: { name: string; stats: Stats; save?: Stat }[] }) {
+// The game's statline (Library → the game → Configuration), from the item's key: tow.unit.… -> tow.
+function statNames(ctx: Ctx, itemKey: string): string[] {
+  const game = ctx.items.find((i): i is Game => i.kind === "game" && i.shortName === itemKey.split(".")[0]);
+  return game?.statlines.model.length ? game.statlines.model : STATS;
+}
+
+function StatTable({ lines, stats: STATS }: { lines: { name: string; stats: Stats; save?: Stat }[]; stats: string[] }) {
   const hasSave = lines.some((l) => l.save !== undefined);
   return (
     <div className="grid-wrap">
@@ -189,7 +195,7 @@ function UnitCard({ unit, ctx }: { unit: Unit; ctx: Ctx }) {
       <Field label="Cost">{words.costText(own.cost)}</Field>
       <Field label="Base">{own.baseSize && (own.baseSize.text ?? `${own.baseSize.width}×${own.baseSize.depth} ${own.baseSize.unit ?? ""}`)}</Field>
       <Field label="Profile">{[own.race, own.tree, own.rank].filter(Boolean).join(" · ")}</Field>
-      {lines.some((l) => Object.keys(l.stats).length > 0) && <StatTable lines={lines} />}
+      {lines.some((l) => Object.keys(l.stats).length > 0) && <StatTable stats={statNames(ctx, unit.key)} lines={lines} />}
       <Field label="Equipment">{own.equipment.length > 0 && <Links terms={own.equipment} ctx={ctx} />}</Field>
       <Field label="Special rules">{own.rules.length > 0 && <Links terms={own.rules} ctx={ctx} />}</Field>
       <Field label="Status">{own.statuses.length > 0 && <Links terms={own.statuses} ctx={ctx} />}</Field>
@@ -294,7 +300,7 @@ function RaceCard({ race, ctx }: { race: RaceProfile; ctx: Ctx }) {
   return (
     <>
       <Field label="Race · tree · rank">{[race.race, race.tree ?? "Core", race.rank ?? "Base"].join(" · ")}</Field>
-      <StatTable lines={[{ name: race.race, stats: race.stats }]} />
+      <StatTable stats={statNames(ctx, race.key)} lines={[{ name: race.race, stats: race.stats }]} />
       <Field label="Rules">{race.rules.length > 0 && <Links terms={race.rules} ctx={ctx} />}</Field>
     </>
   );

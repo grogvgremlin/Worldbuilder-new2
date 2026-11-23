@@ -40,7 +40,7 @@ export function GameScreen({ data, nav, gameKey }: { data: AppData; nav: Nav; ga
     <section>
       <h1>{game.name}</h1>
       <p className="sub">
-        Statline {game.statlines.model.join(" ")} · categories {game.categories.join(", ")}
+        Statline {game.statlines.model.join(" ")} · categories {game.categories.join(", ")} (change them in Configuration)
       </p>
       <GameConfig data={data} nav={nav} game={game} onSaved={() => setChanged((n) => n + 1)} />
       <div className="chips">

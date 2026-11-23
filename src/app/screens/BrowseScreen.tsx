@@ -81,7 +81,7 @@ export function BrowseScreen({ data, nav, game, kind }: { data: AppData; nav: Na
 function groupLabel(item: Item, by: GroupBy, all: Item[], categoryOf: Map<string, string>): string {
   if (by === "book") return item.homePackage ? nameOf(item.homePackage, all) : "—";
   if (by === "source") return item.reference?.source ?? "No source given";
-  if (by === "status") return item.status === "stub" ? "Not entered yet" : "Entered";
+  if (by === "status") return item.status === "stub" ? "Not entered yet" : isEmpty(item) ? "Empty: a placeholder" : "Entered";
   if (item.kind === "special-rule") return item.ruleType ?? "No type given";
   if (item.kind === "equipment") return item.type ?? "No type given";
   if (item.kind === "magic-item") return item.type || "No type given";
@@ -90,4 +90,17 @@ function groupLabel(item: Item, by: GroupBy, all: Item[], categoryOf: Map<string
   if (item.kind === "source") return item.sourceKind ?? "No kind given";
   if (item.kind === "patch") return "Changes " + [...new Set(item.changes.map((c) => c.targetKind.replace("-", " ")))].join(", ");
   return "—";
+}
+
+// An item that's entered but has nothing in it yet beyond its name: a placeholder (owner, 23 Nov).
+// Not the same as "not entered yet", which is a name the app found and stubbed.
+export function isEmpty(item: Item): boolean {
+  const blank = (v: unknown) => v === undefined || v === "" || (Array.isArray(v) && v.length === 0) || (typeof v === "object" && v !== null && Object.keys(v).length === 0);
+  if (item.kind === "special-rule") return blank(item.text) && blank(item.effectsAsWritten);
+  if (item.kind === "equipment") return blank(item.text) && blank(item.stats) && blank(item.rules) && blank(item.cost) && blank(item.countsAs) && blank(item.save) && blank(item.range);
+  if (item.kind === "magic-item") return blank(item.text) && blank(item.stats) && blank(item.rules) && blank(item.cost);
+  if (item.kind === "race-profile") return blank(item.stats) && blank(item.rules);
+  if (item.kind === "unit") return blank(item.rows[0].stats) && blank(item.rows[0].cost) && !item.inherits;
+  if (item.kind === "source") return blank(item.sourceKind) && blank(item.by) && blank(item.published) && blank(item.link);
+  return false;
 }

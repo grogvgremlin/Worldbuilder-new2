@@ -17,10 +17,14 @@ describe.skipIf(!hasTowData)("TOW data from the data repo", () => {
   const first = loadFolder(files);
   const byKey = (items: Item[]) => new Map(items.map((i) => [i.key, i]));
 
-  it("imports with no problems; only the lores and specialisms become stubs", () => {
+  it("imports with no problems; the lores, specialisms and names in conditions or brackets become stubs", () => {
     expect(first.problems).toEqual([]);
     expect(new Set(first.stubbed.map((u) => u.name))).toEqual(
-      new Set(["Battle Magic", "Daemonology", "Dark Magic", "Elementalism", "Illusion", "Necromancy", "The Witch", "The Revenant", "The Mutant", "The Daemon"]),
+      new Set([
+        "Battle Magic", "Daemonology", "Dark Magic", "Elementalism", "Illusion", "Necromancy", "The Witch", "The Revenant", "The Mutant", "The Daemon",
+        // In brackets and conditions (owner, 23 Nov): Two Handed[-Strike Last], +2 [Only(Charging)] …
+        "Strike Last", "Charging", "Riding", "Mounted", "Commanders of the Empire", "Imperial Wizard", "non-magical template",
+      ]),
     );
     const stubs = first.items.find((i) => i.key === "tow.the-empire.stubs") as Package;
     expect(stubs.stubsFor).toBe("tow.the-empire");

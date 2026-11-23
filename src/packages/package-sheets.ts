@@ -15,6 +15,7 @@ export const TABS = [
   { id: "common links", file: "common-links.csv", title: "Common Links", columns: COLUMNS.commonLinks },
   { id: "rules", file: "rules.csv", title: "Rules", columns: COLUMNS.rules },
   { id: "equipment", file: "equipment.csv", title: "Equipment", columns: COLUMNS.equipment },
+  { id: "magic items", file: "magic-items.csv", title: "Magic Items", columns: COLUMNS.magicItems },
   { id: "units", file: "units.csv", title: "Units", columns: COLUMNS.armyEntry },
   { id: "composition", file: "composition.csv", title: "Composition", columns: COLUMNS.armyEntry },
   // Patches: changes to what's entered above (or in another package), in order.

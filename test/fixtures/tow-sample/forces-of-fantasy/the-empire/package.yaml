@@ -4,4 +4,4 @@ layer: book
 part of: Forces of Fantasy
 reference: Forces of Fantasy, pp. 47-77
 needs: [Forces of Fantasy]       # stated; the rest (rulebook races, kit, rules) is found from what the units name
-contents: [units, composition, equipment, rules]
+contents: [units, composition, equipment, magic items, rules]

@@ -30,6 +30,25 @@ export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppDa
     if (together) blocks[blocks.length - 1].push(g);
     else blocks.push([g]);
   }
+  // An allowance: what's spent, the items taken (tap to see), and Choose… for the picker.
+  const AllowanceBlock = ({ group }: { group: ChoiceGroup }) => {
+    const a = group.allowance!;
+    const prefix = `item:${group.where}|${a.name}|`;
+    const taken = ru.picks.filter((p) => p.startsWith(prefix)).map((p) => data.items.find((i) => i.key === p.slice(prefix.length)));
+    const spent = taken.reduce((n, i) => n + (i?.kind === "magic-item" ? i.cost?.points ?? 0 : 0), 0);
+    return (
+      <div className="allowance">
+        <span className="sub">{a.text}{taken.length ? ` · ${spent} spent` : ""}</span>
+        {taken.map((i, n) => i && (
+          <div key={n} className="choice">
+            <button className="link" onClick={() => nav.open({ name: "item", key: i.key })}>{i.name}</button>
+            <span className="sub">{i.kind === "magic-item" ? `${i.type} · ${i.cost?.points ?? 0}` : ""}</span>
+          </div>
+        ))}
+        <button className="link" onClick={() => nav.open({ name: "roster-items", roster: roster.key, unit: ru.id, where: group.where, allowance: a.name })}>Choose…</button>
+      </div>
+    );
+  };
   const isOn = (group: string, pick: string) => (group === "command" ? ru.slots.includes(pick.split("|")[1]) : ru.picks.includes(pick));
 
   return (
@@ -84,7 +103,7 @@ export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppDa
                     <span className="sub">{c.costText}</span>
                   </label>
                 ))}
-                {g.allowance && <span className="sub">{g.allowance}</span>}
+                {g.allowance && <AllowanceBlock group={g} />}
                 {g.full && <span className="full-note">{g.full}</span>}
               </div>
             ))}

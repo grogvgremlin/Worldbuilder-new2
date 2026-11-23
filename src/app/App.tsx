@@ -18,6 +18,7 @@ import { ListsScreen } from "./screens/lists/ListsScreen";
 import { PickupGameScreen } from "./screens/lists/PickupGameScreen";
 import { RosterScreen } from "./screens/lists/RosterScreen";
 import { RosterUnitScreen } from "./screens/lists/RosterUnitScreen";
+import { RosterItemsScreen } from "./screens/lists/RosterItemsScreen";
 import { useBackSwipe } from "./swipe";
 import { PresetScreen } from "./screens/config/PresetScreen";
 import { SettingScreen } from "./screens/config/SettingScreen";
@@ -36,7 +37,8 @@ export type Screen =
   | { name: "lists" }
   | { name: "pickup"; key: string }
   | { name: "roster"; key: string }
-  | { name: "roster-unit"; roster: string; unit: string };
+  | { name: "roster-unit"; roster: string; unit: string }
+  | { name: "roster-items"; roster: string; unit: string; where: string; allowance: string };
 
 export type Nav = { open: (s: Screen) => void; back: () => void; home: () => void };
 
@@ -153,5 +155,7 @@ function render(screen: Screen, data: AppData, nav: Nav, draft: Draft | null, se
       return <RosterScreen data={data} nav={nav} rosterKey={screen.key} />;
     case "roster-unit":
       return <RosterUnitScreen data={data} nav={nav} rosterKey={screen.roster} unitId={screen.unit} />;
+    case "roster-items":
+      return <RosterItemsScreen data={data} nav={nav} rosterKey={screen.roster} unitId={screen.unit} where={screen.where} allowance={screen.allowance} />;
   }
 }

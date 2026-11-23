@@ -2,5 +2,5 @@ package: Rulebook
 game: tow
 layer: core
 reference: "Warhammer: the Old World rulebook"
-contents: [bibliography, equipment, common links, rules]
+contents: [bibliography, equipment, common links, rules, composition]
 notes: 'Rulebook items marked "rulebook: not entered" are stubs until the rulebook is transcribed.'

@@ -25,6 +25,7 @@ export function matchName(text: string): string {
 const KIND_IN_KEY: Record<string, string> = {
   unit: "unit",
   equipment: "equipment",
+  "magic-item": "magic-item",
   "special-rule": "rule",
   "slot-kind": "slot",
   "army-list": "army-list",

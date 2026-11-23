@@ -4,7 +4,7 @@
 //
 // Reading only reads cells: names are matched to items afterwards (resolve.ts).
 
-import type { ArmyList, CompositionRule, Equipment, RaceProfile, SettingValue, SlotKind, Source, SpecialRule, Stats, Unit, UnitRow } from "../items/items";
+import type { ArmyList, CompositionRule, Equipment, MagicItem, RaceProfile, SettingValue, SlotKind, Source, SpecialRule, Stats, Unit, UnitRow } from "../items/items";
 import { itemKey } from "../items/keys";
 import type { Row } from "../sheets/csv";
 import { readOptions, writeOptions } from "../notation/options";
@@ -31,6 +31,7 @@ export const COLUMNS = {
   settings: ["Setting", "Value", "Notes"],
   races: ["Race", "Tree", "Rank", ...STATS, "Rules", "Reference", "Notes"],
   equipment: ["Equipment", "Match Key", ...STATS, "Save", "Rules", "Alias", "Rules 2", "Type", "R", "AP", "Cost", "Reference"],
+  magicItems: ["Magic Item", "Type", "Match Key", ...STATS, "Save", "Rules", "Rules 2", "R", "AP", "Cost", "Reference"],
   rules: ["Rule", "Type", "Rules", "Rules 2", "Reference"],
   commonLinks: ["Link Key", "Name", "Equipment", "Alias", "Reference"],
   armyEntry: [
@@ -185,6 +186,50 @@ export function writeEquipmentRow(item: Equipment): Row {
   row["Alias"] = v.writeNameList(item.aliases);
   row["Rules 2"] = item.status === "stub" && item.text === undefined ? NOT_ENTERED : item.text ?? "";
   row["Type"] = item.type ?? "";
+  row["R"] = item.range ?? "";
+  row["AP"] = item.armourPiercing ?? "";
+  row["Cost"] = v.writeCost(item.cost);
+  row["Reference"] = v.writeReference(item.reference);
+  return row;
+}
+
+// --- Magic items ------------------------------------------------------------------------------
+// "Jade Amulet*": the * marks an extremely common item (may be taken more than once); it's kept as a
+// field, and the name without it, so the name matches where it's written elsewhere.
+
+export function readMagicItemRows(rows: Row[], ctx: TabContext): MagicItem[] {
+  return rows.map((row, i) => {
+    const at = cellReader(ctx, i + 2);
+    const written = row["Magic Item"].trim();
+    const name = written.replace(/\s*\*$/, "");
+    const type = v.readText(row["Type"]) ?? "";
+    if (!type) at("Type", (p) => p.push(`"${name}" needs a type (magic weapon, talisman …): the rules about magic items go by type`));
+    return compact<MagicItem>({
+      key: itemKey(ctx.game, "magic-item", name),
+      kind: "magic-item",
+      name,
+      homePackage: ctx.packageKey,
+      type,
+      extremelyCommon: written.endsWith("*"),
+      countsAs: at("Match Key", (p) => readTerms(row["Match Key"], p)),
+      stats: readStats(row),
+      save: v.readStat(row["Save"]),
+      range: v.readText(row["R"]),
+      armourPiercing: v.readText(row["AP"]),
+      rules: at("Rules", (p) => readTerms(row["Rules"], p)),
+      text: v.readText(row["Rules 2"]),
+      cost: at("Cost", (p) => v.readCost(row["Cost"], p)),
+      reference: v.readReference(row["Reference"]),
+    });
+  });
+}
+
+export function writeMagicItemRow(item: MagicItem): Row {
+  const row: Row = { "Magic Item": item.name + (item.extremelyCommon ? "*" : ""), Type: item.type, "Match Key": writeTerms(item.countsAs) };
+  writeStats(item.stats, row);
+  row["Save"] = v.writeStat(item.save);
+  row["Rules"] = writeTerms(item.rules);
+  row["Rules 2"] = item.text ?? "";
   row["R"] = item.range ?? "";
   row["AP"] = item.armourPiercing ?? "";
   row["Cost"] = v.writeCost(item.cost);

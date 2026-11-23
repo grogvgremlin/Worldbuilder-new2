@@ -152,6 +152,14 @@ describe.skipIf(!hasTowData)("a legal 1,000-point Empire list (private data)", (
     expect(units[1].limits).toContain("Generals (General of the Empire, Grand Master): 0–1 per 1,000 pts · 1 taken, at most 1 at 1,000 pts (0–1 per 1,000 pts)");
   });
 
+  it("a limits line names a setting that isn't the game's default, and where it's set", () => {
+    let r = newRoster("Friday", { ...context, settings: { "Per 1,000 points": "full(target / 100)" } }, empire, 1000, all);
+    const ctx = { ...context, settings: { "Per 1,000 points": "full(target / 100)" } };
+    const items = all.map((i) => (i.key === ctx.key ? ctx : i));
+    r = add(r, items, "tow.unit.veteran-state-troops", 10);
+    expect(viewRoster(r, items).units[0].limits).toEqual(["This entry: 0–1 per 1,000 pts · 1 taken, at most 10 at 1,000 pts (0–1 per 1,000 pts) (Per 1,000 points: full(target / 100), set in this set-up)"]);
+  });
+
   it("two Helblasters at 1,000 points break the army's 0–1 per 1,000", () => {
     let r = newRoster("Friday", context, empire, 1000, all);
     r = add(add(r, all, "tow.unit.helblaster-volley-gun"), all, "tow.unit.helblaster-volley-gun");

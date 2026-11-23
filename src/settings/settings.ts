@@ -20,7 +20,7 @@ export type Found = { value: string; from: string };
 
 export function settingValue(name: string, game: Game | undefined, items: Item[], context?: Context, roster?: Roster): Found | null {
   if (roster?.settings?.[name] !== undefined) return { value: roster.settings[name], from: "this list" };
-  if (context?.settings?.[name] !== undefined) return { value: context.settings[name], from: "this game" };
+  if (context?.settings?.[name] !== undefined) return { value: context.settings[name], from: "this set-up" };
   if (context) {
     const order = readContext(context, items).packages.filter((p) => p.on);
     for (const p of [...order].reverse()) {

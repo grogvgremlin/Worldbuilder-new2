@@ -241,7 +241,9 @@ function bounds(limit: Limit, target: number): { min: number | null; max: number
 // How many a limit allows at this target. A "per 1,000 points" limit reads the game's setting of
 // that name, from the most specific place that sets it (src/settings/settings.ts); with no setting,
 // full thousands.
-type Allowed = (limit: Limit) => { min: number | null; max: number | null };
+// `setting`: the setting that scaled it, when it isn't the game's default ("Per 1,000 points:
+// full(target / 100), set in this set-up"), so a card can say where a surprising number comes from.
+type Allowed = (limit: Limit) => { min: number | null; max: number | null; setting?: string };
 
 function allowedBy(game: Game | undefined, items: Item[], context: Context | undefined, roster: Roster, issues: Issue[]): Allowed {
   return (limit) => {
@@ -258,7 +260,8 @@ function allowedBy(game: Game | undefined, items: Item[], context: Context | und
       issues.push({ severity: "warning", message: `${name} (${found?.from}): ${scaled.error}`, units: [] });
       return limit.amount;
     }
-    return scaled;
+    const setting = found && found.from !== "the game's default" ? `${name}: ${found.value}, set in ${found.from}` : undefined;
+    return { ...scaled, setting };
   };
 }
 
@@ -365,9 +368,9 @@ function describeLimits(units: UnitView[], rules: CompositionRule[], allowed: Al
     if (!u.taken) continue;
     const sameEntry = units.filter((x) => x.taken?.unit.key === u.taken!.unit.key);
     const line = (label: string, limit: Limit, n: number | null) => {
-      const max = allowed(limit).max;
+      const { max, setting } = allowed(limit);
       const now = n === null ? "not checked yet" : `${n} taken${max !== null ? `, ${allowedText(max, limit, target)}` : ""}`;
-      u.limits.push(`${label}: ${amountText(limit)} · ${now}`);
+      u.limits.push(`${label}: ${amountText(limit)} · ${now}${setting ? ` (${setting})` : ""}`);
     };
     for (const limit of u.taken.limits) {
       if (limit.counts === "unit") line("This entry", limit, sameEntry.length);

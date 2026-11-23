@@ -5,6 +5,7 @@ import type { Context, Game, Item, Roster, Unit } from "../src/items/items";
 import { newContext, switchOn } from "../src/context/context";
 import { addUnit, armyListsIn, newRoster, toggleChoice, updateUnit, viewRoster } from "../src/lists/roster";
 import { loadFolder } from "./helpers";
+import { passesFilter, readFilter } from "../src/lists/unit-filter";
 import { hasTowData, readFolder, TOW_DATA } from "./read-folder";
 
 function pickupGame(items: Item[]) {
@@ -59,6 +60,9 @@ describe("a pick-up roster (sample)", () => {
     expect(messages).toContain("Core: 70 pts, at least 25%");
     expect(messages).toContain("The General: 0 taken, needs 1");
     expect(messages).toContain("Minimum Three Units: 1 taken, needs 3");
+    // The headings it's about go red: the General on Characters; three units on the rest.
+    const about = (m: string) => viewRoster(r, all).issues.find((i) => i.message === m)!.categories;
+    expect(about("Minimum Three Units: 1 taken, needs 3")).toEqual(["Core"]); // the sample has no characters
   });
 
   it("a choose-one group takes one; a required one must be chosen", () => {
@@ -76,8 +80,17 @@ describe("a pick-up roster (sample)", () => {
     let r = newRoster("x", context as Context, empire, 1000, all);
     r = add(r, all, "tow.unit.empire-knights");
     r = add(r, all, "tow.unit.empire-knights");
-    r = pick(pick(r, all, "u1", "Drilled"), all, "u2", "Stubborn");
-    expect(viewRoster(r, all).issues.map((i) => i.message)).toContain("Empire Knights (rules options): 2 taken, 0–1 per 1,000 pts");
+    r = pick(r, all, "u1", "Drilled");
+    // Full: the second unit isn't offered them, and says why.
+    const second = viewRoster(r, all).units[1].choices.find((g) => g.where === "rules options")!;
+    expect(second.choices).toEqual([]);
+    expect(second.full).toBe("Drilled, Stubborn: already taken by another unit, at most 1 at 1,000 pts (0–1 per 1,000 pts)");
+    // Taken anyway (the points went down after): the unit is told.
+    r = updateUnit(r, "u2", { picks: ["rules options|Stubborn"] });
+    const view = viewRoster(r, all);
+    const message = "Empire Knights with a special rule option: 2 taken, at most 1 at 1,000 pts (0–1 per 1,000 pts)";
+    expect(view.issues.map((i) => i.message)).toContain(message);
+    expect(view.issues.find((i) => i.message === message)!.units).toEqual(["u1", "u2"]);
   });
 
   it("the size is checked against the unit's", () => {
@@ -111,10 +124,18 @@ describe.skipIf(!hasTowData)("a legal 1,000-point Empire list (private data)", (
     expect(view.categories.find((c) => c.category === "Core")).toMatchObject({ points: 320, ok: true });
   });
 
+  it("no General marks Characters; fewer than three units marks Core, Special, Rare", () => {
+    let r = newRoster("Friday", context, empire, 1000, all);
+    r = add(r, all, "tow.unit.empire-knights", 5);
+    const issues = viewRoster(r, all).issues;
+    expect(issues.find((i) => i.message === "The General: 0 taken, needs 1")!.categories).toEqual(["Characters"]);
+    expect(issues.find((i) => i.message === "Minimum Three Units: 1 taken, needs 3")!.categories).toEqual(["Core", "Special", "Rare"]);
+  });
+
   it("two Helblasters at 1,000 points break the army's 0–1 per 1,000", () => {
     let r = newRoster("Friday", context, empire, 1000, all);
     r = add(add(r, all, "tow.unit.helblaster-volley-gun"), all, "tow.unit.helblaster-volley-gun");
-    expect(viewRoster(r, all).issues.map((i) => i.message)).toContain("Rare war machines: 2 taken, 0–1 per 1,000 pts");
+    expect(viewRoster(r, all).issues.map((i) => i.message)).toContain("Rare war machines: 2 taken, at most 1 at 1,000 pts (0–1 per 1,000 pts)");
   });
 
   it("the Captain inherits the General's options, with his own magic item allowance", () => {
@@ -124,5 +145,26 @@ describe.skipIf(!hasTowData)("a legal 1,000-point Empire list (private data)", (
     const labels = u.choices.flatMap((g) => g.choices.map((c) => c.label));
     expect(labels).toEqual(expect.arrayContaining(["Great Weapon", "Shield", "Barded Warhorse", "Battle Standard Bearer"]));
     expect(u.choices.map((g) => g.allowance).filter(Boolean)).toContain("Magic Items: up to 50 pts (picking items comes later)");
+  });
+});
+
+describe("a limit's filter, read from the sheet", () => {
+  const unit = { name: "Great Cannon", character: false, troopType: "War Machine", category: "Rare", rules: ["Cannon"] };
+  const knight = { name: "Empire Knights", character: false, troopType: "Heavy Cavalry", category: "Core", rules: ["Swiftstride"] };
+  const general = { name: "General of the Empire", character: true, troopType: "Heavy Infantry", category: "Characters", rules: [] };
+  it("words: not Character; Troop Type not A,B", () => {
+    const f = readFilter("not Character; Troop Type not Swarm,War Beasts,War Machine");
+    expect(f.problems).toEqual([]);
+    expect([unit, knight, general].map((u) => passesFilter(u, f))).toEqual([false, true, false]);
+  });
+  it("brackets: Not(Character);Not(Troop Type(A|B)) is the same", () => {
+    const f = readFilter("Not(Character);Not(Troop Type(Swarm|War Beasts|War Machine))");
+    expect([unit, knight, general].map((u) => passesFilter(u, f))).toEqual([false, true, false]);
+  });
+  it("other fields: Category, Unit, Rule; and an unreadable part says so", () => {
+    expect(passesFilter(knight, readFilter("Category(Core,Special)"))).toBe(true);
+    expect(passesFilter(knight, readFilter("Rule(Swiftstride)"))).toBe(true);
+    expect(passesFilter(unit, readFilter("Unit Great Cannon,Mortar"))).toBe(true);
+    expect(readFilter("Wings(2)").problems).toHaveLength(1);
   });
 });

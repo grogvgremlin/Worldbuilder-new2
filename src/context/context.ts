@@ -54,13 +54,23 @@ export function inWorld(context: Context, items: Item[]): boolean {
 }
 
 // A new context for a game: its core always on, its default composition set chosen.
-export function newContext(name: string, game: Game, items: Item[], sandbox: string = PICKUP): Context {
+export function newContext(nameAsked: string, game: Game, items: Item[], sandbox: string = PICKUP): Context {
+  const name = uniqueName(nameAsked, items, sandbox);
   const taken = new Set(items.map((i) => i.key));
   let key = `context.${slug(name) || "game"}`;
   for (let n = 2; taken.has(key); n++) key = `context.${slug(name) || "game"}-${n}`;
   const context: Context = { key, kind: "context", name, game: game.shortName, sandbox, books: [], faqs: [], house: [], campaign: [], composition: [] };
   for (const k of game.defaultComposition ?? []) context.composition.push({ package: k, on: true });
   return context;
+}
+
+// Two set-ups in a sandbox never share a name: "Friday night", then "Friday night 2" (owner, 23 Nov).
+export function uniqueName(name: string, items: Item[], sandbox: string = PICKUP): string {
+  const names = new Set(items.filter((i): i is Context => i.kind === "context" && (i.sandbox ?? PICKUP) === sandbox).map((c) => c.name.trim().toLowerCase()));
+  if (!names.has(name.trim().toLowerCase())) return name;
+  let n = 2;
+  while (names.has(`${name} ${n}`.toLowerCase())) n++;
+  return `${name} ${n}`;
 }
 
 // --- Reading it ---------------------------------------------------------------------------------
@@ -231,7 +241,7 @@ export function fromPreset(name: string, game: Game, preset: GamePreset | null, 
 export function copyContext(context: Context, items: Item[]): Context {
   const game = items.find((i): i is Game => i.kind === "game" && i.shortName === context.game);
   const fresh = game ? newContext(`${context.name} (copy)`, game, items, context.sandbox) : { ...context };
-  return { ...structuredClone(context), key: fresh.key, name: `${context.name} (copy)` };
+  return { ...structuredClone(context), key: fresh.key, name: fresh.name };
 }
 
 // Chooses the composition sets: exactly these on (the basic dropdown picks one, or none).
@@ -252,6 +262,33 @@ export function switchOff(context: Context, packageKey: string, items: Item[]): 
   }
   const pkg = items.find((i): i is Package => i.kind === "package" && i.key === packageKey);
   if (pkg) next[groupFor(pkg, new Map(items.map((i) => [i.key, i])))].push({ package: packageKey, on: false });
+  return next;
+}
+
+// The packages switched on here that need this one, directly or through another (Forces of Fantasy
+// is needed by The Empire of Man): switching it off leaves them without it.
+export function dependentsOn(context: Context, packageKey: string, items: Item[]): string[] {
+  const view = readContext(context, items);
+  const byKey = new Map(items.map((i) => [i.key, i]));
+  const found = new Set<string>();
+  const visit = (key: string) => {
+    for (const p of view.packages) {
+      const pkg = byKey.get(p.key);
+      if (!p.on || found.has(p.key) || pkg?.kind !== "package") continue;
+      if (needsOf(pkg, items).includes(key)) {
+        found.add(p.key);
+        visit(p.key);
+      }
+    }
+  };
+  visit(packageKey);
+  return [...found];
+}
+
+// Switches a package off with everything that needs it, so nothing is left needing a package that's off.
+export function switchOffWithDependents(context: Context, packageKey: string, items: Item[]): Context {
+  let next = context;
+  for (const key of [...dependentsOn(context, packageKey, items), packageKey]) next = switchOff(next, key, items);
   return next;
 }
 

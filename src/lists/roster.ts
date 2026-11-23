@@ -14,12 +14,16 @@ import { matchName } from "../items/keys";
 import { readContext } from "../context/context";
 import { patched, patchesInPlay } from "../rules/patches";
 import { optionKey, unitAsTaken, type UnitAsTaken } from "./unit-as-taken";
+import { passesFilter, readFilter, type Filterable } from "./unit-filter";
 
-export type Issue = { severity: "illegal" | "warning"; message: string; units: string[] };
+// `units`: the units it's about (marked on the list); `categories`: the army categories it's about
+// (their headings go red), e.g. "no General" on Characters, "fewer than three units" on Core, Special, Rare.
+export type Issue = { severity: "illegal" | "warning"; message: string; units: string[]; categories?: string[] };
 
 // A choice the unit offers: an option in a group, or a command slot.
 export type Choice = { pick: string; label: string; costText: string; cost?: Cost };
-export type ChoiceGroup = { where: string; title: string; required: boolean; oneOf: boolean; choices: Choice[]; allowance?: string };
+// `full`: the group's limit is reached by other units, so its choices aren't offered here (the reason).
+export type ChoiceGroup = { where: string; title: string; required: boolean; oneOf: boolean; choices: Choice[]; allowance?: string; full?: string };
 
 export type UnitView = {
   rosterUnit: RosterUnit;
@@ -79,8 +83,9 @@ export function viewRoster(roster: Roster, items: Item[]): RosterView {
   const categories = categoryTotals(units, rules, roster.target, issues);
   const game = items.find((i): i is Game => i.kind === "game" && i.shortName === context?.game);
   const allowed = allowedBy(game, items, context, roster, issues);
-  for (const rule of rules) for (const limit of rule.limits.limits) checkArmyLimit(rule.name, limit, units, allowed, issues);
-  checkEntryLimits(units, allowed, issues);
+  const entries = entryUnits(armyList, reach, patches);
+  for (const rule of rules) for (const limit of rule.limits.limits) checkArmyLimit(rule.name, limit, units, entries, allowed, roster.target, issues);
+  checkEntryLimits(units, allowed, roster.target, issues);
   for (const u of units) issues.push(...u.issues);
   return { roster, armyList, units, total, categories, issues: dedupe(issues) };
 }
@@ -253,22 +258,46 @@ function allowedBy(game: Game | undefined, items: Item[], context: Context | und
   };
 }
 
-function checkArmyLimit(ruleName: string, limit: Limit, units: UnitView[], allowed: Allowed, issues: Issue[]): void {
+// Every entry of the army list as it can be taken, with its category: what a limit's filter is
+// checked against when no unit of that entry is in the list yet.
+function entryUnits(armyList: ArmyList | undefined, reach: Item[], patches: Patch[]): Filterable[] {
+  const out: Filterable[] = [];
+  for (const e of armyList?.entries ?? []) {
+    const unit = reach.find((i): i is Unit => i.kind === "unit" && i.key === e.unit);
+    if (unit) out.push(filterable(unitAsTaken(unit, reach, patches), e.category));
+  }
+  return out;
+}
+
+function filterable(taken: UnitAsTaken, category: string): Filterable {
+  return { name: taken.name, character: taken.character, troopType: taken.troopType?.type, category, rules: taken.rules.map((r) => r.name) };
+}
+
+function checkArmyLimit(ruleName: string, limit: Limit, units: UnitView[], entries: Filterable[], allowed: Allowed, target: number, issues: Issue[]): void {
   if (limit.counts === "points") return; // category percentages: done above
-  let counted: UnitView[] = [];
-  if (limit.counts === "unit" && limit.of) counted = units.filter((u) => u.taken && limit.of!.some((n) => matchName(n) === matchName(u.taken!.name)));
-  else if (limit.counts === "units") counted = units.filter((u) => passes(u, limit.where));
-  else if (matchName(limit.counts) === "general") {
-    counted = units.filter((u) => u.rosterUnit.general);
-    for (const u of counted) if (limit.where?.toLowerCase().includes("character") && !u.taken?.character) issues.push({ severity: "illegal", message: `${u.taken?.name}: the General must be a character`, units: [u.rosterUnit.id] });
-  } else return;
-  report(ruleName, counted, allowed(limit), limit, issues);
+  const filter = readFilter(limit.where);
+  for (const problem of filter.problems) issues.push({ severity: "warning", message: `${ruleName}: ${problem}`, units: [] });
+  const passes = (f: Filterable) => passesFilter(f, filter) && (!limit.of || limit.of.some((n) => matchName(n) === matchName(f.name)));
+  const asFilterable = (u: UnitView) => (u.taken ? filterable(u.taken, u.category) : null);
+  let counted: UnitView[];
+  if (limit.counts === "unit" && !limit.of) return; // "unit" names its entries: unit(A,B)
+  if (limit.counts === "unit" || limit.counts === "units") counted = units.filter((u) => asFilterable(u) && passes(asFilterable(u)!));
+  else if (matchName(limit.counts) === "general") counted = units.filter((u) => u.rosterUnit.general);
+  else return;
+  // The categories it's about: those holding entries it could count.
+  const categories = [...new Set(entries.filter(passes).map((e) => e.category))];
+  if (matchName(limit.counts) === "general")
+    for (const u of counted) {
+      const f = asFilterable(u);
+      if (f && !passesFilter(f, filter)) issues.push({ severity: "illegal", message: `${u.taken?.name}: the General must be ${limit.where}`, units: [u.rosterUnit.id] });
+    }
+  report(ruleName, counted, allowed(limit), limit, target, issues, categories);
 }
 
 // A unit's own limits: "unit~0-1~1000 roster target" (this entry), "rules options~0-1~…" (this entry
 // taking any special-rule option). An army rule about the same units is checked as well; the
 // tighter one shows.
-function checkEntryLimits(units: UnitView[], allowed: Allowed, issues: Issue[]): void {
+function checkEntryLimits(units: UnitView[], allowed: Allowed, target: number, issues: Issue[]): void {
   const byEntry = new Map<string, UnitView[]>();
   for (const u of units) if (u.taken) byEntry.set(u.taken.unit.key, [...(byEntry.get(u.taken.unit.key) ?? []), u]);
   for (const entry of byEntry.values()) {
@@ -278,29 +307,34 @@ function checkEntryLimits(units: UnitView[], allowed: Allowed, issues: Issue[]):
       if (limit.counts === "unit") counted = entry;
       else if (limit.counts === "rules options") counted = entry.filter((u) => u.rosterUnit.picks.some((p) => p.startsWith("rules options|")));
       else continue; // limits on a slot's items wait for magic items
-      report(`${taken.name} (${limit.counts})`, counted, allowed(limit), limit, issues);
+      const range = allowed(limit);
+      const what = limit.counts === "rules options" ? `${taken.name} with a special rule option` : taken.name;
+      report(what, counted, range, limit, target, issues);
+      // Full: the other units of this entry aren't offered its special-rule options any more.
+      if (limit.counts === "rules options" && range.max !== null && counted.length >= range.max)
+        for (const u of entry.filter((x) => !counted.includes(x))) {
+          const groups = u.choices.filter((c) => c.where === "rules options");
+          if (groups.length === 0) continue;
+          const labels = groups.flatMap((g) => g.choices.map((c) => c.label)).join(", ");
+          groups[0].full = `${labels}: ${counted.length ? "already taken by another unit" : "none allowed"}, ${allowedText(range.max, limit, target)}`;
+          for (const g of groups) g.choices = [];
+        }
     }
   }
 }
 
-function report(what: string, counted: UnitView[], range: { min: number | null; max: number | null }, limit: Limit, issues: Issue[]): void {
+function report(what: string, counted: UnitView[], range: { min: number | null; max: number | null }, limit: Limit, target: number, issues: Issue[], categories: string[] = []): void {
   const n = counted.length;
-  const per = limit.perPoints ? ` per ${limit.perPoints.toLocaleString("en-GB")} pts` : "";
-  const amount = `${limit.amount.min ?? 0}${limit.amount.max === limit.amount.min ? "" : "–" + (limit.amount.max ?? "")}${per}`;
-  if (range.max !== null && n > range.max) issues.push({ severity: "illegal", message: `${what}: ${n} taken, ${amount}`, units: counted.map((u) => u.rosterUnit.id) });
-  if (range.min !== null && n < range.min) issues.push({ severity: "illegal", message: `${what}: ${n} taken, needs ${range.min}`, units: [] });
+  if (range.max !== null && n > range.max) issues.push({ severity: "illegal", message: `${what}: ${n} taken, ${allowedText(range.max, limit, target)}`, units: counted.map((u) => u.rosterUnit.id), categories });
+  if (range.min !== null && n < range.min) issues.push({ severity: "illegal", message: `${what}: ${n} taken, needs ${range.min}`, units: [], categories });
 }
 
-// The filter written in a limit's square brackets, e.g. "not Character; Troop Type not Swarm,War Beasts".
-function passes(u: UnitView, where: string | undefined): boolean {
-  if (!u.taken) return false;
-  if (!where) return true;
-  for (const part of where.split(";").map((p) => p.trim())) {
-    if (/^not character$/i.test(part) && u.taken.character) return false;
-    const m = /^troop type not (.+)$/i.exec(part);
-    if (m && u.taken.troopType && m[1].split(",").some((t) => matchName(t) === matchName(u.taken!.troopType!.type))) return false;
-  }
-  return true;
+// "at most 1 at 1,000 pts (0–1 per 1,000 pts)"; "at most 3".
+function allowedText(max: number, limit: Limit, target: number): string {
+  if (!limit.perPoints) return `at most ${max}`;
+  const per = limit.perPoints.toLocaleString("en-GB");
+  const amount = `${limit.amount.min ?? 0}${limit.amount.max === limit.amount.min ? "" : "–" + (limit.amount.max ?? "")} per ${per} pts`;
+  return `at most ${max} at ${target.toLocaleString("en-GB")} pts (${amount})`;
 }
 
 function dedupe(issues: Issue[]): Issue[] {

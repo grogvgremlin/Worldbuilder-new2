@@ -4,6 +4,7 @@ import type { Roster } from "../../../items/items";
 import { removeUnit, toggleChoice, updateUnit, viewRoster } from "../../../lists/roster";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
+import { NumberBox } from "../../number-box";
 
 export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppData; nav: Nav; rosterKey: string; unitId: string }) {
   const [, setChanged] = useState(0);
@@ -18,6 +19,7 @@ export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppDa
   const ru = u.rosterUnit;
   const size = u.taken?.size;
   const fixedSize = size && size.min !== null && size.min === size.max;
+  const problems = [...new Set([...u.issues, ...view.issues.filter((i) => i.units.includes(ru.id))].map((i) => i.message))];
   const isOn = (group: string, pick: string) => (group === "command" ? ru.slots.includes(pick.split("|")[1]) : ru.picks.includes(pick));
 
   return (
@@ -26,13 +28,15 @@ export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppDa
       <p className="sub">
         {u.category} · <b>{u.points} pts</b>
       </p>
+      {/* What's wrong with this unit: its own issues and the list's issues that name it. */}
+      {problems.length > 0 && <ul className="plain problems">{problems.map((m, n) => <li key={n}>{m}</li>)}</ul>}
 
       {!fixedSize && (
         <div className="field">
           <span className="label">Models</span>
           <span className="stepper">
             <button onClick={() => save(updateUnit(roster, ru.id, { size: Math.max(1, ru.size - 1) }))}>−</button>
-            <input type="number" inputMode="numeric" value={ru.size} onChange={(e) => save(updateUnit(roster, ru.id, { size: Math.max(1, Number(e.target.value) || 1) }))} />
+            <NumberBox value={ru.size} min={1} onChange={(size) => save(updateUnit(roster, ru.id, { size }))} />
             <button onClick={() => save(updateUnit(roster, ru.id, { size: ru.size + 1 }))}>+</button>
           </span>
         </div>
@@ -48,6 +52,7 @@ export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppDa
 
       {u.choices.map((g, gi) => {
         if (g.where.startsWith("slot:") && !ru.slots.includes(g.where.slice(5))) return null;
+        if (g.choices.length === 0 && !g.allowance && !g.full) return null;
         return (
           <div key={gi} className="field block">
             <span className="label">
@@ -63,6 +68,7 @@ export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppDa
               </label>
             ))}
             {g.allowance && <span className="sub">{g.allowance}</span>}
+            {g.full && <span className="full-note">{g.full}</span>}
           </div>
         );
       })}
@@ -77,10 +83,6 @@ export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppDa
         <span className="label">Cost</span>
         <ul className="plain">{u.breakdown.map((b, i) => <li key={i}>{b}</li>)}</ul>
       </div>
-      {u.issues.length > 0 && <ul className="plain problems">{u.issues.map((i, n) => <li key={n}>{i.message}</li>)}</ul>}
-      {view.issues.filter((i) => i.units.includes(ru.id) && !u.issues.includes(i)).map((i, n) => (
-        <p key={n} className="problems">{i.message}</p>
-      ))}
 
       <div className="buttons">
         <button onClick={() => nav.back()}>Done</button>

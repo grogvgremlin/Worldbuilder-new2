@@ -5,12 +5,13 @@
 import { useState } from "react";
 import type { ArmyList, Context, Item, Package, Patch, Roster } from "../../../items/items";
 import { patchesInPlay } from "../../../rules/patches";
-import { chooseComposition, copyContext, groupFor, moveInContext, offered, readContext, removeFromContext, switchOff, switchOn, type Group, type PackageInContext } from "../../../context/context";
+import { chooseComposition, copyContext, dependentsOn, switchOffWithDependents, groupFor, moveInContext, offered, readContext, removeFromContext, switchOff, switchOn, type Group, type PackageInContext } from "../../../context/context";
 import { isCompositionSet } from "../../../library/package-types";
 import { armyListsIn, newRoster, viewRoster } from "../../../lists/roster";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { SwipeRow } from "../../swipe";
+import { NumberBox } from "../../number-box";
 import { SettingsPanel } from "./SettingsPanel";
 import { presetFromContext, withPreset } from "../../../context/game-config";
 
@@ -35,6 +36,16 @@ export function PickupGameScreen({ data, nav, contextKey }: { data: AppData; nav
   const listedOn = (key: string) => [...context.books, ...context.faqs, ...context.house, ...context.campaign].some((p) => p.package === key);
   const compositionSets = data.items.filter((i): i is Package => i.kind === "package" && i.game === context.game && isCompositionSet(i, byKey));
   const chosenComposition = context.composition.filter((c) => c.on).map((c) => c.package);
+
+  // A package something else needs is shown with its switch and a flag; switching it off asks to
+  // switch off what needs it too (owner, 23 Nov).
+  const dependents = (key: string) => dependentsOn(context, key, data.items);
+  const offWithDependents = (key: string) => {
+    const needing = dependents(key);
+    if (needing.length === 0) return switchOff(context, key, data.items);
+    const names = needing.map((k) => byKey.get(k)?.name ?? k).join(", ");
+    return confirm(`${byKey.get(key)?.name ?? key} is needed by ${names}. Switch ${needing.length > 1 ? "those" : "that"} off as well?`) ? switchOffWithDependents(context, key, data.items) : context;
+  };
 
   // A package's patches, each switched on or off here on its own (the package stays on).
   const patches = patchesInPlay(context, data.items);
@@ -77,26 +88,21 @@ export function PickupGameScreen({ data, nav, contextKey }: { data: AppData; nav
         <ul className="plain rules-on">
           {here.map((p) => (
             <li key={p.key}>
-              {listedOn(p.key) ? (
-                <div className="ordered">
-                  <label>
-                    <input type="checkbox" checked={p.on} onChange={() => save(p.on ? switchOff(context, p.key, data.items) : switchOn(context, p.key, data.items))} />
-                    <span>
-                      {p.name} {describe(byKey.get(p.key), byKey)}
-                    </span>
-                  </label>
-                  {listed.length > 1 && (
+              <div className="ordered">
+                <label>
+                  <input type="checkbox" checked={p.on} onChange={() => save(p.on ? offWithDependents(p.key) : switchOn(context, p.key, data.items))} />
+                  <span>
+                    {p.name} {describe(byKey.get(p.key), byKey)}
+                    {p.on && dependents(p.key).length > 0 && <span className="needed-flag" title="Switched on because these need it"> 🔗 needed by {dependents(p.key).map((k) => byKey.get(k)?.name ?? k).join(", ")}</span>}
+                  </span>
+                </label>
+                {listedOn(p.key) && listed.length > 1 && (
                     <span className="arrows">
                       <button aria-label="Earlier" disabled={listed[0] === p.key} onClick={() => save(moveInContext(context, p.key, -1))}>↑</button>
                       <button aria-label="Later" disabled={listed[listed.length - 1] === p.key} onClick={() => save(moveInContext(context, p.key, 1))}>↓</button>
                     </span>
-                  )}
-                </div>
-              ) : (
-                <span>
-                  {p.name} <span className="sub">needed by {p.neededBy.join(", ")}</span>
-                </span>
-              )}
+                )}
+              </div>
               {p.on && patchesOf(byKey.get(p.key) as Package | undefined)}
             </li>
           ))}
@@ -146,8 +152,7 @@ export function PickupGameScreen({ data, nav, contextKey }: { data: AppData; nav
       )}
 
       <details className="list-settings">
-        <summary>Settings</summary>
-        <h3>Basic</h3>
+        <summary>Basic settings</summary>
         <div className="field block settings">
           <span className="label">Composition</span>
           <select
@@ -159,7 +164,9 @@ export function PickupGameScreen({ data, nav, contextKey }: { data: AppData; nav
             {chosenComposition.length > 1 && <option value="__several">Several</option>}
           </select>
         </div>
-        <h3>Advanced</h3>
+      </details>
+      <details className="list-settings">
+        <summary>Advanced settings</summary>
         <SettingsPanel game={view.game} items={data.items} context={context} onChange={(settings) => save({ ...context, settings })} />
       </details>
 
@@ -249,7 +256,7 @@ function NewList({ data, context, lists, onMade }: { data: AppData; context: Con
       </div>
       <div className="row">
         <label className="points">
-          <input type="number" inputMode="numeric" value={target} onChange={(e) => setTarget(Number(e.target.value) || 0)} /> pts
+          <NumberBox value={target} min={0} onChange={setTarget} /> pts
         </label>
         <button className="primary" onClick={make}>Start the list</button>
       </div>

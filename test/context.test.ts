@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { join } from "node:path";
 import type { Game, Item } from "../src/items/items";
-import { newContext, offered, readContext, switchOff, switchOn } from "../src/context/context";
+import { dependentsOn, newContext, offered, readContext, switchOff, switchOffWithDependents, switchOn } from "../src/context/context";
 import { loadFolder } from "./helpers";
 import { readFolder } from "./read-folder";
 
@@ -93,5 +93,24 @@ describe("the order packages apply in", () => {
     ctx = moveInContext(ctx, "tow.house-b", -1);
     expect(readContext(ctx, all).packages.filter((p) => p.how === "chosen").map((p) => p.name)).toEqual(["B", "A", "Standard composition"]);
     expect(moveInContext(ctx, "tow.house-b", -1)).toEqual(ctx); // already first
+  });
+});
+
+describe("names and what needs what (owner, 23 Nov)", () => {
+  it("a second set-up with the same name is numbered", () => {
+    const first = newContext("Friday night", tow, items);
+    const second = newContext("Friday night", tow, [...items, first]);
+    expect(second.name).toBe("Friday night 2");
+    expect(newContext("Friday night", tow, [...items, first, second]).name).toBe("Friday night 3");
+  });
+
+  it("the book the Empire needs shows who needs it; switching it off takes the Empire off too", () => {
+    const ctx = switchOn(newContext("x", tow, items), "tow.the-empire", items);
+    expect(dependentsOn(ctx, "tow.forces-of-fantasy", items)).toEqual(["tow.the-empire"]);
+    const off = switchOffWithDependents(ctx, "tow.forces-of-fantasy", items);
+    const on = readContext(off, items).on;
+    expect(on.has("tow.the-empire")).toBe(false);
+    expect(on.has("tow.forces-of-fantasy")).toBe(false);
+    expect(readContext(off, items).warnings.filter((w) => w.includes("switched off here"))).toEqual([]);
   });
 });

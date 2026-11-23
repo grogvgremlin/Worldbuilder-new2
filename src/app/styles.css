@@ -173,9 +173,14 @@ h2.fold { cursor: pointer; user-select: none; }
 .cards-in summary { cursor: pointer; }
 .cards-in label { display: flex; gap: 8px; align-items: center; }
 /* A mouse can't swipe: show a small cross on each removable row instead. */
-.remove-cross { display: none; }
+/* !important: list rows style their buttons as full-width blocks, which would otherwise show it on a phone. */
+.swipe-row .remove-cross { display: none !important; }
 @media (hover: hover) and (pointer: fine) {
-  .swipe-row .remove-cross { display: block; position: absolute; top: 50%; right: 8px; transform: translateY(-50%); width: 28px; height: 28px; padding: 0; margin: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted, #888); font-size: 20px; line-height: 28px; cursor: pointer; }
+  .swipe-row .remove-cross { display: block !important; position: absolute; top: 50%; right: 8px; transform: translateY(-50%); width: 28px; height: 28px; padding: 0; margin: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted, #888); font-size: 20px; line-height: 28px; cursor: pointer; }
   .swipe-row .remove-cross:hover { background: #b3261e; color: #fff; }
   .swipe-row .swipe-body > button, .swipe-row .swipe-body li > button { padding-right: 40px; }
 }
+h2.bad { color: #b3261e; }
+.section-issues { margin: -2px 0 6px; font-size: .85rem; color: #b3261e; }
+.full-note { color: var(--muted); font-size: .85rem; }
+.needed-flag { color: var(--muted); font-size: .85rem; }

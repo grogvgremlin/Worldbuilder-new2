@@ -1,4 +1,4 @@
-// Swipes on the phone.
+// Swipes on the phone (with a mouse, a small cross on each removable row instead).
 //   - From the left edge to the right: back one screen (an installed app has no browser back).
 //   - A row to the left: shows its action ("Remove"); tap it to act, or swipe back to close.
 import { useRef, useState, type ReactNode, type TouchEvent } from "react";
@@ -68,6 +68,8 @@ export function SwipeRow({ children, action, onAction }: { children: ReactNode; 
       >
         {children}
       </div>
+      {/* With a mouse there's no swipe: a small cross does the same (shown by styles.css on mouse screens only). */}
+      <button className="remove-cross" aria-label={action} title={action} onClick={() => onAction()}>×</button>
     </div>
   );
 }

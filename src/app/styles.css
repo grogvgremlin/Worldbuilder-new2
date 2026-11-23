@@ -172,3 +172,10 @@ h2.fold { cursor: pointer; user-select: none; }
 .cards-in { margin: 2px 0 6px 30px; }
 .cards-in summary { cursor: pointer; }
 .cards-in label { display: flex; gap: 8px; align-items: center; }
+/* A mouse can't swipe: show a small cross on each removable row instead. */
+.remove-cross { display: none; }
+@media (hover: hover) and (pointer: fine) {
+  .swipe-row .remove-cross { display: block; position: absolute; top: 50%; right: 8px; transform: translateY(-50%); width: 28px; height: 28px; padding: 0; margin: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted, #888); font-size: 20px; line-height: 28px; cursor: pointer; }
+  .swipe-row .remove-cross:hover { background: #b3261e; color: #fff; }
+  .swipe-row .swipe-body > button, .swipe-row .swipe-body li > button { padding-right: 40px; }
+}

@@ -3,7 +3,7 @@
 // (the game's settings); then start a list, and the lists already in it.
 import { useState } from "react";
 import type { ArmyList, Context, Item, Package, Roster } from "../../../items/items";
-import { chooseComposition, copyContext, groupFor, offered, readContext, removeFromContext, switchOff, switchOn, type Group, type PackageInContext } from "../../../context/context";
+import { chooseComposition, copyContext, groupFor, moveInContext, offered, readContext, removeFromContext, switchOff, switchOn, type Group, type PackageInContext } from "../../../context/context";
 import { isCompositionSet } from "../../../library/package-types";
 import { armyListsIn, newRoster, viewRoster } from "../../../lists/roster";
 import type { AppData } from "../../app-data";
@@ -36,6 +36,7 @@ export function PickupGameScreen({ data, nav, contextKey }: { data: AppData; nav
 
   const section = (group: Group, title: string) => {
     const here = shown.filter((p) => groupOf(p) === group);
+    const listed = context[group].map((p) => p.package);
     const more = offer.get(group) ?? [];
     if (here.length === 0 && more.length === 0) return null;
     return (
@@ -45,12 +46,20 @@ export function PickupGameScreen({ data, nav, contextKey }: { data: AppData; nav
           {here.map((p) => (
             <li key={p.key}>
               {listedOn(p.key) ? (
-                <label>
-                  <input type="checkbox" checked={p.on} onChange={() => save(p.on ? switchOff(context, p.key, data.items) : switchOn(context, p.key, data.items))} />
-                  <span>
-                    {p.name} {describe(byKey.get(p.key), byKey)}
-                  </span>
-                </label>
+                <div className="ordered">
+                  <label>
+                    <input type="checkbox" checked={p.on} onChange={() => save(p.on ? switchOff(context, p.key, data.items) : switchOn(context, p.key, data.items))} />
+                    <span>
+                      {p.name} {describe(byKey.get(p.key), byKey)}
+                    </span>
+                  </label>
+                  {listed.length > 1 && (
+                    <span className="arrows">
+                      <button aria-label="Earlier" disabled={listed[0] === p.key} onClick={() => save(moveInContext(context, p.key, -1))}>↑</button>
+                      <button aria-label="Later" disabled={listed[listed.length - 1] === p.key} onClick={() => save(moveInContext(context, p.key, 1))}>↓</button>
+                    </span>
+                  )}
+                </div>
               ) : (
                 <span>
                   {p.name} <span className="sub">needed by {p.neededBy.join(", ")}</span>
@@ -80,6 +89,17 @@ export function PickupGameScreen({ data, nav, contextKey }: { data: AppData; nav
       {section("books", "Books")}
       {section("faqs", "FAQs")}
       {section("house", "House rules")}
+      <details className="list-settings">
+        <summary>Applied order</summary>
+        <p className="sub">Packages apply in this order; where two disagree, the later one wins. Groups keep their order (core, books, FAQs, house rules); use ↑ ↓ to order within a group. What a package needs comes before it.</p>
+        <ol className="applied">
+          {view.packages.filter((p) => p.on && !(byKey.get(p.key) as Package | undefined)?.stubsFor).map((p) => (
+            <li key={p.key}>
+              {p.name} <span className="sub">{p.how === "core" ? "core" : p.how === "needed" ? `needed by ${p.neededBy.join(", ")}` : groupOf(p)}</span>
+            </li>
+          ))}
+        </ol>
+      </details>
       {view.warnings.length > 0 && <ul className="plain problems">{view.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>}
       {[...context.books, ...context.faqs, ...context.house].some((p) => !p.on) && (
         <p className="sub">

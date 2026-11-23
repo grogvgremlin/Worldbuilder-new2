@@ -81,3 +81,17 @@ describe("composition sets and sections", () => {
     expect(tow.defaultComposition).toEqual(["tow.standard-composition"]);
   });
 });
+
+describe("the order packages apply in", () => {
+  it("moves a package within its group; groups keep their order", async () => {
+    const { moveInContext } = await import("../src/context/context");
+    const a = { key: "tow.house-a", kind: "package", name: "A", game: "tow", layer: "house", members: [], includes: [], needsStated: [] } as Item;
+    const b = { ...a, key: "tow.house-b", name: "B" } as Item;
+    const all = [...items, a, b];
+    let ctx = switchOn(switchOn(newContext("x", tow, all), "tow.house-a", all), "tow.house-b", all);
+    expect(readContext(ctx, all).packages.filter((p) => p.how === "chosen").map((p) => p.name)).toEqual(["A", "B", "Standard composition"]);
+    ctx = moveInContext(ctx, "tow.house-b", -1);
+    expect(readContext(ctx, all).packages.filter((p) => p.how === "chosen").map((p) => p.name)).toEqual(["B", "A", "Standard composition"]);
+    expect(moveInContext(ctx, "tow.house-b", -1)).toEqual(ctx); // already first
+  });
+});

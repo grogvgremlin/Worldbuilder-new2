@@ -165,3 +165,7 @@ h2.fold { cursor: pointer; user-select: none; }
 .choice-edit { padding: 8px 0; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
 .choice-edit .filter { margin: 0; }
 .mono { font-family: var(--mono); font-size: .9rem; }
+.ordered { display: flex; align-items: center; gap: 6px; }
+.ordered label { flex: 1; display: flex; gap: 8px; align-items: center; }
+.applied { padding-left: 22px; margin: 6px 0; }
+.applied li { margin: 3px 0; }

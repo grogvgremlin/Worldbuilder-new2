@@ -261,3 +261,18 @@ export function removeFromContext(context: Context, packageKey: string): Context
   for (const { group } of GROUPS) next[group] = next[group].filter((p) => p.package !== packageKey);
   return next;
 }
+
+// Moves a package up or down within its group's list (a later one applies after an earlier one).
+export function moveInContext(context: Context, packageKey: string, by: -1 | 1): Context {
+  const next = structuredClone(context);
+  for (const { group } of GROUPS) {
+    const list = next[group];
+    const at = list.findIndex((p) => p.package === packageKey);
+    if (at < 0) continue;
+    const to = at + by;
+    if (to < 0 || to >= list.length) return context;
+    [list[at], list[to]] = [list[to], list[at]];
+    return next;
+  }
+  return context;
+}

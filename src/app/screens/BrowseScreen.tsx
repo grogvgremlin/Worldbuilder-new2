@@ -19,6 +19,9 @@ export const BROWSE_KINDS: { kind: BrowseKind; title: string }[] = [
   { kind: "patch", title: "Patches" },
 ];
 
+// Groups opened in Browse, kept while the app is open.
+const openGroups = new Set<string>();
+
 type GroupBy = "book" | "source" | "type" | "status";
 const GROUPINGS: { by: GroupBy; title: string }[] = [
   { by: "book", title: "Book" },
@@ -48,8 +51,20 @@ export function BrowseScreen({ data, nav, game, kind }: { data: AppData; nav: Na
       </div>
       <input className="filter" placeholder="Filter by name" value={filter} onChange={(e) => setFilter(e.target.value)} />
       {[...groups].sort(([a], [b]) => a.localeCompare(b)).map(([label, list]) => (
-        <div key={label}>
-          <h2>{label} <span className="sub">{list.length}</span></h2>
+        // Each group folds; open ones stay open when you come back (owner, 23 Nov). A filter opens them all.
+        <details
+          key={`${label}|${filter !== ""}`}
+          className="browse-group"
+          open={filter !== "" || groups.size === 1 || openGroups.has(`${kind}|${by}|${label}`)}
+          onToggle={(e) => {
+            const id = `${kind}|${by}|${label}`;
+            if ((e.target as HTMLDetailsElement).open) openGroups.add(id);
+            else openGroups.delete(id);
+          }}
+        >
+          <summary>
+            <h2>{label} <span className="sub">{list.length}</span></h2>
+          </summary>
           <ul className="plain">
             {list.sort((a, b) => a.name.localeCompare(b.name)).map((i) => (
               <li key={i.key}>
@@ -57,7 +72,7 @@ export function BrowseScreen({ data, nav, game, kind }: { data: AppData; nav: Na
               </li>
             ))}
           </ul>
-        </div>
+        </details>
       ))}
     </section>
   );

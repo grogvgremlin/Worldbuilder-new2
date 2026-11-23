@@ -13,6 +13,7 @@ import { GridScreen } from "./screens/GridScreen";
 import { ItemScreen } from "./screens/ItemScreen";
 import { DraftScreen } from "./screens/DraftScreen";
 import { DataScreen } from "./screens/DataScreen";
+import { SearchScreen } from "./screens/SearchScreen";
 import { BrowseScreen, type BrowseKind } from "./screens/BrowseScreen";
 import { ListsScreen } from "./screens/lists/ListsScreen";
 import { PickupGameScreen } from "./screens/lists/PickupGameScreen";
@@ -33,6 +34,7 @@ export type Screen =
   | { name: "preset"; game: string; index: number }
   | { name: "game-setting"; game: string; index: number }
   | { name: "draft" }
+  | { name: "search" }
   | { name: "data" }
   | { name: "lists" }
   | { name: "pickup"; key: string }
@@ -81,9 +83,12 @@ export function App({ data }: { data: AppData }) {
         ) : (
           <span className="brand">Worldbuilder</span>
         )}
-        <button className={"link" + (tool === "settings" ? " current" : "")} onClick={() => setTool("settings")}>
-          Settings
-        </button>
+        <span className="header-links">
+          <button className="link" aria-label="Search" onClick={() => screen?.name !== "search" && nav.open({ name: "search" })}>Search</button>
+          <button className={"link" + (tool === "settings" ? " current" : "")} onClick={() => setTool("settings")}>
+            Settings
+          </button>
+        </span>
       </header>
 
       <main>
@@ -147,6 +152,8 @@ function render(screen: Screen, data: AppData, nav: Nav, draft: Draft | null, se
       );
     case "data":
       return <DataScreen data={data} onWiped={refresh} />;
+    case "search":
+      return <SearchScreen data={data} nav={nav} />;
     case "lists":
       return <ListsScreen data={data} nav={nav} />;
     case "pickup":

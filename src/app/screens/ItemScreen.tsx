@@ -448,20 +448,43 @@ function SourceCard({ source, ctx }: { source: Source; ctx: Ctx }) {
 }
 
 // Everything that names this item.
+// Who names this item, split by the package each is entered in; and, apart, what's linked to it
+// (counts as it, through a Match Key: Iron Shod Hooves counts as a Hand Weapon) (owner, 23 Nov).
 function UsedBy({ item, ctx }: { item: Item; ctx: Ctx }) {
-  const users = ctx.items.filter((other) => other.key !== item.key && JSON.stringify(other).includes(`"item":"${item.key}"`));
-  if (users.length === 0) return null;
-  return (
-    <div className="field block">
-      <span className="label">Named by</span>
-      <span>
-        {users.map((u, i) => (
-          <span key={u.key}>
-            {i > 0 && ", "}
-            <ItemLink name={u.name} itemKey={u.key} ctx={ctx} />
-          </span>
-        ))}
+  const names = (other: Item) => other.key !== item.key && JSON.stringify(other).includes(`"item":"${item.key}"`);
+  const linksTo = (other: Item) => (other.kind === "equipment" || other.kind === "magic-item") && other.countsAs.some((t) => t.item === item.key);
+  const linked = ctx.items.filter(linksTo);
+  const named = ctx.items.filter((o) => names(o) && !linksTo(o));
+  const byPackage = new Map<string, Item[]>();
+  for (const o of named) byPackage.set(o.homePackage ?? "", [...(byPackage.get(o.homePackage ?? "") ?? []), o]);
+  const list = (items: Item[]) =>
+    items.map((u, i) => (
+      <span key={u.key}>
+        {i > 0 && ", "}
+        <ItemLink name={u.name} itemKey={u.key} ctx={ctx} />
       </span>
-    </div>
+    ));
+  return (
+    <>
+      {linked.length > 0 && (
+        <div className="field block">
+          <span className="label">Linked by (counts as this)</span>
+          <span>{list(linked)}</span>
+        </div>
+      )}
+      {named.length > 0 && (
+        <div className="field block">
+          <span className="label">Named by</span>
+          {[...byPackage].map(([pkg, items]) => (
+            <details key={pkg} className="named-in">
+              <summary>
+                {pkg ? nameOf(pkg, ctx.items) : "Not in a package"} <span className="sub">{items.length}</span>
+              </summary>
+              <span>{list(items)}</span>
+            </details>
+          ))}
+        </div>
+      )}
+    </>
   );
 }

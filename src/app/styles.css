@@ -187,3 +187,6 @@ h2.bad { color: #b3261e; }
 .why-mark { font-size: .85rem; }
 h2 .sub { text-transform: none; letter-spacing: normal; }
 .choice.unavailable { opacity: .55; } .allowance { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.named-in { margin: 2px 0 4px; } .named-in summary { cursor: pointer; }
+.browse-group > summary { list-style: none; cursor: pointer; } .browse-group > summary::-webkit-details-marker { display: none; } .browse-group > summary h2::before { content: '▸ '; } .browse-group[open] > summary h2::before { content: '▾ '; } .browse-group > summary h2 { display: inline-block; }
+.header-links { display: flex; gap: 16px; } .search-results li { padding: 6px 0; border-bottom: 1px solid var(--line); } .search-box { width: 100%; }

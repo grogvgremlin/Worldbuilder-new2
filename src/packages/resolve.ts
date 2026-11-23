@@ -55,9 +55,29 @@ export type Unmatched = { name: string; where: string; inPackage: string | undef
 export function resolveNames(items: Item[], index: NameIndex): Unmatched[] {
   const unmatched: Unmatched[] = [];
   let inPackage: string | undefined;
+  const troopTypes = new Set(items.flatMap((i) => (i.kind === "game" ? i.troopTypes ?? [] : [])).map(matchName));
+  // A condition's name: Only(Charging), MayBe(Imperial Wizard). It names a rule or a unit, so one that
+  // matches nothing is stubbed as a rule (owner, 23 Nov: "Charging" on the lance). Troop types and
+  // counts ("1 per Wizard") aren't names.
+  const condition = (t: Term, where: string) => {
+    if (isRuleName(t) || !t.detail) return;
+    for (const part of t.detail.split(/[|,]/).map((x) => x.trim()).filter(Boolean)) {
+      if (/^\d+\s+per\b/i.test(part) || troopTypes.has(matchName(part))) continue;
+      if (index.find(part, ["special-rule", "unit"], inPackage) === null) unmatched.push({ name: part, where: where + ", condition", inPackage, kinds: ["special-rule"] });
+    }
+  };
+  const conditions = (list: Term[] | undefined, where: string) => list?.forEach((t) => condition(t, where));
+  const statConditions = (stats: Record<string, unknown> | undefined, where: string) => {
+    for (const stat of Object.values(stats ?? {})) if (stat && typeof stat === "object" && "when" in stat) conditions((stat as { when?: Term[] }).when, where);
+  };
   const look = (term: Term | Option, kinds: Kind[], where: string) => {
     term.item = index.find(term.name, kinds, inPackage);
     if (term.item === null) unmatched.push({ name: term.name, where, inPackage, kinds });
+    // What's linked in square brackets is rules: Two Handed[-Strike Last] (owner, 23 Nov).
+    for (const linked of ("linked" in term ? term.linked : undefined) ?? []) {
+      if (isRuleName(linked)) look(linked, ["special-rule"], where);
+      else condition(linked, where);
+    }
   };
   const terms = (list: Term[] | undefined, kinds: Kind[], where: string) => list?.forEach((t) => look(t, kinds, where));
   const equipmentKinds = (t: Term | Option): Kind[] => (t.as === "Mount" ? ["unit"] : ["equipment", "magic-item", "unit"]);
@@ -68,15 +88,20 @@ export function resolveNames(items: Item[], index: NameIndex): Unmatched[] {
     if (item.kind === "unit") {
       if (item.inherits) look(item.inherits, ["unit"], where + ", inherits");
       for (const row of item.rows) {
+        statConditions(row.stats, where);
         row.equipment.forEach((t) => look(t, equipmentKinds(t), where + ", equipment"));
         terms(row.rules.filter((t) => t.change !== "replace"), ["special-rule"], where + ", rules");
-        resolveOptions(row.equipmentOptions, (o) => equipmentKinds(o), look, where + ", equipment options");
-        resolveOptions(row.rulesOptions, () => ["special-rule"], look, where + ", rules options");
+        resolveOptions(row.equipmentOptions, (o) => equipmentKinds(o), look, where + ", equipment options", condition);
+        resolveOptions(row.rulesOptions, () => ["special-rule"], look, where + ", rules options", condition);
         row.slots?.slots.forEach((s) => {
           s.item = index.find(s.code, ["slot-kind"]);
           if (s.item === null) unmatched.push({ name: s.code, where: where + ", slots", inPackage, kinds: ["slot-kind"] });
         });
       }
+    }
+    if (item.kind === "equipment" || item.kind === "magic-item") {
+      statConditions(item.stats, where);
+      if (!(item.kind === "equipment" && item.type === "allowance")) conditions(item.rules, where); // an allowance's Only() lists types
     }
     if (item.kind === "equipment") {
       terms(item.countsAs, ["equipment"], where + ", counts as");
@@ -95,8 +120,8 @@ export function resolveNames(items: Item[], index: NameIndex): Unmatched[] {
         if (u) {
           u.equipment?.filter((t) => t.change !== "remove").forEach((t) => look(t, equipmentKinds(t), where + ", equipment"));
           terms(u.rules?.filter((t) => t.change !== "replace" && t.change !== "remove"), ["special-rule"], where + ", rules");
-          resolveOptions(u.equipmentOptions, (o) => equipmentKinds(o), look, where + ", equipment options");
-          resolveOptions(u.rulesOptions, () => ["special-rule"], look, where + ", rules options");
+          resolveOptions(u.equipmentOptions, (o) => equipmentKinds(o), look, where + ", equipment options", condition);
+          resolveOptions(u.rulesOptions, () => ["special-rule"], look, where + ", rules options", condition);
           u.slots?.slots.forEach((sl) => (sl.item = index.find(sl.code, ["slot-kind"])));
         }
         terms(change.equipment?.rules?.filter(isRuleName), ["special-rule"], where + ", rules");
@@ -117,12 +142,14 @@ function resolveOptions(
   kinds: (o: Option | Term) => Kind[],
   look: (t: Term | Option, kinds: Kind[], where: string) => void,
   where: string,
+  condition: (t: Term, where: string) => void = () => {},
 ): void {
   if (!cell) return;
   cell.removeInherited?.forEach((t) => look(t, kinds(t), where));
   for (const group of cell.groups)
     for (const option of group.options) {
       look(option, kinds(option), where);
+      option.conditions?.forEach((c) => condition(c, where)); // Only(Mounted)
       option.replaces?.forEach((t) => look(t, kinds(t), where));
       option.grants?.filter((g) => g.name !== "Troop Type").forEach((g) => look(g, ["special-rule"], where));
     }

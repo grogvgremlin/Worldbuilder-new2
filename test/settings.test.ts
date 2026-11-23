@@ -44,7 +44,7 @@ describe("where a setting's value comes from", () => {
     let ctx = switchOn(newContext("x", tow, all), "tow.my-house", all);
     expect(settingValue(name, tow, all, ctx)).toEqual({ value: "started(target / 1000)", from: "My house rules" });
     ctx = { ...ctx, settings: { [name]: "nearest(target / 1000)" } };
-    expect(settingValue(name, tow, all, ctx)?.from).toBe("this game");
+    expect(settingValue(name, tow, all, ctx)?.from).toBe("this set-up");
     const roster = { settings: { [name]: "full(target / 1000)" } } as unknown as Roster;
     expect(settingValue(name, tow, all, ctx, roster)).toEqual({ value: "full(target / 1000)", from: "this list" });
   });

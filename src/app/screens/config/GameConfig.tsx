@@ -1,5 +1,7 @@
 // A game's configuration on its Library page, all editable: core packages, default composition,
-// presets (what "Start from" offers) and settings (what the Advanced dropdowns offer).
+// presets (what "Start from" offers), settings (what the Advanced dropdowns offer), and the statline,
+// categories and troop types.
+import { useState } from "react";
 import type { Game } from "../../../items/items";
 import { compositionSets, gamePackages, movePreset } from "../../../context/game-config";
 import type { AppData } from "../../app-data";
@@ -20,6 +22,12 @@ export function GameConfig({ data, nav, game, onSaved }: { data: AppData; nav: N
     <details className="list-settings config" open={configOpen} onToggle={(e) => (configOpen = (e.target as HTMLDetailsElement).open)}>
       <summary>Configuration</summary>
       <p className="sub">What this game starts with and offers. Changes here download with the game.</p>
+
+      <h3>Statline and categories</h3>
+      <p className="sub">Separated by commas. The statline is shown on cards in this order; the categories are the army list's sections. (The sheets' stat columns are still M to Ld: a different statline there comes next.)</p>
+      <ListField label="Statline" value={game.statlines.model} onSave={(model) => save({ ...game, statlines: { ...game.statlines, model } })} />
+      <ListField label="Categories" value={game.categories} onSave={(categories) => save({ ...game, categories })} />
+      <ListField label="Troop types" value={game.troopTypes ?? []} onSave={(troopTypes) => save({ ...game, troopTypes })} />
 
       <h3>Core: always on</h3>
       {packages
@@ -69,5 +77,24 @@ export function GameConfig({ data, nav, game, onSaved }: { data: AppData; nav: N
       </ul>
       <button className="add" onClick={() => nav.open({ name: "game-setting", game: game.key, index: (game.settings ?? []).length })}>+ New setting</button>
     </details>
+  );
+}
+
+// A list edited as text, "M, WS, BS …"; saved when you leave the box.
+function ListField({ label, value, onSave }: { label: string; value: string[]; onSave: (list: string[]) => void }) {
+  const [text, setText] = useState(value.join(", "));
+  return (
+    <label className="stack">
+      <span className="sub">{label}</span>
+      <input
+        className="filter"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => {
+          const list = text.split(",").map((x) => x.trim()).filter(Boolean);
+          if (list.join("|") !== value.join("|")) onSave(list);
+        }}
+      />
+    </label>
   );
 }

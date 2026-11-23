@@ -143,6 +143,14 @@ describe.skipIf(!hasTowData)("a legal 1,000-point Empire list (private data)", (
     expect(full["tow.unit.state-troops"]).toBeUndefined();
   });
 
+  it("once there's a General, no other unit is offered it", () => {
+    let r = newRoster("Friday", context, empire, 1000, all);
+    r = add(add(r, all, "tow.unit.captain-of-the-empire"), all, "tow.unit.captain-of-the-empire");
+    expect(viewRoster(r, all).generalFull).toBeUndefined();
+    r = updateUnit(r, "u1", { general: true });
+    expect(viewRoster(r, all).generalFull).toBe("The General: 1 taken, at most 1");
+  });
+
   it("a unit's card lists its limits with how many are taken", () => {
     let r = newRoster("Friday", context, empire, 1000, all);
     r = add(r, all, "tow.unit.veteran-state-troops", 10);

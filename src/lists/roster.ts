@@ -51,6 +51,7 @@ export type RosterView = {
   categories: CategoryView[];
   issues: Issue[]; // the roster's own (each unit's are on the unit too)
   full: Record<string, string>; // entries that can't be added now (their limit is reached): unit key -> why
+  generalFull?: string; // the General role is taken as often as allowed: why another can't be (owner, 23 Nov)
 };
 
 // --- What's in reach --------------------------------------------------------------------------
@@ -97,7 +98,7 @@ export function viewRoster(roster: Roster, items: Item[]): RosterView {
   const full = fullEntries(rules, units, entries, allowed, roster.target);
   describeLimits(units, rules, allowed, roster.target);
   for (const u of units) issues.push(...u.issues);
-  return { roster, armyList, units, total, categories, issues: dedupe(issues), full };
+  return { roster, armyList, units, total, categories, issues: dedupe(issues), full, generalFull: generalFull(rules, units, allowed) };
 }
 
 function viewUnit(ru: RosterUnit, reach: Item[], patches: Patch[], categoryOf: Map<string, string>, slotKinds: Map<string, string>): UnitView {
@@ -162,6 +163,17 @@ function costItems(view: UnitView, reach: Item[]): void {
     if (s.allowance.budget !== null && s.points > s.allowance.budget) view.issues.push({ severity: "illegal", message: `${view.taken?.name}${who}: ${s.points} pts of ${s.allowance.name}, up to ${s.allowance.budget}`, units: [ru.id], about: "items" });
     if (s.allowance.most !== null && s.count > s.allowance.most) view.issues.push({ severity: "illegal", message: `${view.taken?.name}${who}: ${s.count} ${s.allowance.name}, at most ${s.allowance.most}`, units: [ru.id], about: "items" });
   }
+}
+
+// When the limits on the General ("General[Character]~1~army") are reached: why no other unit may be.
+function generalFull(rules: CompositionRule[], units: UnitView[], allowed: Allowed): string | undefined {
+  const n = units.filter((u) => u.rosterUnit.general).length;
+  for (const rule of rules)
+    for (const limit of rule.limits.limits.filter((l) => matchName(l.counts) === "general")) {
+      const max = allowed(limit).max;
+      if (max !== null && n >= max) return `${rule.name}: ${n} taken, at most ${max}`;
+    }
+  return undefined;
 }
 
 // Every magic item picked in the list, with who bears it.

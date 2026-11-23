@@ -96,7 +96,7 @@ export function RosterScreen({ data, nav, rosterKey }: { data: AppData; nav: Nav
                       <button
                         className="link"
                         onClick={async () => {
-                          const next = addUnit(roster, u, reach);
+                          const next = addUnit(roster, u, data.items);
                           await save(next);
                           setAdding(null);
                           nav.open({ name: "roster-unit", roster: roster.key, unit: next.units[next.units.length - 1].id });

@@ -4,8 +4,9 @@
 
 import { useState } from "react";
 import YAML from "yaml";
-import type { ArmyList, CompositionRule, Equipment, Item, Limit, Source, Options as OptionsCell, Package, RaceProfile, SlotKind, SpecialRule, Stat, Stats, Term, Unit, UnitRow } from "../../items/items";
+import type { ArmyList, CompositionRule, Equipment, Item, Limit, Source, Options as OptionsCell, Package, Patch, RaceProfile, SlotKind, SpecialRule, Stat, Stats, Term, Unit, UnitRow } from "../../items/items";
 import { writeStat } from "../../notation/values";
+import { changeText } from "../../packages/patch-tabs";
 import type { AppData } from "../app-data";
 import type { Nav } from "../App";
 import * as words from "../words";
@@ -71,6 +72,8 @@ function Card({ item, ctx, view }: { item: Item; ctx: Ctx; view: View }) {
       return <PackageCard pkg={item} ctx={ctx} />;
     case "source":
       return <SourceCard source={item} ctx={ctx} />;
+    case "patch":
+      return <PatchCard patch={item} ctx={ctx} />;
     default:
       return null;
   }
@@ -324,6 +327,26 @@ function ArmyListCard({ list, ctx }: { list: ArmyList; ctx: Ctx }) {
             const rule = ctx.byKey.get(k) as CompositionRule | undefined;
             return <li key={k}>{rule ? `${rule.name}: ${rule.limits.limits.map(words.limitText).join("; ")}` : k}</li>;
           })}
+        </ul>
+      </div>
+    </>
+  );
+}
+
+// A patch reads as its changes, each in the sheet's own words, with what it changes linked.
+function PatchCard({ patch, ctx }: { patch: Patch; ctx: Ctx }) {
+  return (
+    <>
+      <Field label="Switches off">{patch.switchesOff.join(", ")}</Field>
+      <div className="field block">
+        <span className="label">Changes, in order</span>
+        <ul className="plain">
+          {patch.changes.map((c, i) => (
+            <li key={i}>
+              <ItemLink name={c.target.name} itemKey={c.target.item} ctx={ctx} />
+              <span className="sub"> {changeText(c).slice(changeText(c).indexOf(":") + 1)}</span>
+            </li>
+          ))}
         </ul>
       </div>
     </>

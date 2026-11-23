@@ -331,6 +331,46 @@ export const CompositionRule = z.strictObject({
 });
 export type CompositionRule = z.infer<typeof CompositionRule>;
 
+// A patch: a named change to things already entered, like a rule card (owner, 23 Nov). An FAQ's
+// erratum, a house rule making Lances free, a unit given a new slot. Written in the same columns and
+// notation as the entry tabs, on per-kind patch tabs; a cell left blank changes nothing.
+//   Cost and stats: a plain value sets it ("22~pi"); "+1~pi" / "-1" changes it by that much.
+//   Options, rules, equipment: the inheritance words ("+X" adds, "-X" removes, "None" clears, the same
+//   name replaces in place; a plain list replaces the whole list).
+// Patches apply in sequence: packages in their applied order, then the patch's place in its package.
+// "Switches off" names earlier patches this one replaces while it's on (the design's supersedes).
+// Design: design/rules-overlay.md (rules as scope + change, applied in order); spec/foundations
+// (an FAQ is one patch per erratum, each takeable or skippable).
+export const PatchChange = z.strictObject({
+  target: Term, // the thing changed, by name; `item` is filled in when names are matched
+  targetKind: z.enum(["unit", "equipment", "special-rule", "composition-rule"]),
+  row: z.string().optional(), // a unit's command row by its code (C, SB); absent = the unit's own line
+  unit: UnitRow.partial().optional(), // the cells written, for a unit
+  equipment: z
+    .strictObject({
+      stats: Stats.optional(),
+      save: Stat.optional(),
+      cost: Cost.optional(),
+      rules: z.array(Term).optional(),
+      text: z.string().optional(),
+      type: z.string().optional(),
+      range: z.string().optional(),
+      armourPiercing: z.string().optional(),
+    })
+    .optional(),
+  rule: z.strictObject({ text: z.string().optional(), ruleType: z.string().optional() }).optional(),
+  composition: z.strictObject({ category: z.string().optional(), limits: Limits.optional() }).optional(),
+});
+export type PatchChange = z.infer<typeof PatchChange>;
+
+export const Patch = z.strictObject({
+  ...common,
+  kind: z.literal("patch"),
+  switchesOff: z.array(z.string()), // names of patches this one replaces while it's on
+  changes: z.array(PatchChange), // in order
+});
+export type Patch = z.infer<typeof Patch>;
+
 // A source: a book, PDF or website the rules and lore cite (the bibliography).
 // Items cite it by name in their reference ("Forces of Fantasy;64").
 // Design: spec/pillars/background-and-narrative.md §3 (a source is the work; the reference sits on
@@ -389,6 +429,7 @@ export const Context = z.strictObject({
   campaign: z.array(ContextPackage), // only in a world
   composition: z.array(ContextPackage), // composition sets: Standard, Grand Melee, a tournament pack …
   settings: z.record(z.string(), z.string()).optional(), // this game's own values: setting name -> value
+  off: z.array(z.string()).optional(), // single cards switched off here though their package is on (a patch, a rule …)
 });
 export type Context = z.infer<typeof Context>;
 
@@ -415,6 +456,6 @@ export const Roster = z.strictObject({
 });
 export type Roster = z.infer<typeof Roster>;
 
-export const Item = z.discriminatedUnion("kind", [Game, Package, RaceProfile, Unit, Equipment, SpecialRule, SlotKind, ArmyList, CompositionRule, Source, SettingValue, Sandbox, Context, Roster]);
+export const Item = z.discriminatedUnion("kind", [Game, Package, RaceProfile, Unit, Equipment, SpecialRule, SlotKind, ArmyList, CompositionRule, Patch, Source, SettingValue, Sandbox, Context, Roster]);
 export type Item = z.infer<typeof Item>;
 export type ItemKind = Item["kind"];

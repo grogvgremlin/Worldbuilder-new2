@@ -169,3 +169,6 @@ h2.fold { cursor: pointer; user-select: none; }
 .ordered label { flex: 1; display: flex; gap: 8px; align-items: center; }
 .applied { padding-left: 22px; margin: 6px 0; }
 .applied li { margin: 3px 0; }
+.cards-in { margin: 2px 0 6px 30px; }
+.cards-in summary { cursor: pointer; }
+.cards-in label { display: flex; gap: 8px; align-items: center; }

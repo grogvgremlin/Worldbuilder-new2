@@ -82,6 +82,21 @@ export function resolveNames(items: Item[], index: NameIndex): Unmatched[] {
       terms(item.rules.filter(isRuleName), ["special-rule"], where + ", rules");
     }
     if (item.kind === "race-profile") terms(item.rules.filter(isRuleName), ["special-rule"], where + ", rules");
+    if (item.kind === "patch") {
+      for (const change of item.changes) {
+        // What a patch changes must already exist: no stub is made for it (the roster says it's missing).
+        if (change.targetKind !== "composition-rule") change.target.item = index.find(change.target.name, [change.targetKind]);
+        const u = change.unit;
+        if (u) {
+          u.equipment?.filter((t) => t.change !== "remove").forEach((t) => look(t, equipmentKinds(t), where + ", equipment"));
+          terms(u.rules?.filter((t) => t.change !== "replace" && t.change !== "remove"), ["special-rule"], where + ", rules");
+          resolveOptions(u.equipmentOptions, (o) => equipmentKinds(o), look, where + ", equipment options");
+          resolveOptions(u.rulesOptions, () => ["special-rule"], look, where + ", rules options");
+          u.slots?.slots.forEach((sl) => (sl.item = index.find(sl.code, ["slot-kind"])));
+        }
+        terms(change.equipment?.rules?.filter(isRuleName), ["special-rule"], where + ", rules");
+      }
+    }
     if (item.kind === "slot-kind") terms(item.equipment, ["equipment"], where + ", equipment");
   }
   return unmatched;
@@ -152,6 +167,15 @@ export function referencesOf(item: Item): string[] {
   if (item.kind === "equipment") (terms(item.countsAs), terms(item.rules));
   if (item.kind === "race-profile") terms(item.rules);
   if (item.kind === "slot-kind") terms(item.equipment);
+  if (item.kind === "patch")
+    for (const change of item.changes) {
+      out.push(change.target.item); // a patch needs what it changes
+      terms(change.unit?.equipment);
+      terms(change.unit?.rules);
+      options(change.unit?.equipmentOptions);
+      options(change.unit?.rulesOptions);
+      terms(change.equipment?.rules);
+    }
   if (item.kind === "army-list") (item.entries.forEach((e) => out.push(e.unit)), item.composition.forEach((c) => out.push(c)));
   return out.filter((k): k is string => typeof k === "string");
 }

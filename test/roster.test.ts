@@ -132,6 +132,17 @@ describe.skipIf(!hasTowData)("a legal 1,000-point Empire list (private data)", (
     expect(issues.find((i) => i.message === "Minimum Three Units: 1 taken, needs 3")!.categories).toEqual(["Core", "Special", "Rare"]);
   });
 
+  it("an entry at its limit isn't offered again: Veteran State Troops 0–1 per 1,000, Generals 0–1", () => {
+    let r = newRoster("Friday", context, empire, 1000, all);
+    expect(viewRoster(r, all).full).toEqual({});
+    r = add(r, all, "tow.unit.veteran-state-troops", 10);
+    r = add(r, all, "tow.unit.general-of-the-empire");
+    const full = viewRoster(r, all).full;
+    expect(full["tow.unit.veteran-state-troops"]).toBe("Veteran State Troops: 1 taken, at most 1 at 1,000 pts (0–1 per 1,000 pts)");
+    expect(full["tow.unit.grand-master"]).toBe("Generals: 1 taken, at most 1 at 1,000 pts (0–1 per 1,000 pts)");
+    expect(full["tow.unit.state-troops"]).toBeUndefined();
+  });
+
   it("two Helblasters at 1,000 points break the army's 0–1 per 1,000", () => {
     let r = newRoster("Friday", context, empire, 1000, all);
     r = add(add(r, all, "tow.unit.helblaster-volley-gun"), all, "tow.unit.helblaster-volley-gun");

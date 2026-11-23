@@ -17,6 +17,7 @@ import { presetFromContext, withPreset } from "../../../context/game-config";
 
 export function PickupGameScreen({ data, nav, contextKey }: { data: AppData; nav: Nav; contextKey: string }) {
   const [, setChanged] = useState(0);
+  const [why, setWhy] = useState<string | null>(null); // the package whose "needed by" is showing
   const context = data.items.find((i): i is Context => i.kind === "context" && i.key === contextKey);
   if (!context) return <p>Not on the device any more.</p>;
   const byKey = new Map(data.items.map((i) => [i.key, i]));
@@ -93,7 +94,10 @@ export function PickupGameScreen({ data, nav, contextKey }: { data: AppData; nav
                   <input type="checkbox" checked={p.on} onChange={() => save(p.on ? offWithDependents(p.key) : switchOn(context, p.key, data.items))} />
                   <span>
                     {p.name} {describe(byKey.get(p.key), byKey)}
-                    {p.on && dependents(p.key).length > 0 && <span className="needed-flag" title="Switched on because these need it"> 🔗 needed by {dependents(p.key).map((k) => byKey.get(k)?.name ?? k).join(", ")}</span>}
+                    {p.on && dependents(p.key).length > 0 && (
+                      <button className="link needed-flag" aria-label="What needs it" onClick={(e) => (e.preventDefault(), setWhy(why === p.key ? null : p.key))}> 🔗</button>
+                    )}
+                    {why === p.key && <span className="needed-flag"> needed by {dependents(p.key).map((k) => byKey.get(k)?.name ?? k).join(", ")}</span>}
                   </span>
                 </label>
                 {listedOn(p.key) && listed.length > 1 && (

@@ -44,6 +44,7 @@ export type RosterView = {
   total: number;
   categories: CategoryView[];
   issues: Issue[]; // the roster's own (each unit's are on the unit too)
+  full: Record<string, string>; // entries that can't be added now (their limit is reached): unit key -> why
 };
 
 // --- What's in reach --------------------------------------------------------------------------
@@ -86,8 +87,9 @@ export function viewRoster(roster: Roster, items: Item[]): RosterView {
   const entries = entryUnits(armyList, reach, patches);
   for (const rule of rules) for (const limit of rule.limits.limits) checkArmyLimit(rule.name, limit, units, entries, allowed, roster.target, issues);
   checkEntryLimits(units, allowed, roster.target, issues);
+  const full = fullEntries(rules, units, entries, allowed, roster.target);
   for (const u of units) issues.push(...u.issues);
-  return { roster, armyList, units, total, categories, issues: dedupe(issues) };
+  return { roster, armyList, units, total, categories, issues: dedupe(issues), full };
 }
 
 function viewUnit(ru: RosterUnit, reach: Item[], patches: Patch[], categoryOf: Map<string, string>, slotKinds: Map<string, string>): UnitView {
@@ -260,20 +262,45 @@ function allowedBy(game: Game | undefined, items: Item[], context: Context | und
 
 // Every entry of the army list as it can be taken, with its category: what a limit's filter is
 // checked against when no unit of that entry is in the list yet.
-function entryUnits(armyList: ArmyList | undefined, reach: Item[], patches: Patch[]): Filterable[] {
-  const out: Filterable[] = [];
+type Entry = Filterable & { key: string; limits: Limit[] };
+
+function entryUnits(armyList: ArmyList | undefined, reach: Item[], patches: Patch[]): Entry[] {
+  const out: Entry[] = [];
   for (const e of armyList?.entries ?? []) {
     const unit = reach.find((i): i is Unit => i.kind === "unit" && i.key === e.unit);
-    if (unit) out.push(filterable(unitAsTaken(unit, reach, patches), e.category));
+    if (!unit) continue;
+    const taken = unitAsTaken(unit, reach, patches);
+    out.push({ ...filterable(taken, e.category), key: unit.key, limits: taken.limits });
   }
   return out;
+}
+
+// Entries whose limit is already reached, so another can't be added (owner, 23 Nov: "the second
+// shouldn't even be an option"): the entry's own "unit~0-1~…", or an army rule naming it, unit(A,B).
+function fullEntries(rules: CompositionRule[], units: UnitView[], entries: Entry[], allowed: Allowed, target: number): Record<string, string> {
+  const full: Record<string, string> = {};
+  const mark = (keys: string[], what: string, n: number, limit: Limit) => {
+    const range = allowed(limit);
+    if (range.max === null || n < range.max) return;
+    for (const key of keys) full[key] ??= `${what}: ${n} taken, ${allowedText(range.max, limit, target)}`;
+  };
+  for (const e of entries)
+    for (const limit of e.limits.filter((l) => l.counts === "unit"))
+      mark([e.key], e.name, units.filter((u) => u.rosterUnit.unit === e.key).length, limit);
+  for (const rule of rules)
+    for (const limit of rule.limits.limits.filter((l) => l.counts === "unit" && l.of)) {
+      const named = (name: string) => limit.of!.some((n) => matchName(n) === matchName(name));
+      const n = units.filter((u) => u.taken && named(u.taken.name)).length;
+      mark(entries.filter((e) => named(e.name)).map((e) => e.key), rule.name, n, limit);
+    }
+  return full;
 }
 
 function filterable(taken: UnitAsTaken, category: string): Filterable {
   return { name: taken.name, character: taken.character, troopType: taken.troopType?.type, category, rules: taken.rules.map((r) => r.name) };
 }
 
-function checkArmyLimit(ruleName: string, limit: Limit, units: UnitView[], entries: Filterable[], allowed: Allowed, target: number, issues: Issue[]): void {
+function checkArmyLimit(ruleName: string, limit: Limit, units: UnitView[], entries: Entry[], allowed: Allowed, target: number, issues: Issue[]): void {
   if (limit.counts === "points") return; // category percentages: done above
   const filter = readFilter(limit.where);
   for (const problem of filter.problems) issues.push({ severity: "warning", message: `${ruleName}: ${problem}`, units: [] });

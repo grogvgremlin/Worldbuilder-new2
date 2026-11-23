@@ -5,15 +5,20 @@
 // takes X out (what follows comes in); a plain list replaces the inherited one. Other fields: the
 // nearest one written wins. Design: design/races-and-units.md §1 (extends: store only what differs).
 //
+// Patches (src/rules/patches.ts) are applied after the entry they change, in order.
+//
 // Pure: worked out on every read.
 
-import type { Cost, Item, Limit, Option, OptionGroup, Options, Range, Slot, Term, Unit, UnitRow } from "../items/items";
+import type { Cost, Item, Limit, Option, OptionGroup, Options, Patch, PatchChange, Range, Slot, Stat, Stats, Term, Unit, UnitRow } from "../items/items";
+import { changesTo, patchCost, patchList, patchOptions, patchStat, patchStats, stepText } from "../rules/patches";
 import { matchName } from "../items/keys";
 
 export type UnitAsTaken = {
   unit: Unit;
   chain: Unit[]; // the unit, then what it's based on …
   name: string;
+  stats: Stats;
+  save?: Stat;
   cost?: Cost;
   size?: Range;
   troopType?: { type: string; character: boolean };
@@ -25,43 +30,68 @@ export type UnitAsTaken = {
   rulesOptions: OptionGroup[];
   limits: Limit[];
   character: boolean;
+  patched: string[]; // each patch step that changed it, in order: "Lances free: Empire Knights: Equipment Options Lances(0)"
 };
 
-export function unitAsTaken(unit: Unit, items: Item[]): UnitAsTaken {
+// `patches` are the patches in play, in order (src/rules/patches.ts): each one changing a unit in the
+// chain is applied straight after that unit's own entry, so a unit based on a patched one gets the
+// change too, unless it writes that cell itself.
+export function unitAsTaken(unit: Unit, items: Item[], patches: Patch[] = []): UnitAsTaken {
   const chain = inheritanceChain(unit, items);
   const rootFirst = [...chain].reverse();
-  const own = (pick: (r: UnitRow) => unknown) => chain.map((u) => pick(u.rows[0])).find((v) => v !== undefined);
+  const t: UnitAsTaken = { unit, chain, name: unit.name, stats: {}, equipment: [], rules: [], slots: [], slotRows: [], options: [], rulesOptions: [], limits: [], character: false, patched: [] };
 
-  let options: OptionGroup[] = [];
-  let rulesOptions: OptionGroup[] = [];
-  let rules: Term[] = [];
   for (const u of rootFirst) {
-    options = inheritOptions(options, u.rows[0].equipmentOptions);
-    rulesOptions = inheritOptions(rulesOptions, u.rows[0].rulesOptions);
-    rules = inheritRules(rules, u.rows[0].rules);
+    const own = u.rows[0];
+    t.stats = { ...t.stats, ...own.stats };
+    t.save = own.save ?? t.save;
+    t.cost = own.cost ?? t.cost;
+    t.size = own.size ?? t.size;
+    t.troopType = own.troopType ?? t.troopType;
+    if (own.equipment.length > 0) t.equipment = own.equipment;
+    t.rules = inheritRules(t.rules, own.rules);
+    t.options = inheritOptions(t.options, own.equipmentOptions);
+    t.rulesOptions = inheritOptions(t.rulesOptions, own.rulesOptions);
+    if (own.slots) t.slots = own.slots.none ? [] : own.slots.slots;
+    if (own.limits) t.limits = own.limits.none ? [] : own.limits.limits;
+    const ownSlotRows = u.rows.slice(1).filter((r) => r.slotCode);
+    t.slotRows = [...ownSlotRows, ...t.slotRows.filter((x) => !ownSlotRows.some((r) => r.slotCode === x.slotCode))];
+    for (const { patch, change } of changesTo(u, patches)) {
+      applyChange(t, change);
+      t.patched.push(stepText(patch, change));
+    }
   }
-  const slotsCell = chain.map((u) => u.rows[0].slots).find((s) => s !== undefined);
-  const slotRows: UnitRow[] = [];
-  for (const u of chain) for (const r of u.rows.slice(1)) if (r.slotCode && !slotRows.some((x) => x.slotCode === r.slotCode)) slotRows.push(r);
-  const troopType = own((r) => r.troopType) as UnitAsTaken["troopType"];
-  const equipment = (chain.map((u) => u.rows[0].equipment).find((e) => e.length > 0) ?? []) as Term[];
-  const limitsCell = chain.map((u) => u.rows[0].limits).find((l) => l !== undefined);
-  return {
-    unit,
-    chain,
-    name: unit.name,
-    cost: own((r) => r.cost) as Cost | undefined,
-    size: own((r) => r.size) as Range | undefined,
-    troopType,
-    equipment,
-    rules,
-    slots: slotsCell && !slotsCell.none ? slotsCell.slots : [],
-    slotRows,
-    options,
-    rulesOptions,
-    limits: limitsCell && !limitsCell.none ? limitsCell.limits : [],
-    character: troopType?.character ?? false,
-  };
+  t.character = t.troopType?.character ?? false;
+  return t;
+}
+
+// One patch row on the unit's own line, or on one of its command rows.
+function applyChange(t: UnitAsTaken, change: PatchChange): void {
+  const c = change.unit;
+  if (!c) return;
+  if (change.row) {
+    const at = t.slotRows.findIndex((r) => r.slotCode === change.row);
+    const row: UnitRow = at >= 0 ? structuredClone(t.slotRows[at]) : { type: "Slots-Upgrade", slotCode: change.row, stats: {}, equipment: [], rules: [], statuses: [] };
+    row.name = c.name ?? row.name;
+    row.stats = patchStats(row.stats, c.stats);
+    row.cost = patchCost(row.cost, c.cost);
+    row.equipment = patchList(row.equipment, c.equipment);
+    row.rules = patchList(row.rules, c.rules);
+    if (c.equipmentOptions) row.equipmentOptions = { groups: patchOptions(row.equipmentOptions?.groups ?? [], c.equipmentOptions) };
+    t.slotRows = at >= 0 ? t.slotRows.map((r, i) => (i === at ? row : r)) : [...t.slotRows, row];
+    return;
+  }
+  t.stats = patchStats(t.stats, c.stats);
+  if (c.save !== undefined) t.save = patchStat(t.save, c.save);
+  t.cost = patchCost(t.cost, c.cost);
+  t.size = c.size ?? t.size;
+  t.troopType = c.troopType ?? t.troopType;
+  t.equipment = patchList(t.equipment, c.equipment);
+  t.rules = patchList(t.rules, c.rules);
+  t.options = patchOptions(t.options, c.equipmentOptions);
+  t.rulesOptions = patchOptions(t.rulesOptions, c.rulesOptions);
+  if (c.slots) t.slots = c.slots.none ? [] : c.slots.slots;
+  if (c.limits) t.limits = c.limits.none ? [] : c.limits.limits;
 }
 
 function inheritanceChain(unit: Unit, items: Item[]): Unit[] {

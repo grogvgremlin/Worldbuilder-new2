@@ -2,9 +2,10 @@
 // The rows are exactly the sheet's (the same writers as a download), so the grid and the workbook
 // always agree. Data structure: rebuild/data-structure.md §9.
 
-import type { ArmyList, CompositionRule, Equipment, Item, Package, RaceProfile, SettingValue, SlotKind, Source, SpecialRule, Unit } from "../items/items";
+import type { ArmyList, CompositionRule, Equipment, Item, Package, Patch, RaceProfile, SettingValue, SlotKind, Source, SpecialRule, Unit } from "../items/items";
 import type { Row } from "../sheets/csv";
-import { TABS, type TabId } from "../packages/package-sheets";
+import { PATCH_TABS, TABS, type TabId } from "../packages/package-sheets";
+import { writePatchRows } from "../packages/patch-tabs";
 import * as tabs from "../packages/sheet-tabs";
 
 export const KIND_OF_TAB: Record<TabId, Item["kind"]> = {
@@ -16,6 +17,10 @@ export const KIND_OF_TAB: Record<TabId, Item["kind"]> = {
   equipment: "equipment",
   units: "unit",
   composition: "composition-rule",
+  "unit patches": "patch",
+  "equipment patches": "patch",
+  "rule patches": "patch",
+  "composition patches": "patch",
 };
 
 export type GridRow = { key: string; row: Row; first: boolean };
@@ -32,14 +37,16 @@ export function gridFor(pkg: Package, tab: TabId, byKey: Map<string, Item>): Gri
   const categoryOf = new Map((list?.entries ?? []).map((e) => [e.unit, e.category]));
   const rows: GridRow[] = [];
   for (const item of members.filter((i) => i.kind === KIND_OF_TAB[tab])) {
-    rowsOf(item, columns, categoryOf).forEach((row, i) => rows.push({ key: item.key, row, first: i === 0 }));
+    rowsOf(item, tab, columns, categoryOf).forEach((row, i) => rows.push({ key: item.key, row, first: i === 0 }));
   }
   const all = TABS.find((t) => t.id === tab)!.columns;
   return { columns: all.filter((c) => !HIDDEN.has(c) && rows.some((r) => (r.row[c] ?? "") !== "")), rows };
 }
 
-function rowsOf(item: Item, columns: tabs.PackageColumns, categoryOf: Map<string, string>): Row[] {
+function rowsOf(item: Item, tab: TabId, columns: tabs.PackageColumns, categoryOf: Map<string, string>): Row[] {
   switch (item.kind) {
+    case "patch":
+      return tab in PATCH_TABS ? writePatchRows(item as Patch, PATCH_TABS[tab as keyof typeof PATCH_TABS]) : [];
     case "source":
       return [tabs.writeSourceRow(item as Source)];
     case "setting":
@@ -66,6 +73,10 @@ export function tabCounts(pkg: Package, byKey: Map<string, Item>): { tab: TabId;
   return TABS.map((t) => ({
     tab: t.id,
     title: t.title,
-    count: pkg.members.filter((k) => byKey.get(k)?.kind === KIND_OF_TAB[t.id]).length,
+    count: pkg.members.filter((k) => {
+      const item = byKey.get(k);
+      if (item?.kind !== KIND_OF_TAB[t.id]) return false;
+      return item.kind !== "patch" || item.changes.some((c) => c.targetKind === PATCH_TABS[t.id as keyof typeof PATCH_TABS]);
+    }).length,
   })).filter((c) => c.count > 0);
 }

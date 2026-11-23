@@ -5,6 +5,7 @@
 
 import type { Row } from "../sheets/csv";
 import { COLUMNS } from "./sheet-tabs";
+import { PATCH_COLUMNS } from "./patch-tabs";
 
 // The tabs, in the order they're read (things a tab names come before it).
 export const TABS = [
@@ -16,6 +17,11 @@ export const TABS = [
   { id: "equipment", file: "equipment.csv", title: "Equipment", columns: COLUMNS.equipment },
   { id: "units", file: "units.csv", title: "Units", columns: COLUMNS.armyEntry },
   { id: "composition", file: "composition.csv", title: "Composition", columns: COLUMNS.armyEntry },
+  // Patches: changes to what's entered above (or in another package), in order.
+  { id: "unit patches", file: "unit-patches.csv", title: "Unit Patches", columns: PATCH_COLUMNS.unit },
+  { id: "equipment patches", file: "equipment-patches.csv", title: "Equipment Patches", columns: PATCH_COLUMNS.equipment },
+  { id: "rule patches", file: "rule-patches.csv", title: "Rule Patches", columns: PATCH_COLUMNS["special-rule"] },
+  { id: "composition patches", file: "composition-patches.csv", title: "Composition Patches", columns: PATCH_COLUMNS["composition-rule"] },
 ] as const;
 
 export type TabId = (typeof TABS)[number]["id"];
@@ -33,6 +39,9 @@ export type GameSheets = {
   game?: Record<string, unknown>;
   packages: PackageSheets[];
 };
+
+// Which kind of change each patch tab holds.
+export const PATCH_TABS = { "unit patches": "unit", "equipment patches": "equipment", "rule patches": "special-rule", "composition patches": "composition-rule" } as const;
 
 export function tabByFile(file: string) {
   return TABS.find((t) => t.file === file);

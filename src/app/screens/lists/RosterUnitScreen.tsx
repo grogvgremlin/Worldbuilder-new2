@@ -67,6 +67,12 @@ export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppDa
         );
       })}
 
+      {u.taken && u.taken.patched.length > 0 && (
+        <div className="field block">
+          <span className="label">Patches</span>
+          <ul className="plain">{u.taken.patched.map((p, i) => <li key={i} className="sub">{p}</li>)}</ul>
+        </div>
+      )}
       <div className="field block">
         <span className="label">Cost</span>
         <ul className="plain">{u.breakdown.map((b, i) => <li key={i}>{b}</li>)}</ul>

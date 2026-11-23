@@ -1,8 +1,10 @@
 // A context in Pick-up, in the order you set one up (owner, 22 Nov): the game; its books, FAQs (a
 // book brings its latest FAQ) and house rules; settings, folded — Basic (composition) and Advanced
-// (the game's settings); then start a list, and the lists already in it.
+// (the game's settings); then start a list, and the lists already in it. Under each package, its
+// patches, each switched on or off on its own (owner, 23 Nov).
 import { useState } from "react";
-import type { ArmyList, Context, Item, Package, Roster } from "../../../items/items";
+import type { ArmyList, Context, Item, Package, Patch, Roster } from "../../../items/items";
+import { patchesInPlay } from "../../../rules/patches";
 import { chooseComposition, copyContext, groupFor, moveInContext, offered, readContext, removeFromContext, switchOff, switchOn, type Group, type PackageInContext } from "../../../context/context";
 import { isCompositionSet } from "../../../library/package-types";
 import { armyListsIn, newRoster, viewRoster } from "../../../lists/roster";
@@ -33,6 +35,36 @@ export function PickupGameScreen({ data, nav, contextKey }: { data: AppData; nav
   const listedOn = (key: string) => [...context.books, ...context.faqs, ...context.house, ...context.campaign].some((p) => p.package === key);
   const compositionSets = data.items.filter((i): i is Package => i.kind === "package" && i.game === context.game && isCompositionSet(i, byKey));
   const chosenComposition = context.composition.filter((c) => c.on).map((c) => c.package);
+
+  // A package's patches, each switched on or off here on its own (the package stays on).
+  const patches = patchesInPlay(context, data.items);
+  const whyOff = new Map(patches.skipped.map((x) => [x.patch.key, x.why]));
+  const toggleCard = (key: string) => {
+    const off = context.off ?? [];
+    return save({ ...context, off: off.includes(key) ? off.filter((k) => k !== key) : [...off, key] });
+  };
+  const patchesOf = (pkg: Package | undefined) => {
+    const list = (pkg?.members ?? []).map((k) => byKey.get(k)).filter((i): i is Patch => i?.kind === "patch");
+    if (list.length === 0) return null;
+    return (
+      <details className="cards-in">
+        <summary className="sub">{list.length === 1 ? "1 patch" : `${list.length} patches`}{list.some((x) => whyOff.has(x.key)) ? `, ${list.filter((x) => whyOff.has(x.key)).length} off` : ""}</summary>
+        <ul className="plain">
+          {list.map((patch) => (
+            <li key={patch.key}>
+              <label>
+                <input type="checkbox" checked={!(context.off ?? []).includes(patch.key)} onChange={() => toggleCard(patch.key)} />
+                <span>
+                  <button className="link" onClick={(e) => (e.preventDefault(), nav.open({ name: "item", key: patch.key }))}>{patch.name}</button>
+                  {whyOff.has(patch.key) && whyOff.get(patch.key) !== "switched off here" && <span className="sub"> · {whyOff.get(patch.key)}</span>}
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      </details>
+    );
+  };
 
   const section = (group: Group, title: string) => {
     const here = shown.filter((p) => groupOf(p) === group);
@@ -65,6 +97,7 @@ export function PickupGameScreen({ data, nav, contextKey }: { data: AppData; nav
                   {p.name} <span className="sub">needed by {p.neededBy.join(", ")}</span>
                 </span>
               )}
+              {p.on && patchesOf(byKey.get(p.key) as Package | undefined)}
             </li>
           ))}
         </ul>
@@ -100,7 +133,7 @@ export function PickupGameScreen({ data, nav, contextKey }: { data: AppData; nav
           ))}
         </ol>
       </details>
-      {view.warnings.length > 0 && <ul className="plain problems">{view.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>}
+      {[...view.warnings, ...patches.problems].length > 0 && <ul className="plain problems">{[...view.warnings, ...patches.problems].map((w, i) => <li key={i}>{w}</li>)}</ul>}
       {[...context.books, ...context.faqs, ...context.house].some((p) => !p.on) && (
         <p className="sub">
           Switched off here:{" "}

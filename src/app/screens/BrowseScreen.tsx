@@ -7,7 +7,7 @@ import type { AppData } from "../app-data";
 import type { Nav } from "../App";
 import { nameOf } from "./GameScreen";
 
-export type BrowseKind = "special-rule" | "equipment" | "unit" | "race-profile" | "source";
+export type BrowseKind = "special-rule" | "equipment" | "unit" | "race-profile" | "source" | "patch";
 
 export const BROWSE_KINDS: { kind: BrowseKind; title: string }[] = [
   { kind: "special-rule", title: "Rules" },
@@ -15,6 +15,7 @@ export const BROWSE_KINDS: { kind: BrowseKind; title: string }[] = [
   { kind: "unit", title: "Units" },
   { kind: "race-profile", title: "Races" },
   { kind: "source", title: "Bibliography" },
+  { kind: "patch", title: "Patches" },
 ];
 
 type GroupBy = "book" | "source" | "type" | "status";
@@ -70,5 +71,6 @@ function groupLabel(item: Item, by: GroupBy, all: Item[], categoryOf: Map<string
   if (item.kind === "unit") return item.class === "mount" ? "Mount" : categoryOf.get(item.key) ?? "No category";
   if (item.kind === "race-profile") return item.race;
   if (item.kind === "source") return item.sourceKind ?? "No kind given";
+  if (item.kind === "patch") return "Changes " + [...new Set(item.changes.map((c) => c.targetKind.replace("-", " ")))].join(", ");
   return "—";
 }

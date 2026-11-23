@@ -8,10 +8,11 @@
 //
 // Pure: a roster and the library in, a view out. Magic items and other allowances aren't picked yet.
 
-import type { ArmyList, CompositionRule, Context, Cost, Game, Item, Limit, OptionGroup, Roster, RosterUnit, SlotKind, Unit } from "../items/items";
+import type { ArmyList, CompositionRule, Context, Cost, Game, Item, Limit, OptionGroup, Patch, Roster, RosterUnit, SlotKind, Unit } from "../items/items";
 import { applyScaling, settingForLimit, settingValue } from "../settings/settings";
 import { matchName } from "../items/keys";
 import { readContext } from "../context/context";
+import { patched, patchesInPlay } from "../rules/patches";
 import { optionKey, unitAsTaken, type UnitAsTaken } from "./unit-as-taken";
 
 export type Issue = { severity: "illegal" | "warning"; message: string; units: string[] };
@@ -44,9 +45,12 @@ export type RosterView = {
 // --- What's in reach --------------------------------------------------------------------------
 
 // Every item in a package switched on in the roster's context.
-export function inReach(context: Context, items: Item[]): Item[] {
+// A card switched off in the set-up isn't; equipment, rules and composition rules come with the
+// patches in play already made (units take theirs in unitAsTaken, after their own entry).
+export function inReach(context: Context, items: Item[], patches: Patch[] = patchesInPlay(context, items).applied): Item[] {
   const on = readContext(context, items).on;
-  return items.filter((i) => i.homePackage !== undefined && on.has(i.homePackage));
+  const off = new Set(context.off ?? []);
+  return items.filter((i) => i.homePackage !== undefined && on.has(i.homePackage) && !off.has(i.key)).map((i) => patched(i, patches));
 }
 
 // The army lists a context offers.
@@ -58,12 +62,13 @@ export function armyListsIn(context: Context, items: Item[]): ArmyList[] {
 
 export function viewRoster(roster: Roster, items: Item[]): RosterView {
   const context = items.find((i): i is Context => i.kind === "context" && i.key === roster.context);
-  const reach = context ? inReach(context, items) : [];
+  const patches = context ? patchesInPlay(context, items).applied : [];
+  const reach = context ? inReach(context, items, patches) : [];
   const armyList = reach.find((i): i is ArmyList => i.kind === "army-list" && i.key === roster.armyList);
   const categoryOf = new Map((armyList?.entries ?? []).map((e) => [e.unit, e.category]));
   const slotKinds = new Map(reach.filter((i): i is SlotKind => i.kind === "slot-kind").map((s) => [s.code, s.name]));
 
-  const units = roster.units.map((ru) => viewUnit(ru, reach, categoryOf, slotKinds));
+  const units = roster.units.map((ru) => viewUnit(ru, reach, patches, categoryOf, slotKinds));
   const total = units.reduce((n, u) => n + u.points, 0);
   const issues: Issue[] = [];
   if (!context) issues.push({ severity: "warning", message: "its pick-up game isn't on the device", units: [] });
@@ -80,14 +85,14 @@ export function viewRoster(roster: Roster, items: Item[]): RosterView {
   return { roster, armyList, units, total, categories, issues: dedupe(issues) };
 }
 
-function viewUnit(ru: RosterUnit, reach: Item[], categoryOf: Map<string, string>, slotKinds: Map<string, string>): UnitView {
+function viewUnit(ru: RosterUnit, reach: Item[], patches: Patch[], categoryOf: Map<string, string>, slotKinds: Map<string, string>): UnitView {
   const unit = reach.find((i): i is Unit => i.kind === "unit" && i.key === ru.unit);
   const view: UnitView = { rosterUnit: ru, taken: null, category: categoryOf.get(ru.unit) ?? "Other", points: 0, breakdown: [], choices: [], issues: [] };
   if (!unit) {
     view.issues.push({ severity: "warning", message: "this unit isn't in any package switched on", units: [ru.id] });
     return view;
   }
-  const taken = unitAsTaken(unit, reach);
+  const taken = unitAsTaken(unit, reach, patches);
   view.taken = taken;
   view.choices = choicesFor(taken, slotKinds);
 
@@ -315,7 +320,8 @@ export function newRoster(name: string, context: Context, armyList: ArmyList, ta
 
 // Adds a unit at its smallest size, with any required choice that has only one option taken.
 export function addUnit(roster: Roster, unit: Unit, items: Item[]): Roster {
-  const taken = unitAsTaken(unit, items);
+  const context = items.find((i): i is Context => i.kind === "context" && i.key === roster.context);
+  const taken = unitAsTaken(unit, items, context ? patchesInPlay(context, items).applied : []);
   const size = taken.size?.min ?? 1;
   let n = roster.units.length + 1;
   while (roster.units.some((u) => u.id === `u${n}`)) n++;

@@ -41,10 +41,10 @@ export const COLUMNS = {
 };
 
 // The text that marks a rulebook item not yet entered (the data repo's convention).
-const NOT_ENTERED = "rulebook: not entered";
+export const NOT_ENTERED = "rulebook: not entered";
 
 // Reads cells with a problem list that knows the row and column it's in.
-function cellReader(ctx: TabContext, rowNumber: number) {
+export function cellReader(ctx: TabContext, rowNumber: number) {
   return function at<T>(column: string, read: (problems: string[]) => T): T {
     const local: string[] = [];
     const value = read(local);
@@ -53,7 +53,7 @@ function cellReader(ctx: TabContext, rowNumber: number) {
   };
 }
 
-function readStats(row: Row): Stats {
+export function readStats(row: Row): Stats {
   const stats: Stats = {};
   for (const s of STATS) {
     const stat = v.readStat(row[s]);
@@ -62,12 +62,12 @@ function readStats(row: Row): Stats {
   return stats;
 }
 
-function writeStats(stats: Stats, row: Row): void {
+export function writeStats(stats: Stats, row: Row): void {
   for (const s of STATS) row[s] = v.writeStat(stats[s]);
 }
 
 // Only fields that have a value: a blank cell is an absent field.
-function compact<T extends object>(record: T): T {
+export function compact<T extends object>(record: T): T {
   for (const k of Object.keys(record) as (keyof T)[]) if (record[k] === undefined) delete record[k];
   return record;
 }
@@ -323,7 +323,7 @@ export function readArmyEntryRows(rows: Row[], ctx: TabContext, categories: stri
   return { units, armyList, composition };
 }
 
-function readUnitRow(row: Row, at: ReturnType<typeof cellReader>): UnitRow {
+export function readUnitRow(row: Row, at: ReturnType<typeof cellReader>): UnitRow {
   return compact<UnitRow>({
     type: row["Type"].trim(),
     name: v.readText(row["Name"]),

@@ -2,11 +2,12 @@
 // Data structure: rebuild/data-structure.md §2–5. Names are matched afterwards, across the whole
 // library, by `refreshLibrary` (library.ts), which also makes the stubs.
 
-import type { ArmyList, CompositionRule, Equipment, Game, GamePreset, GameSetting, Item, Package, RaceProfile, SettingValue, SlotKind, Source, SpecialRule, Unit } from "../items/items";
+import type { ArmyList, CompositionRule, Equipment, Game, GamePreset, GameSetting, Item, Package, Patch, RaceProfile, SettingValue, SlotKind, Source, SpecialRule, Unit } from "../items/items";
 import { slug } from "../items/keys";
 import type { Row } from "../sheets/csv";
-import { TABS, type GameSheets, type PackageSheets, type TabId } from "./package-sheets";
+import { PATCH_TABS, TABS, type GameSheets, type PackageSheets, type TabId } from "./package-sheets";
 import * as tabs from "./sheet-tabs";
+import { readPatchRows, writePatchRows } from "./patch-tabs";
 
 export type ImportResult = { items: Item[]; problems: tabs.Problem[] };
 
@@ -61,12 +62,17 @@ function readPackageTabs(sheet: PackageSheets, pkg: Package, game: Game, problem
   const ctx: tabs.TabContext = { game: game.shortName, packageKey: pkg.key, packageName: pkg.name, file: "", problems };
   const items: Item[] = [];
   const army: { list: ArmyList | null } = { list: null };
+  const patches = new Map<string, Patch>(); // by name: rows sharing a name are one patch, across tabs
   for (const tab of TABS) {
     const typed = sheet.tabs[tab.id];
     if (!typed || typed.length === 0) continue;
     // Every column present, blank where the upload left it out.
     const rows = typed.map((r) => Object.fromEntries(tab.columns.map((c) => [c, r[c] ?? ""])));
     ctx.file = `${sheet.folder}/${tab.file}`;
+    if (tab.id in PATCH_TABS) {
+      readPatchRows(PATCH_TABS[tab.id as keyof typeof PATCH_TABS], rows, ctx, patches);
+      continue;
+    }
     for (const item of readTab(tab.id, rows, ctx, game.categories, (list) => (army.list = mergeArmyList(army.list, list)))) {
       if (item.kind === "composition-rule" && army.list) army.list.composition.push(item.key);
       pkg.members.push(item.key);
@@ -76,6 +82,10 @@ function readPackageTabs(sheet: PackageSheets, pkg: Package, game: Game, problem
   if (army.list) {
     pkg.members.unshift(army.list.key);
     items.push(army.list);
+  }
+  for (const patch of patches.values()) {
+    pkg.members.push(patch.key);
+    items.push(patch);
   }
   return items;
 }
@@ -203,6 +213,7 @@ export function exportPackage(pkg: Package, byKey: Map<string, Item>): PackageSh
   put("equipment", ofKind("equipment").map((i) => tabs.writeEquipmentRow(i as Equipment)));
   put("units", ofKind("unit").flatMap((u) => tabs.writeUnitRows(u as Unit, categoryOf.get(u.key), columns)));
   put("composition", ofKind("composition-rule").map((c) => tabs.writeCompositionRow(c as CompositionRule, columns)));
+  for (const [id, kind] of Object.entries(PATCH_TABS)) put(id as TabId, ofKind("patch").flatMap((p) => writePatchRows(p as Patch, kind)));
 
   const info = dropUndefined<Record<string, unknown>>({
     package: pkg.name,

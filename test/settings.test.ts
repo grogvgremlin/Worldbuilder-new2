@@ -60,8 +60,8 @@ describe("where a setting's value comes from", () => {
       r = toggleChoice(r, id, g, g.choices[0]);
     }
     const messages = () => viewRoster(r, [...all, ctx]).issues.map((i) => i.message);
-    expect(messages()).not.toContain("Empire Knights (rules options): 2 taken, 0–1 per 1,000 pts"); // full: 2 allowed
+    expect(messages()).not.toContain("Empire Knights with a special rule option: 2 taken, at most 1 at 2,100 pts (0–1 per 1,000 pts)"); // full: 2 allowed
     r = { ...r, settings: { [name]: "full(target / 2000)" } };
-    expect(messages()).toContain("Empire Knights (rules options): 2 taken, 0–1 per 1,000 pts");
+    expect(messages()).toContain("Empire Knights with a special rule option: 2 taken, at most 1 at 2,100 pts (0–1 per 1,000 pts)");
   });
 });

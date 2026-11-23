@@ -7,6 +7,7 @@ import { inReach } from "../../../lists/roster";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { SwipeRow } from "../../swipe";
+import { NumberBox } from "../../number-box";
 import { SettingsPanel } from "./SettingsPanel";
 import type { Context, Game } from "../../../items/items";
 
@@ -32,7 +33,7 @@ export function RosterScreen({ data, nav, rosterKey }: { data: AppData; nav: Nav
       <p className="sub">{view.armyList?.name}</p>
       <div className={"total" + (view.total > roster.target ? " over" : "")}>
         <b>{view.total}</b> of{" "}
-        <input type="number" inputMode="numeric" value={roster.target} onChange={(e) => save({ ...roster, target: Number(e.target.value) || 0 })} /> pts
+        <NumberBox value={roster.target} min={0} onChange={(target) => save({ ...roster, target })} /> pts
       </div>
       <ul className="plain categories">
         {view.categories.map((c) => (
@@ -63,11 +64,15 @@ export function RosterScreen({ data, nav, rosterKey }: { data: AppData; nav: Nav
       {sections.map((section) => {
         const inSection = view.units.filter((u) => u.category === section);
         const points = inSection.reduce((n, u) => n + u.points, 0);
+        // Red when the list falls short here: its own limit, or a rule about this category's units.
+        const about = view.issues.filter((i) => i.categories?.includes(section));
+        const bad = about.length > 0 || view.categories.some((c) => c.category === section && !c.ok);
         return (
           <div key={section}>
-            <h2>
+            <h2 className={bad ? "bad" : ""}>
               {section} <span className="sub">{points} pts</span>
             </h2>
+            {about.length > 0 && <p className="section-issues">{about.map((i) => i.message).join(" · ")}</p>}
             <ul className="list">
               {inSection.map((u) => (
                 <li key={u.rosterUnit.id}>

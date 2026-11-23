@@ -293,6 +293,26 @@ export const Equipment = z.strictObject({
 });
 export type Equipment = z.infer<typeof Equipment>;
 
+// A magic item: kept apart from ordinary equipment (owner, 23 Nov), always with a type, because the
+// rules about them go by type ("one of each type per bearer"). Its type is one the game's rules name
+// (magic weapon, magic armour, talisman, arcane item, enchanted item, magic standard …).
+// `extremelyCommon`: may be taken more than once in an army (written with a trailing * on its name).
+export const MagicItem = z.strictObject({
+  ...common,
+  kind: z.literal("magic-item"),
+  type: z.string(),
+  extremelyCommon: z.boolean(),
+  countsAs: z.array(Term), // Armour of Fortune counts as Heavy Armour
+  stats: Stats,
+  save: Stat.optional(),
+  range: z.string().optional(),
+  armourPiercing: z.string().optional(),
+  rules: z.array(Term), // incl. Only(...) / MayBe(...): who may take it
+  text: z.string().optional(),
+  cost: Cost.optional(),
+});
+export type MagicItem = z.infer<typeof MagicItem>;
+
 // A special rule printed in a book.
 export const SpecialRule = z.strictObject({
   ...common,
@@ -456,6 +476,6 @@ export const Roster = z.strictObject({
 });
 export type Roster = z.infer<typeof Roster>;
 
-export const Item = z.discriminatedUnion("kind", [Game, Package, RaceProfile, Unit, Equipment, SpecialRule, SlotKind, ArmyList, CompositionRule, Patch, Source, SettingValue, Sandbox, Context, Roster]);
+export const Item = z.discriminatedUnion("kind", [Game, Package, RaceProfile, Unit, Equipment, MagicItem, SpecialRule, SlotKind, ArmyList, CompositionRule, Patch, Source, SettingValue, Sandbox, Context, Roster]);
 export type Item = z.infer<typeof Item>;
 export type ItemKind = Item["kind"];

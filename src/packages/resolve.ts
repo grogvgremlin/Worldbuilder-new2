@@ -6,7 +6,7 @@
 import type { Item, Option, Options, Package, Term, Unit } from "../items/items";
 import { itemKey, matchName } from "../items/keys";
 
-export type Kind = "unit" | "equipment" | "special-rule" | "slot-kind";
+export type Kind = "unit" | "equipment" | "magic-item" | "special-rule" | "slot-kind";
 
 // Every item of the matchable kinds, by kind and by matched name (including aliases).
 export class NameIndex {
@@ -21,6 +21,7 @@ export class NameIndex {
         this.add("equipment", item.name, item);
         for (const alias of item.aliases) this.add("equipment", alias, item);
       }
+      if (item.kind === "magic-item") this.add("magic-item", item.name, item);
       if (item.kind === "special-rule") this.add("special-rule", item.name, item);
       if (item.kind === "slot-kind") this.add("slot-kind", item.code, item);
     }
@@ -59,7 +60,7 @@ export function resolveNames(items: Item[], index: NameIndex): Unmatched[] {
     if (term.item === null) unmatched.push({ name: term.name, where, inPackage, kinds });
   };
   const terms = (list: Term[] | undefined, kinds: Kind[], where: string) => list?.forEach((t) => look(t, kinds, where));
-  const equipmentKinds = (t: Term | Option): Kind[] => (t.as === "Mount" ? ["unit"] : ["equipment", "unit"]);
+  const equipmentKinds = (t: Term | Option): Kind[] => (t.as === "Mount" ? ["unit"] : ["equipment", "magic-item", "unit"]);
 
   for (const item of items) {
     const where = item.name;
@@ -82,6 +83,10 @@ export function resolveNames(items: Item[], index: NameIndex): Unmatched[] {
       terms(item.rules.filter(isRuleName), ["special-rule"], where + ", rules");
     }
     if (item.kind === "race-profile") terms(item.rules.filter(isRuleName), ["special-rule"], where + ", rules");
+    if (item.kind === "magic-item") {
+      terms(item.countsAs, ["equipment"], where + ", counts as");
+      terms(item.rules.filter(isRuleName), ["special-rule"], where + ", rules");
+    }
     if (item.kind === "patch") {
       for (const change of item.changes) {
         // What a patch changes must already exist: no stub is made for it (the roster says it's missing).
@@ -164,7 +169,7 @@ export function referencesOf(item: Item): string[] {
       row.slots?.slots.forEach((s) => out.push(s.item));
     }
   }
-  if (item.kind === "equipment") (terms(item.countsAs), terms(item.rules));
+  if (item.kind === "equipment" || item.kind === "magic-item") (terms(item.countsAs), terms(item.rules));
   if (item.kind === "race-profile") terms(item.rules);
   if (item.kind === "slot-kind") terms(item.equipment);
   if (item.kind === "patch")

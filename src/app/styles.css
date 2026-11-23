@@ -186,3 +186,4 @@ h2.bad { color: #b3261e; }
 .needed-flag { color: var(--muted); font-size: .85rem; }
 .why-mark { font-size: .85rem; }
 h2 .sub { text-transform: none; letter-spacing: normal; }
+.choice.unavailable { opacity: .55; } .allowance { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }

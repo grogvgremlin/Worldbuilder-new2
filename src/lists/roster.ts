@@ -6,24 +6,29 @@
 // Build-log Part B decision 15 (limits: what~amount~per 1,000 of the roster target; an army rule wins
 // over a unit's own); rebuild build log (composition sets chosen per context).
 //
-// Pure: a roster and the library in, a view out. Magic items and other allowances aren't picked yet.
+// Pure: a roster and the library in, a view out. Magic items are picked through allowances
+// (src/lists/magic-items.ts).
 
-import type { ArmyList, CompositionRule, Context, Cost, Game, Item, Limit, OptionGroup, Patch, Roster, RosterUnit, SlotKind, Unit } from "../items/items";
+import type { ArmyList, CompositionRule, Context, Cost, Game, Item, Limit, MagicItem, OptionGroup, Patch, Roster, RosterUnit, SlotKind, Unit } from "../items/items";
 import { applyScaling, settingForLimit, settingValue } from "../settings/settings";
 import { matchName } from "../items/keys";
 import { readContext } from "../context/context";
 import { patched, patchesInPlay } from "../rules/patches";
 import { optionKey, unitAsTaken, type UnitAsTaken } from "./unit-as-taken";
 import { passesFilter, readFilter, type Filterable } from "./unit-filter";
+import { itemPick, itemRuleIssues, itemsForAllowance, notForBearer, readItemPick, type PickedItem } from "./magic-items";
 
 // `units`: the units it's about (marked on the list); `categories`: the army categories it's about
 // (their headings go red), e.g. "no General" on Characters, "fewer than three units" on Core, Special, Rare.
-export type Issue = { severity: "illegal" | "warning"; message: string; units: string[]; categories?: string[] };
+// `about: "items"`: an issue about magic items (the item picker won't offer what would cause one).
+export type Issue = { severity: "illegal" | "warning"; message: string; units: string[]; categories?: string[]; about?: "items" };
 
 // A choice the unit offers: an option in a group, or a command slot.
 export type Choice = { pick: string; label: string; costText: string; cost?: Cost };
 // `full`: the group's limit is reached by other units, so its choices aren't offered here (the reason).
-export type ChoiceGroup = { where: string; title: string; required: boolean; oneOf: boolean; choices: Choice[]; allowance?: string; full?: string };
+// An allowance: points to spend on items of some types ("Magic Items: up to 50 pts").
+export type Allowance = { name: string; budget: number | null; most: number | null; text: string };
+export type ChoiceGroup = { where: string; title: string; required: boolean; oneOf: boolean; choices: Choice[]; allowance?: Allowance; full?: string };
 
 export type UnitView = {
   rosterUnit: RosterUnit;
@@ -88,6 +93,7 @@ export function viewRoster(roster: Roster, items: Item[]): RosterView {
   const entries = entryUnits(armyList, reach, patches);
   for (const rule of rules) for (const limit of rule.limits.limits) checkArmyLimit(rule.name, limit, units, entries, allowed, roster.target, issues);
   checkEntryLimits(units, allowed, roster.target, issues);
+  for (const found of itemRuleIssues(pickedItems(units, reach), rules)) issues.push({ severity: "illegal", ...found, about: "items" });
   const full = fullEntries(rules, units, entries, allowed, roster.target);
   describeLimits(units, rules, allowed, roster.target);
   for (const u of units) issues.push(...u.issues);
@@ -113,7 +119,7 @@ function viewUnit(ru: RosterUnit, reach: Item[], patches: Patch[], categoryOf: M
     view.breakdown.push(taken.cost.per === "model" ? `${ru.size} × ${each} = ${each * n}` : `${taken.name} ${each}`);
   }
   // What was picked.
-  for (const pick of [...ru.slots.map((s) => `command|${s}`), ...ru.picks]) {
+  for (const pick of [...ru.slots.map((s) => `command|${s}`), ...ru.picks.filter((p) => !readItemPick(p))]) {
     const choice = findChoice(view.choices, pick);
     if (!choice) {
       view.issues.push({ severity: "warning", message: `“${pick.split("|")[1]}” isn't offered any more`, units: [ru.id] });
@@ -125,8 +131,49 @@ function viewUnit(ru: RosterUnit, reach: Item[], patches: Patch[], categoryOf: M
     view.points += cost.points * n;
     view.breakdown.push(cost.per === "model" ? `${choice.label}: ${ru.size} × ${cost.points} = ${cost.points * n}` : `${choice.label} +${cost.points}`);
   }
+  costItems(view, reach);
   view.issues.push(...unitIssues(ru, taken, view.choices));
   return view;
+}
+
+// The magic items picked: each costed, and each allowance kept to its budget and number of items.
+function costItems(view: UnitView, reach: Item[]): void {
+  const ru = view.rosterUnit;
+  const spent = new Map<string, { allowance: Allowance; points: number; count: number }>();
+  for (const pick of ru.picks) {
+    const p = readItemPick(pick);
+    if (!p) continue;
+    const group = view.choices.find((g) => g.where === p.where && g.allowance?.name === p.allowance);
+    const slotOff = p.where.startsWith("slot:") && !ru.slots.includes(p.where.slice(5));
+    const item = reach.find((i): i is MagicItem => i.kind === "magic-item" && i.key === p.itemKey);
+    if (!group || slotOff || !item) {
+      view.issues.push({ severity: "warning", message: `“${item?.name ?? p.itemKey}” isn't offered any more (${p.allowance})`, units: [ru.id] });
+      continue;
+    }
+    const points = item.cost?.points ?? 0;
+    view.points += points;
+    view.breakdown.push(`${item.name}${p.where.startsWith("slot:") ? ` (${p.where.slice(5)})` : ""} ${points}`);
+    const key = `${p.where}|${p.allowance}`;
+    const s = spent.get(key) ?? { allowance: group.allowance!, points: 0, count: 0 };
+    spent.set(key, { ...s, points: s.points + points, count: s.count + 1 });
+  }
+  for (const [key, s] of spent) {
+    const who = key.startsWith("slot:") ? ` (${key.split("|")[0].slice(5)})` : "";
+    if (s.allowance.budget !== null && s.points > s.allowance.budget) view.issues.push({ severity: "illegal", message: `${view.taken?.name}${who}: ${s.points} pts of ${s.allowance.name}, up to ${s.allowance.budget}`, units: [ru.id], about: "items" });
+    if (s.allowance.most !== null && s.count > s.allowance.most) view.issues.push({ severity: "illegal", message: `${view.taken?.name}${who}: ${s.count} ${s.allowance.name}, at most ${s.allowance.most}`, units: [ru.id], about: "items" });
+  }
+}
+
+// Every magic item picked in the list, with who bears it.
+function pickedItems(units: UnitView[], reach: Item[]): PickedItem[] {
+  const out: PickedItem[] = [];
+  for (const u of units)
+    for (const pick of u.rosterUnit.picks) {
+      const p = readItemPick(pick);
+      const item = p && reach.find((i): i is MagicItem => i.kind === "magic-item" && i.key === p.itemKey);
+      if (p && item) out.push({ unitId: u.rosterUnit.id, bearer: `${u.rosterUnit.id}|${p.where}`, item });
+    }
+  return out;
 }
 
 // --- Choices a unit offers ----------------------------------------------------------------------
@@ -152,11 +199,12 @@ function choicesFor(taken: UnitAsTaken, slotKinds: Map<string, string>): ChoiceG
 
 function groupChoices(group: OptionGroup, where: string, title: string): ChoiceGroup {
   const choices: Choice[] = [];
-  let allowance: string | undefined;
+  let allowance: Allowance | undefined;
   for (const option of group.options) {
-    // An allowance to spend on items of a kind (Magic Items up to 50 pts): shown, not picked yet.
+    // An allowance to spend on items of some types (Magic Items up to 50 pts): items are picked for it.
     if (option.budget) {
-      allowance = `${option.name}: up to ${option.budget.max ?? "any"} pts (picking items comes later)`;
+      const most = option.count?.max ?? null;
+      allowance = { name: option.name, budget: option.budget.max, most, text: `${option.name}: ${option.budget.max === null ? "any points" : `up to ${option.budget.max} pts`}${most === 1 ? ", one item" : most !== null ? `, up to ${most} items` : ""}` };
       continue;
     }
     choices.push({ pick: `${where}|${optionKey(option)}`, label: optionKey(option), costText: costText(option.cost), cost: option.cost });
@@ -307,6 +355,8 @@ function filterable(taken: UnitAsTaken, category: string): Filterable {
 
 function checkArmyLimit(ruleName: string, limit: Limit, units: UnitView[], entries: Entry[], allowed: Allowed, target: number, issues: Issue[]): void {
   if (limit.counts === "points") return; // category percentages: done above
+  const countsUnits = limit.counts === "unit" || limit.counts === "units" || matchName(limit.counts) === "general";
+  if (!countsUnits) return; // magic items and the like: checked elsewhere
   const filter = readFilter(limit.where);
   for (const problem of filter.problems) issues.push({ severity: "warning", message: `${ruleName}: ${problem}`, units: [] });
   const passes = (f: Filterable) => passesFilter(f, filter) && (!limit.of || limit.of.some((n) => matchName(n) === matchName(f.name)));
@@ -338,7 +388,8 @@ function checkEntryLimits(units: UnitView[], allowed: Allowed, target: number, i
       let counted: UnitView[] = [];
       if (limit.counts === "unit") counted = entry;
       else if (limit.counts === "rules options") counted = entry.filter((u) => u.rosterUnit.picks.some((p) => p.startsWith("rules options|")));
-      else continue; // limits on a slot's items wait for magic items
+      else if (limit.of) counted = entry.filter((u) => hasSlotItem(u, limit.counts, limit.of!)); // SB(Magic Standard): units whose SB took one
+      else continue;
       const range = allowed(limit);
       const what = limit.counts === "rules options" ? `${taken.name} with a special rule option` : taken.name;
       report(what, counted, range, limit, target, issues);
@@ -353,6 +404,15 @@ function checkEntryLimits(units: UnitView[], allowed: Allowed, target: number, i
         }
     }
   }
+}
+
+// Has this unit's command row with this code (SB) taken an item through one of these allowances?
+function hasSlotItem(u: UnitView, code: string, allowances: string[]): boolean {
+  const rowName = u.taken?.slotRows.find((r) => matchName(r.slotCode ?? "") === matchName(code))?.name;
+  return !!rowName && u.rosterUnit.picks.some((pick) => {
+    const p = readItemPick(pick);
+    return !!p && p.where === `slot:${rowName}` && allowances.some((a) => matchName(a) === matchName(p.allowance));
+  });
 }
 
 function report(what: string, counted: UnitView[], range: { min: number | null; max: number | null }, limit: Limit, target: number, issues: Issue[], categories: string[] = []): void {
@@ -375,7 +435,8 @@ function describeLimits(units: UnitView[], rules: CompositionRule[], allowed: Al
     for (const limit of u.taken.limits) {
       if (limit.counts === "unit") line("This entry", limit, sameEntry.length);
       else if (limit.counts === "rules options") line("Units with a special rule option", limit, sameEntry.filter((x) => x.rosterUnit.picks.some((p) => p.startsWith("rules options|"))).length);
-      else line(`${limit.counts}${limit.of ? ` (${limit.of.join(", ")})` : ""}`, limit, null);
+      else if (limit.of) line(`${limit.counts} (${limit.of.join(", ")})`, limit, sameEntry.filter((x) => hasSlotItem(x, limit.counts, limit.of!)).length);
+      else line(limit.counts, limit, null);
     }
     for (const rule of rules)
       for (const limit of rule.limits.limits.filter((l) => l.counts === "unit" && l.of?.some((n) => matchName(n) === matchName(u.taken!.name)))) {
@@ -437,8 +498,11 @@ export function toggleChoice(roster: Roster, id: string, group: ChoiceGroup, cho
   if (!ru) return roster;
   if (group.where === "command") {
     const name = choice.pick.split("|")[1];
-    const slots = ru.slots.includes(name) ? ru.slots.filter((s) => s !== name) : [...ru.slots, name];
-    return updateUnit(roster, id, { slots });
+    const off = ru.slots.includes(name);
+    const slots = off ? ru.slots.filter((s) => s !== name) : [...ru.slots, name];
+    // Taking a command model off takes its magic items off too.
+    const picks = off ? ru.picks.filter((p) => !p.startsWith(`item:slot:${name}|`)) : ru.picks;
+    return updateUnit(roster, id, { slots, picks });
   }
   const on = ru.picks.includes(choice.pick);
   let picks = ru.picks.filter((p) => p !== choice.pick);
@@ -447,4 +511,49 @@ export function toggleChoice(roster: Roster, id: string, group: ChoiceGroup, cho
     picks.push(choice.pick);
   }
   return updateUnit(roster, id, { picks });
+}
+
+// --- Picking magic items --------------------------------------------------------------------------
+
+export type ItemChoice = { item: MagicItem; picked: boolean; why?: string }; // why: not offered, and the reason
+
+// The items an allowance offers this unit, each with whether it's picked and, if it can't be added,
+// why: it isn't for this bearer, it's over the budget, or a magic-item rule would be broken.
+export function itemChoices(roster: Roster, items: Item[], unitId: string, where: string, allowanceName: string): ItemChoice[] {
+  const view = viewRoster(roster, items);
+  const u = view.units.find((x) => x.rosterUnit.id === unitId);
+  const group = u?.choices.find((g) => g.where === where && g.allowance?.name === allowanceName);
+  const context = items.find((i): i is Context => i.kind === "context" && i.key === roster.context);
+  if (!u?.taken || !group?.allowance || !context) return [];
+  const reach = inReach(context, items);
+  const mine = u.rosterUnit.picks.filter((p) => p.startsWith(`item:${where}|${allowanceName}|`));
+  const spent = mine.reduce((n, p) => n + ((reach.find((i) => i.key === readItemPick(p)!.itemKey) as MagicItem | undefined)?.cost?.points ?? 0), 0);
+  const row = where.startsWith("slot:") ? u.taken.slotRows.find((r) => r.name === where.slice(5)) : undefined;
+  const bearer = { name: row?.name ?? u.taken.name, rules: u.taken.rules.map((r) => r.name), troopType: u.taken.troopType?.type };
+  const before = new Set(view.issues.filter((i) => i.about === "items").map((i) => i.message));
+  return itemsForAllowance(allowanceName, reach).map((item) => {
+    const pick = itemPick(where, allowanceName, item.key);
+    if (u.rosterUnit.picks.includes(pick)) return { item, picked: true };
+    const notFor = notForBearer(item, bearer);
+    if (notFor) return { item, picked: false, why: notFor };
+    const cost = item.cost?.points ?? 0;
+    const { budget, most } = group.allowance!;
+    if (budget !== null && spent + cost > budget) return { item, picked: false, why: `${spent + cost} pts would be over ${budget}` };
+    if (most !== null && mine.length >= most) return { item, picked: false, why: most === 1 ? "one item only: take the other off first" : `at most ${most} items` };
+    const tried = withPick(roster, unitId, pick);
+    const broken = viewRoster(tried, items.map((i) => (i.key === roster.key ? tried : i))).issues.find((i) => i.about === "items" && !before.has(i.message));
+    return broken ? { item, picked: false, why: broken.message } : { item, picked: false };
+  });
+}
+
+function withPick(roster: Roster, unitId: string, pick: string): Roster {
+  return { ...roster, units: roster.units.map((u) => (u.id === unitId ? { ...u, picks: [...u.picks, pick] } : u)) };
+}
+
+// Takes an item, or takes it off.
+export function toggleItem(roster: Roster, unitId: string, where: string, allowanceName: string, itemKey: string): Roster {
+  const pick = itemPick(where, allowanceName, itemKey);
+  const ru = roster.units.find((u) => u.id === unitId);
+  if (!ru) return roster;
+  return updateUnit(roster, unitId, { picks: ru.picks.includes(pick) ? ru.picks.filter((p) => p !== pick) : [...ru.picks, pick] });
 }

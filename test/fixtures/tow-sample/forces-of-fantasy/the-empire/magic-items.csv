@@ -1,0 +1,7 @@
+Magic Item,Type,Match Key,M,WS,BS,S,T,W,I,A,Ld,Save,Rules,Rules 2,R,AP,Cost,Reference
+Sample Blade,magic weapon,,,,,S,,,,,,,,A made-up magic weapon for tests.,Combat,-1,20,Sample
+Sample Shield,magic armour,Shield,,,,,,,,,,,,Made up.,,,15,Sample
+Sample Charm*,talisman,,,,,,,,,,,,,Made up; extremely common.,,,10,Sample
+Sample Ring,talisman,,,,,,,,,,,,,Made up.,,,5,Sample
+Sample Banner,magic standard,,,,,,,,,,,,,Made up.,,,25,Sample
+Knightly Pennant,magic standard,,,,,,,,,,,,Only(Empire Knights),Made up: knights only.,,,10,Sample

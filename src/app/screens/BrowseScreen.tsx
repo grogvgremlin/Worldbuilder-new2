@@ -7,11 +7,12 @@ import type { AppData } from "../app-data";
 import type { Nav } from "../App";
 import { nameOf } from "./GameScreen";
 
-export type BrowseKind = "special-rule" | "equipment" | "unit" | "race-profile" | "source" | "patch";
+export type BrowseKind = "special-rule" | "equipment" | "magic-item" | "unit" | "race-profile" | "source" | "patch";
 
 export const BROWSE_KINDS: { kind: BrowseKind; title: string }[] = [
   { kind: "special-rule", title: "Rules" },
   { kind: "equipment", title: "Equipment" },
+  { kind: "magic-item", title: "Magic items" },
   { kind: "unit", title: "Units" },
   { kind: "race-profile", title: "Races" },
   { kind: "source", title: "Bibliography" },
@@ -68,6 +69,7 @@ function groupLabel(item: Item, by: GroupBy, all: Item[], categoryOf: Map<string
   if (by === "status") return item.status === "stub" ? "Not entered yet" : "Entered";
   if (item.kind === "special-rule") return item.ruleType ?? "No type given";
   if (item.kind === "equipment") return item.type ?? "No type given";
+  if (item.kind === "magic-item") return item.type || "No type given";
   if (item.kind === "unit") return item.class === "mount" ? "Mount" : categoryOf.get(item.key) ?? "No category";
   if (item.kind === "race-profile") return item.race;
   if (item.kind === "source") return item.sourceKind ?? "No kind given";

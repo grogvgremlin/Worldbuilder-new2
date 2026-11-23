@@ -2,7 +2,7 @@
 // The rows are exactly the sheet's (the same writers as a download), so the grid and the workbook
 // always agree. Data structure: rebuild/data-structure.md §9.
 
-import type { ArmyList, CompositionRule, Equipment, Item, Package, Patch, RaceProfile, SettingValue, SlotKind, Source, SpecialRule, Unit } from "../items/items";
+import type { ArmyList, CompositionRule, Equipment, Item, MagicItem, Package, Patch, RaceProfile, SettingValue, SlotKind, Source, SpecialRule, Unit } from "../items/items";
 import type { Row } from "../sheets/csv";
 import { PATCH_TABS, TABS, type TabId } from "../packages/package-sheets";
 import { writePatchRows } from "../packages/patch-tabs";
@@ -15,6 +15,7 @@ export const KIND_OF_TAB: Record<TabId, Item["kind"]> = {
   "common links": "slot-kind",
   rules: "special-rule",
   equipment: "equipment",
+  "magic items": "magic-item",
   units: "unit",
   composition: "composition-rule",
   "unit patches": "patch",
@@ -59,6 +60,8 @@ function rowsOf(item: Item, tab: TabId, columns: tabs.PackageColumns, categoryOf
       return [tabs.writeRuleRow(item as SpecialRule)];
     case "equipment":
       return [tabs.writeEquipmentRow(item as Equipment)];
+    case "magic-item":
+      return [tabs.writeMagicItemRow(item as MagicItem)];
     case "unit":
       return tabs.writeUnitRows(item as Unit, categoryOf.get(item.key), columns);
     case "composition-rule":

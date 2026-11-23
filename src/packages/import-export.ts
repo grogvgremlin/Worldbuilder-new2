@@ -2,7 +2,7 @@
 // Data structure: rebuild/data-structure.md §2–5. Names are matched afterwards, across the whole
 // library, by `refreshLibrary` (library.ts), which also makes the stubs.
 
-import type { ArmyList, CompositionRule, Equipment, Game, GamePreset, GameSetting, Item, Package, Patch, RaceProfile, SettingValue, SlotKind, Source, SpecialRule, Unit } from "../items/items";
+import type { ArmyList, CompositionRule, Equipment, Game, GamePreset, GameSetting, Item, MagicItem, Package, Patch, RaceProfile, SettingValue, SlotKind, Source, SpecialRule, Unit } from "../items/items";
 import { slug } from "../items/keys";
 import type { Row } from "../sheets/csv";
 import { PATCH_TABS, TABS, type GameSheets, type PackageSheets, type TabId } from "./package-sheets";
@@ -97,6 +97,7 @@ function readTab(id: TabId, rows: Row[], ctx: tabs.TabContext, categories: strin
   if (id === "common links") return tabs.readCommonLinkRows(rows, ctx);
   if (id === "rules") return tabs.readRuleRows(rows, ctx);
   if (id === "equipment") return tabs.readEquipmentRows(rows, ctx);
+  if (id === "magic items") return tabs.readMagicItemRows(rows, ctx);
   const result = tabs.readArmyEntryRows(rows, ctx, categories);
   if (result.armyList) onArmyList(result.armyList);
   return [...result.units, ...result.composition];
@@ -211,6 +212,7 @@ export function exportPackage(pkg: Package, byKey: Map<string, Item>): PackageSh
   put("common links", ofKind("slot-kind").map((i) => tabs.writeCommonLinkRow(i as SlotKind)));
   put("rules", ofKind("special-rule").map((i) => tabs.writeRuleRow(i as SpecialRule)));
   put("equipment", ofKind("equipment").map((i) => tabs.writeEquipmentRow(i as Equipment)));
+  put("magic items", ofKind("magic-item").map((i) => tabs.writeMagicItemRow(i as MagicItem)));
   put("units", ofKind("unit").flatMap((u) => tabs.writeUnitRows(u as Unit, categoryOf.get(u.key), columns)));
   put("composition", ofKind("composition-rule").map((c) => tabs.writeCompositionRow(c as CompositionRule, columns)));
   for (const [id, kind] of Object.entries(PATCH_TABS)) put(id as TabId, ofKind("patch").flatMap((p) => writePatchRows(p as Patch, kind)));

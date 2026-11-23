@@ -58,6 +58,13 @@ function Card({ item, ctx, view }: { item: Item; ctx: Ctx; view: View }) {
       return <UnitCard unit={item} ctx={ctx} />;
     case "equipment":
       return <EquipmentCard eq={item} ctx={ctx} />;
+    case "magic-item":
+      return (
+        <>
+          {item.extremelyCommon && <p className="sub">Extremely common: may be taken more than once.</p>}
+          <EquipmentCard eq={{ ...item, kind: "equipment", aliases: [] }} ctx={ctx} />
+        </>
+      );
     case "special-rule":
       return <RuleCard rule={item} />;
     case "race-profile":

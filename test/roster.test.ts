@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { join } from "node:path";
 import type { Context, Game, Item, Roster, Unit } from "../src/items/items";
 import { newContext, switchOn } from "../src/context/context";
-import { addUnit, armyListsIn, newRoster, toggleChoice, updateUnit, viewRoster } from "../src/lists/roster";
+import { addUnit, armyListsIn, itemChoices, newRoster, toggleChoice, updateUnit, viewRoster } from "../src/lists/roster";
 import { loadFolder } from "./helpers";
 import { passesFilter, readFilter } from "../src/lists/unit-filter";
 import { hasTowData, readFolder, TOW_DATA } from "./read-folder";
@@ -160,6 +160,16 @@ describe.skipIf(!hasTowData)("a legal 1,000-point Empire list (private data)", (
     expect(viewRoster(r, items).units[0].limits).toEqual(["This entry: 0–1 per 1,000 pts · 1 taken, at most 10 at 1,000 pts (0–1 per 1,000 pts) (Per 1,000 points: full(target / 100), set in this set-up)"]);
   });
 
+  it("a Captain's Magic Items: the Empire's items, kept to 50 pts", () => {
+    let r = newRoster("Friday", context, empire, 1000, all);
+    r = add(r, all, "tow.unit.captain-of-the-empire");
+    const items = all.map((i) => (i.key === r.key ? r : i)).concat([r]);
+    const choices = itemChoices(r, items, "u1", "options", "Magic Items");
+    expect(choices.find((c) => c.item.name === "Runefang")!.why).toBe("100 pts would be over 50");
+    expect(choices.find((c) => c.item.name === "Jade Amulet")!.item.extremelyCommon).toBe(true);
+    expect(choices.some((c) => c.item.type === "magic standard")).toBe(false);
+  });
+
   it("two Helblasters at 1,000 points break the army's 0–1 per 1,000", () => {
     let r = newRoster("Friday", context, empire, 1000, all);
     r = add(add(r, all, "tow.unit.helblaster-volley-gun"), all, "tow.unit.helblaster-volley-gun");
@@ -172,7 +182,7 @@ describe.skipIf(!hasTowData)("a legal 1,000-point Empire list (private data)", (
     const u = viewRoster(r, all).units[0];
     const labels = u.choices.flatMap((g) => g.choices.map((c) => c.label));
     expect(labels).toEqual(expect.arrayContaining(["Great Weapon", "Shield", "Barded Warhorse", "Battle Standard Bearer"]));
-    expect(u.choices.map((g) => g.allowance).filter(Boolean)).toContain("Magic Items: up to 50 pts (picking items comes later)");
+    expect(u.choices.map((g) => g.allowance?.text).filter(Boolean)).toContain("Magic Items: up to 50 pts");
   });
 });
 

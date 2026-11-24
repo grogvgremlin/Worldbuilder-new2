@@ -3,11 +3,12 @@
 A personal app for Warhammer Fantasy armies, battles, campaigns and a shared world. This repo holds **the code only**.
 
 **Docs live in the private repo `grogvgremlin/WorldBuilder`:**
+- `rebuild/handover.md`: start here (where things are, how the owner works, what's built, what's next).
 - `rebuild/build-log.md`: decisions, technical choices, questions for design. **Log every decision there.**
 - `rebuild/data-structure.md`: the data structure (stored items, packages, upload / download).
-- `design/`, `spec/`: the design, frozen. A gap or contradiction goes under "Questions for design" in the build log; don't invent mechanisms. Check `spec/foundations/tail.md` and `spec/parked/` first.
+- `design/`, `spec/`: the design, frozen. **Read the relevant design doc before building on it.** A gap or contradiction goes under "Questions for design" in the build log; don't invent mechanisms. Check `spec/foundations/tail.md` and `spec/parked/` first.
 
-**Book data is private** (`grogvgremlin/worldbuilder-data`, checked out beside this repo for the tests in `test/private-*.test.ts`). Only the handful of units in `test/fixtures/tow-sample/` may be in this repo. This repo is public.
+**Book data is private** (`grogvgremlin/worldbuilder-data`, checked out beside this repo for the tests in `test/private-*.test.ts`). Only the made-up sample in `test/fixtures/tow-sample/` may be in this repo. This repo is public.
 
 ## Rules
 1. **Three layers, kept apart:** stored items (`src/items/`), upload / download formats (`src/notation/`, `src/sheets/`, `src/packages/`), screens (`src/app/`).
@@ -17,14 +18,18 @@ A personal app for Warhammer Fantasy armies, battles, campaigns and a shared wor
 5. Ask the owner only real choices, one at a time, with a recommendation.
 
 ## Layout
-- `src/items/` — the stored item kinds (zod) and readable keys.
+- `src/items/` — the stored item kinds (zod), readable keys, race dimensions.
 - `src/notation/` — the owner's cell notation, read and written (costs, sizes, stats, references, options, slots, limits).
-- `src/packages/` — sheets (game and package settings, rows per tab) to items and back; the formats (folder, zip, workbook, sheet YAML, full YAML); name matching and dependencies.
-- `src/library/` — the library kept consistent (stubs for names that match nothing; an upload planned before it's added); uploads and downloads.
-- `src/store/` — the storage seam: IndexedDB on the device, in memory for tests.
-- `src/app/` — the screens (React, kept thin): Settings → Library and Data; the four tools as tabs (not built yet).
 - `src/sheets/` — CSV, zip and xlsx.
-- `test/` — tests; `test/fixtures/tow-sample/` a public sample.
+- `src/packages/` — sheets (game and package settings, rows per tab, patch tabs) to items and back; the formats; name matching and dependencies.
+- `src/library/` — the library kept consistent (stubs, uploads planned before they're added); search; package types; the race table.
+- `src/context/` — sandboxes and set-ups (contexts): packages switched on, applied order, presets, game configuration.
+- `src/settings/` — the game's settings and the app's own (the limit mode); the scaling shorthand.
+- `src/rules/` — patches, unit stats as differences from their race, worked-out lines.
+- `src/lists/` — rosters: units as taken, choices, costs, limits and composition (with generic filters), magic items, the game view and rules reference, summary groups.
+- `src/store/` — the storage seam: IndexedDB on the device, in memory for tests.
+- `src/app/` — the screens (React, kept thin): Settings (Library, Data), the game page (Contents, Configuration), Lists (set-ups, lists: build and game views), search. World, Battle and Campaign tabs are empty.
+- `test/` — tests; `test/fixtures/tow-sample/` a made-up public sample.
 
 ## Commands
 `npm test` · `npm run check` (types) · `npm run dev` · `npm run build` · `npm run icons`

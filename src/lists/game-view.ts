@@ -37,6 +37,7 @@ export type GameUnit = {
   title?: string; // the owner's name for it: "Marcus Aurelius"
   icon?: string;
   description?: string;
+  words: string[]; // everything it can be found by: names, kit, mounts and their kit, races, rules, items
 };
 
 export function gameUnits(view: RosterView, items: Item[]): GameUnit[] {
@@ -88,6 +89,7 @@ function gameUnit(u: UnitView, reach: Item[], game: Game | undefined, all: Item[
   };
   const ownKit = kitOf(t.equipment, unitOptions, []);
 
+  const mountWords: string[] = [];
   // Stat lines: the unit's own (its race under it, its kit's effects on it), each command model taken
   // with its changes, each mount. One line: no name; several: only the others are named.
   const base = withKit(withRace(t.unit, t.stats, reach, game), ownKit.terms, unitOptions, reach, game?.bearerTypes ?? ["armour"]);
@@ -103,6 +105,7 @@ function gameUnit(u: UnitView, reach: Item[], game: Game | undefined, all: Item[
     const mount = reach.find((i): i is Unit => i.kind === "unit" && (i.key === m.item || matchName(i.name) === matchName(m.name)));
     if (!mount) continue;
     const mt = unitAsTaken(mount, reach);
+    mountWords.push(mount.name, mount.rows[0].name ?? "", ...mt.equipment.map((e) => e.name), ...Object.values(mount.rows[0].profile ?? {}));
     lines.push({ name: mount.rows[0].name ?? mount.name, stats: withKit(withRace(mount, mt.stats, reach, game), mt.equipment, [], reach, game?.bearerTypes ?? ["armour"]) });
   }
 
@@ -150,6 +153,16 @@ function gameUnit(u: UnitView, reach: Item[], game: Game | undefined, all: Item[
     title: ru.title,
     icon: ru.icon,
     description: ru.description,
+    words: [
+      t.name,
+      t.unit.rows[0].name ?? "",
+      ...Object.values(t.unit.rows[0].profile ?? {}),
+      ...ownKit.names.map((r) => r.name),
+      ...command.flatMap((c) => [c.section, ...c.models.flatMap((m) => [m.name, ...m.kit.map((k) => k.name)])]),
+      ...rules.map((r) => r.name),
+      ...itemsFor("options").map((m) => m.name),
+      ...mountWords,
+    ].filter(Boolean),
   };
 }
 

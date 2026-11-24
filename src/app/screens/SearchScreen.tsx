@@ -18,10 +18,14 @@ function scopesFrom(start: Scope, data: AppData): { id: string; label: string; s
   if (start.kind === "roster") all.push({ id: "roster", label: `This list: ${nameOf(start.key, data.items)}`, scope: start });
   const contextKey = start.kind === "context" ? start.key : roster?.kind === "roster" ? roster.context : undefined;
   if (contextKey) all.push({ id: "context", label: `This set-up: ${nameOf(contextKey, data.items)}`, scope: { kind: "context", key: contextKey } });
-  if (start.kind !== "library" && start.kind !== "package") all.push({ id: "lists", label: "All my lists", scope: { kind: "lists" } });
+  if (start.kind !== "library" && start.kind !== "package" && start.kind !== "game") all.push({ id: "lists", label: "All my lists", scope: { kind: "lists" } });
   if (start.kind === "package") all.push({ id: "package", label: `This package: ${nameOf(start.key, data.items)}`, scope: start });
+  // A game's own library (TOW): from the game's page, or a package or item of it.
+  const gameShort = start.kind === "game" ? start.key : start.kind === "package" ? start.key.split(".")[0] : undefined;
+  const game = gameShort ? data.items.find((i) => i.kind === "game" && i.shortName === gameShort) : undefined;
+  if (game) all.push({ id: "game", label: `This game: ${game.name}`, scope: { kind: "game", key: gameShort! } });
   all.push({ id: "library", label: "The whole library", scope: { kind: "library" } });
-  if (start.kind === "library" || start.kind === "package") all.push({ id: "lists", label: "All my lists", scope: { kind: "lists" } });
+  if (start.kind === "library" || start.kind === "package" || start.kind === "game") all.push({ id: "lists", label: "All my lists", scope: { kind: "lists" } });
   return all;
 }
 
@@ -35,7 +39,7 @@ export function SearchScreen({ data, nav, start }: { data: AppData; nav: Nav; st
     <section>
       <ViewMenu options={scopes.map((s) => ({ id: s.id, label: s.label }))} value={scopeId} onChange={setScopeId} />
       <div className="search-row">
-        <input className="filter search-box" type="text" autoFocus placeholder={scope.kind === "library" || scope.kind === "package" ? "Names, keys, aliases, types" : "List, unit and section names"} value={text} onChange={(e) => setText((lastText = e.target.value))} />
+        <input className="filter search-box" type="text" autoFocus placeholder={scope.kind === "library" || scope.kind === "package" || scope.kind === "game" ? "Names, keys, aliases, types" : "List, unit and section names"} value={text} onChange={(e) => setText((lastText = e.target.value))} />
         {text && <button className="search-clear" aria-label="Clear the search" onClick={() => setText((lastText = ""))}>×</button>}
       </div>
       {text.trim() !== "" && results.length === 0 && <p className="hint">Nothing found here.</p>}

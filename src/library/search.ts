@@ -2,7 +2,9 @@
 // Best first: a name that starts with what's typed, then a name containing it, then an alias, a type
 // or the key. Pure.
 
-import type { ArmyList, Context, Item, Roster, Unit } from "../items/items";
+import type { Context, Item, Roster } from "../items/items";
+import { viewRoster } from "../lists/roster";
+import { gameUnits } from "../lists/game-view";
 
 export type Found = { item: Item; how: "name" | "alias" | "type" | "key"; detail: string };
 
@@ -64,6 +66,7 @@ export function search(items: Item[], text: string, most = 30): Found[] {
 export type Scope =
   | { kind: "library" }
   | { kind: "package"; key: string }
+  | { kind: "game"; key: string } // a game's library: its short name
   | { kind: "lists" }
   | { kind: "context"; key: string }
   | { kind: "roster"; key: string };
@@ -75,9 +78,14 @@ export type Hit = { label: string; detail: string; target: Target; stub?: boolea
 export function searchIn(items: Item[], text: string, scope: Scope, most = 40): Hit[] {
   const q = text.trim().toLowerCase();
   if (!q) return [];
-  const has = (...words: (string | undefined)[]) => words.some((w) => w?.toLowerCase().includes(q));
-  if (scope.kind === "library" || scope.kind === "package") {
-    const pool = scope.kind === "package" ? items.filter((i) => i.homePackage === scope.key || i.key === scope.key) : items.filter((i) => i.kind !== "roster" && i.kind !== "context");
+  // "horses" finds a horse: a trailing s is optional.
+  const matches = (w: string | undefined) => !!w && (w.toLowerCase().includes(q) || (q.length > 3 && q.endsWith("s") && w.toLowerCase().includes(q.slice(0, -1))));
+  const has = (...words: (string | undefined)[]) => words.some(matches);
+  if (scope.kind === "library" || scope.kind === "package" || scope.kind === "game") {
+    const pool =
+      scope.kind === "package"
+        ? items.filter((i) => i.homePackage === scope.key || i.key === scope.key)
+        : items.filter((i) => i.kind !== "roster" && i.kind !== "context" && (scope.kind !== "game" || i.key === scope.key || i.key.startsWith(`${scope.key}.`)));
     return search(pool, text, most).map((f) => ({ label: f.item.name, detail: [kindWord(f.item), f.detail].filter(Boolean).join(" · "), target: targetOf(f.item), stub: f.item.status === "stub" }));
   }
   const rosters = items.filter((i): i is Roster => i.kind === "roster");
@@ -86,13 +94,14 @@ export function searchIn(items: Item[], text: string, scope: Scope, most = 40): 
   const hits: Hit[] = [];
   if (scope.kind === "lists") for (const c of contexts) if (has(c.name)) hits.push({ label: c.name, detail: "set-up", target: { kind: "pickup", key: c.key } });
   for (const r of inScope) {
-    const list = items.find((i): i is ArmyList => i.kind === "army-list" && i.key === r.armyList);
-    if (scope.kind !== "roster" && has(r.name, list?.name)) hits.push({ label: r.name, detail: `list · ${list?.name ?? ""}`, target: { kind: "roster", key: r.key } });
-    for (const u of r.units) {
-      const unit = items.find((i): i is Unit => i.kind === "unit" && i.key === u.unit);
-      const section = list?.entries.find((e) => e.unit === u.unit)?.category;
-      if (has(u.title, unit?.name, section, u.description))
-        hits.push({ label: u.title ?? unit?.name ?? u.unit, detail: [u.title ? unit?.name : undefined, section, scope.kind === "roster" ? undefined : r.name].filter(Boolean).join(" · "), target: { kind: "roster-unit", key: r.key, unit: u.id } });
+    const view = viewRoster(r, items);
+    if (scope.kind !== "roster" && has(r.name, view.armyList?.name)) hits.push({ label: r.name, detail: `list · ${view.armyList?.name ?? ""}`, target: { kind: "roster", key: r.key } });
+    // A unit is found by anything about it: its names, section, kit, mount and the mount's kit, race, rules, items.
+    for (const g of gameUnits(view, items)) {
+      const found = [g.title, g.name, g.category, g.description, ...g.words].find(matches);
+      if (!found) continue;
+      const why = found !== g.title && found !== g.name && found !== g.category ? `has ${found}` : undefined;
+      hits.push({ label: g.title ?? g.name, detail: [g.title ? g.name : undefined, g.category, why, scope.kind === "roster" ? undefined : r.name].filter(Boolean).join(" · "), target: { kind: "roster-unit", key: r.key, unit: g.id } });
     }
   }
   return hits.slice(0, most);

@@ -169,7 +169,8 @@ function render(screen: Screen, data: AppData, nav: Nav, draft: Draft | null, se
     case "data":
       return <DataScreen data={data} onWiped={refresh} />;
     case "search":
-      return <SearchScreen data={data} nav={nav} start={screen.start} />;
+      // Keyed by where it was opened from, so it starts afresh there (not on the scope used last time).
+      return <SearchScreen key={JSON.stringify(screen.start)} data={data} nav={nav} start={screen.start} />;
     case "lists":
       return <ListsScreen data={data} nav={nav} />;
     case "pickup":
@@ -191,6 +192,11 @@ function scopeOf(screen: Screen | undefined, data: AppData): Scope {
   if (screen.name === "pickup") return { kind: "context", key: screen.key };
   if (screen.name === "lists") return { kind: "lists" };
   if (screen.name === "package") return { kind: "package", key: screen.key };
+  if (screen.name === "game") {
+    const game = data.items.find((i) => i.key === screen.key);
+    return game?.kind === "game" ? { kind: "game", key: game.shortName } : { kind: "library" };
+  }
+  if (screen.name === "browse") return { kind: "game", key: screen.game };
   if (screen.name === "grid") return { kind: "package", key: screen.packageKey };
   if (screen.name === "item") {
     const home = data.items.find((i) => i.key === screen.key)?.homePackage;

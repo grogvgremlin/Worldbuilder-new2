@@ -54,3 +54,12 @@ describe("the game view", () => {
     expect(gameUnits(viewRoster(r, all), all)[0].equipment.map((e) => e.name)).toEqual(["Hand Weapon", "Heavy Armour", "Great Weapons"]);
   });
 });
+
+describe("headings: a column's own name unless the game renames it (owner, 24 Nov)", () => {
+  it("ungrouped slots fall under the game's heading for Slots, or 'Slots'", async () => {
+    const r = knights();
+    expect(gameUnits(viewRoster(r, all), all)[0].command[0].section).toBe("Command"); // the sample's game.yaml: Slots -> Command
+    const renamed = all.map((i) => (i.kind === "game" ? { ...i, headings: undefined } : i));
+    expect(gameUnits(viewRoster(r, renamed), renamed)[0].command[0].section).toBe("Slots");
+  });
+});

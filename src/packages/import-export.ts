@@ -138,6 +138,7 @@ function readGameInfo(y: Record<string, any>): Game {
     defaultComposition: y["default composition"] === undefined ? undefined : asList(y["default composition"]),
     settings: Array.isArray(y["settings"]) ? y["settings"].map(readGameSetting) : undefined,
     presets: Array.isArray(y["presets"]) ? y["presets"].map(readPreset) : undefined,
+    headings: y["headings"] && typeof y["headings"] === "object" ? Object.fromEntries(Object.entries(y["headings"]).map(([k, v]) => [k, String(v)])) : undefined,
     raceDimensions: Array.isArray(y["race dimensions"]) ? y["race dimensions"].map((d: any) => (d["blank"] ? { name: String(d["name"]), blank: String(d["blank"]) } : { name: String(d["name"]) })) : undefined,
   });
 }
@@ -260,6 +261,7 @@ function writeGameInfo(game: Game, byKey: Map<string, Item>): Record<string, unk
     settings: game.settings,
     presets: game.presets,
     "race dimensions": game.raceDimensions,
+    headings: game.headings,
   });
 }
 

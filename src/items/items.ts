@@ -125,7 +125,7 @@ export const Slot = z.strictObject({
   count: Range.optional(),
   type: z.string().optional(), // upgrade, crew, steed
   cost: Cost.optional(),
-  section: z.string().optional(), // the heading it's shown under: "Command(C(slots);SB(slots))"; absent = Command
+  section: z.string().optional(), // the heading it's shown under: "Command(C(slots);SB(slots))"; absent = the Slots column's heading
 });
 export type Slot = z.infer<typeof Slot>;
 
@@ -216,6 +216,9 @@ export const Game = z.strictObject({
   settings: z.array(GameSetting).optional(),
   presets: z.array(GamePreset).optional(),
   raceDimensions: z.array(RaceDimension).optional(), // absent: Race, Tree (blank Core), Rank (blank Base)
+  // What a sheet column is called when shown (owner, 24 Nov): a column's heading is its own name
+  // unless the game says otherwise, e.g. { Slots: "Command" }. Set in Settings → Configuration.
+  headings: z.record(z.string(), z.string()).optional(),
 });
 export type Game = z.infer<typeof Game>;
 

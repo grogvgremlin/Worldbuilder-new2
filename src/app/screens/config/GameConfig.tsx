@@ -70,11 +70,31 @@ export function GameConfig({ data, nav, game, onSaved }: { data: AppData; nav: N
         <button className="add" onClick={() => nav.open({ name: "game-setting", game: game.key, index: (game.settings ?? []).length })}>+ New setting</button>
       </Fold>
 
-      <Fold id={`${game.key}|statline`} title="Statline and categories">
+      <Fold id={`${game.key}|statline`} title="Statline, categories and headings">
         <p className="sub">Separated by commas. The statline is shown on cards in this order; the categories are the army list's sections. (The sheets' stat columns are still M to Ld.)</p>
         <ListField label="Statline" value={game.statlines.model} onSave={(model) => save({ ...game, statlines: { ...game.statlines, model } })} />
         <ListField label="Categories" value={game.categories} onSave={(categories) => save({ ...game, categories })} />
         <ListField label="Troop types" value={game.troopTypes ?? []} onSave={(troopTypes) => save({ ...game, troopTypes })} />
+        <h3>Headings</h3>
+        <p className="sub">What a column is called when shown (on unit cards and in the game view). Blank: the column's own name.</p>
+        {SHOWN_COLUMNS.map((column) => (
+          <label key={column} className="stack">
+            <span className="sub">{column}</span>
+            <input
+              className="filter"
+              placeholder={column}
+              defaultValue={game.headings?.[column] ?? ""}
+              onBlur={(e) => {
+                const value = e.target.value.trim();
+                if (value === (game.headings?.[column] ?? "")) return;
+                const headings = { ...(game.headings ?? {}) };
+                if (value) headings[column] = value;
+                else delete headings[column];
+                save({ ...game, headings: Object.keys(headings).length ? headings : undefined });
+              }}
+            />
+          </label>
+        ))}
       </Fold>
 
       <Fold id={`${game.key}|app`} title="App only">
@@ -96,6 +116,9 @@ export function GameConfig({ data, nav, game, onSaved }: { data: AppData; nav: N
     </div>
   );
 }
+
+// The sheet columns whose names are shown as headings (unit cards, the game view).
+const SHOWN_COLUMNS = ["Equipment", "Slots", "Equipment Options", "Rules", "Rules Options", "Magic Items", "Unit Limit", "Cost"];
 
 // A section that folds; open ones stay open while the app is (owner, 23 Nov: "its own collapsible").
 const openFolds = new Set<string>();

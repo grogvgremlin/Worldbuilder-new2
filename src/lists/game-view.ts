@@ -5,7 +5,7 @@
 // Design: design/rosters.md §4 (views of a roster are derived, never stored).
 
 import type { Equipment, Game, Item, MagicItem, Option, OptionGroup, RaceProfile, SlotKind, SpecialRule, Stats, Term, Unit } from "../items/items";
-import { dimensionsOf, gameOf, profileKey } from "../items/race-dimensions";
+import { dimensionsOf, gameOf, headingFor, profileKey } from "../items/race-dimensions";
 import { unitAsPrinted } from "../rules/race-deltas";
 import { readItemPick } from "./magic-items";
 import { patchStats } from "../rules/patches";
@@ -40,10 +40,11 @@ export type GameUnit = {
 export function gameUnits(view: RosterView, items: Item[]): GameUnit[] {
   const context = items.find((i) => i.kind === "context" && i.key === view.roster.context);
   const reach = context?.kind === "context" ? inReach(context, items) : items;
-  return view.units.filter((u) => u.taken).map((u) => gameUnit(u, reach));
+  const game = items.find((i): i is Game => i.kind === "game" && context?.kind === "context" && i.shortName === context.game);
+  return view.units.filter((u) => u.taken).map((u) => gameUnit(u, reach, game, items));
 }
 
-function gameUnit(u: UnitView, reach: Item[]): GameUnit {
+function gameUnit(u: UnitView, reach: Item[], game: Game | undefined, all: Item[]): GameUnit {
   const t = u.taken!;
   const ru = u.rosterUnit;
   const ruleText = (term: Term): RuleRef => {
@@ -87,20 +88,20 @@ function gameUnit(u: UnitView, reach: Item[]): GameUnit {
 
   // Stat lines: the unit's own (its race under it, its kit's effects on it), each command model taken
   // with its changes, each mount. One line: no name; several: only the others are named.
-  const base = withKit(withRace(t.unit, t.stats, reach), ownKit.terms, unitOptions, reach);
+  const base = withKit(withRace(t.unit, t.stats, reach, game), ownKit.terms, unitOptions, reach);
   const lines: StatLine[] = [{ name: "", stats: base }];
   for (const row of t.slotRows) {
     if (!row.name || !ru.slots.includes(row.name) || Object.keys(row.stats).length === 0) continue;
     // Printed numbers on the row are its own (its race + difference); "+1" changes are to the unit's line.
     const owner = t.chain.find((c) => c.rows.includes(row));
-    const printed = owner ? unitAsPrinted(owner, reach).rows[owner.rows.indexOf(row)].stats : row.stats;
+    const printed = owner ? unitAsPrinted(owner, all).rows[owner.rows.indexOf(row)].stats : row.stats;
     lines.push({ name: row.name, stats: patchStats(base, printed) });
   }
   for (const m of [...t.equipment.filter((e) => e.as === "Mount"), ...unitOptions.filter((o) => o.as === "Mount")]) {
     const mount = reach.find((i): i is Unit => i.kind === "unit" && (i.key === m.item || matchName(i.name) === matchName(m.name)));
     if (!mount) continue;
     const mt = unitAsTaken(mount, reach);
-    lines.push({ name: mount.rows[0].name ?? mount.name, stats: withKit(withRace(mount, mt.stats, reach), mt.equipment, [], reach) });
+    lines.push({ name: mount.rows[0].name ?? mount.name, stats: withKit(withRace(mount, mt.stats, reach, game), mt.equipment, [], reach) });
   }
 
   // Command models taken, by section, each with its own kit.
@@ -119,7 +120,7 @@ function gameUnit(u: UnitView, reach: Item[]): GameUnit {
     const allowances = ru.picks.map(readItemPick).filter((p) => p && p.where === where).map((p) => rowOptions.find((o) => o.name === p!.allowance)).filter((o): o is Option => !!o);
     const kit = kitOf([...(row?.equipment ?? []), ...(kind?.equipment ?? [])], [...options, ...allowances.map((a) => ({ name: "", replaces: a.replaces }) as Option)], itemsFor(where));
     kit.names = kit.names.filter((r) => r.name);
-    const section = slot.section ?? "Command";
+    const section = slot.section ?? headingFor(game, "Slots");
     const at = command.find((c) => c.section === section) ?? (command.push({ section, models: [] }), command[command.length - 1]);
     at.models.push({ name, key: kind?.key, kit: kit.names });
   }
@@ -163,7 +164,7 @@ function withKit(stats: Stats, kit: (Term | Option)[], options: Option[], reach:
 
 // A unit's stats on top of its race profile's: a horse entered with no stats of its own takes the
 // Horse profile's; a unit's own values replace the profile's ("+1" changes it).
-function withRace(unit: Unit, stats: Stats, reach: Item[]): Stats {
+function withRace(unit: Unit, stats: Stats, reach: Item[], game: Game | undefined): Stats {
   const chain: Unit[] = [unit];
   for (let k = unit.inherits?.item; k; ) {
     const next = reach.find((i): i is Unit => i.kind === "unit" && i.key === k);
@@ -172,7 +173,7 @@ function withRace(unit: Unit, stats: Stats, reach: Item[]): Stats {
     k = next.inherits?.item;
   }
   const profile: Record<string, string> = Object.assign({}, ...[...chain].reverse().map((u) => u.rows[0].profile ?? {}));
-  const dims = dimensionsOf(gameOf(unit.key, reach) ?? (reach.find((i) => i.kind === "game") as Game | undefined));
+  const dims = dimensionsOf(game); // the game's own race dimensions (the game isn't among the packages in reach)
   if (!profile[dims[0].name]) return stats;
   const race = reach.find((i): i is RaceProfile => i.kind === "race-profile" && i.key === profileKey(unit.key.split(".")[0], profile, dims));
   return race ? patchStats(race.stats, stats) : stats;

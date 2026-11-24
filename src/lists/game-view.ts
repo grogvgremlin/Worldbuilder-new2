@@ -6,6 +6,7 @@
 
 import type { Equipment, Game, Item, MagicItem, Option, OptionGroup, RaceProfile, SlotKind, SpecialRule, Stats, Term, Unit } from "../items/items";
 import { dimensionsOf, gameOf, profileKey } from "../items/race-dimensions";
+import { unitAsPrinted } from "../rules/race-deltas";
 import { readItemPick } from "./magic-items";
 import { patchStats } from "../rules/patches";
 import { optionKey, unitAsTaken } from "./unit-as-taken";
@@ -76,7 +77,13 @@ function gameUnit(u: UnitView, reach: Item[]): GameUnit {
   // with its changes, each mount. One line: no name; several: only the others are named.
   const base = withKit(withRace(t.unit, t.stats, reach), ownKit.terms, unitOptions, reach);
   const lines: StatLine[] = [{ name: "", stats: base }];
-  for (const row of t.slotRows) if (row.name && ru.slots.includes(row.name) && Object.keys(row.stats).length) lines.push({ name: row.name, stats: patchStats(base, row.stats) });
+  for (const row of t.slotRows) {
+    if (!row.name || !ru.slots.includes(row.name) || Object.keys(row.stats).length === 0) continue;
+    // Printed numbers on the row are its own (its race + difference); "+1" changes are to the unit's line.
+    const owner = t.chain.find((c) => c.rows.includes(row));
+    const printed = owner ? unitAsPrinted(owner, reach).rows[owner.rows.indexOf(row)].stats : row.stats;
+    lines.push({ name: row.name, stats: patchStats(base, printed) });
+  }
   for (const m of [...t.equipment.filter((e) => e.as === "Mount"), ...unitOptions.filter((o) => o.as === "Mount")]) {
     const mount = reach.find((i): i is Unit => i.kind === "unit" && (i.key === m.item || matchName(i.name) === matchName(m.name)));
     if (!mount) continue;

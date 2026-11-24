@@ -123,3 +123,18 @@ describe("with no matching race, a difference from 0 (owner, 24 Nov)", () => {
     expect(unitAsPrinted(smt2, merged).rows[0].stats.WS).toBe(3);
   });
 });
+
+describe("command rows inherit the unit's race (owner, 24 Nov)", () => {
+  it("a Preceptor printed A 2 is stored against the Knights' race, and prints back as 2", async () => {
+    const { unitAsPrinted } = await import("../src/rules/race-deltas");
+    const sheet = readCsv(files["forces-of-fantasy/the-empire/units.csv"]);
+    for (const r of sheet.rows) if (r.Unit === "Empire Knights" && r["Link Key"] === "C") r.A = "2";
+    const changed = { ...files, "forces-of-fantasy/the-empire/units.csv": writeCsv(sheet) };
+    const { items } = loadFolder(changed);
+    const knights = items.find((i) => i.key === "tow.unit.empire-knights") as any;
+    const preceptor = knights.rows.find((r: any) => r.slotCode === "C");
+    expect(preceptor.stats.A).toEqual({ change: 1, asPrinted: true, against: "tow.race.human.professional.veteran" });
+    expect(unitAsPrinted(knights, items).rows.find((r: any) => r.slotCode === "C")!.stats.A).toBe(2);
+    expect(readCsv(saveFolder(items)["forces-of-fantasy/the-empire/units.csv"]).rows.find((r) => r.Unit === "Empire Knights" && r["Link Key"] === "C")!.A).toBe("2");
+  });
+});

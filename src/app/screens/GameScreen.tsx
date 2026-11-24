@@ -8,6 +8,7 @@ import { downloadFullYaml, downloadGameSheetYaml, downloadGameWorkbook, download
 import type { AppData } from "../app-data";
 import type { Nav } from "../App";
 import { saveFile } from "../save-file";
+import { ViewMenu } from "../filter-menu";
 import { BROWSE_KINDS, isEmpty } from "./BrowseScreen";
 import { SwipeRow } from "../swipe";
 import { needsOf } from "../../context/context";
@@ -42,14 +43,11 @@ export function GameScreen({ data, nav, gameKey }: { data: AppData; nav: Nav; ga
         Statline {game.statlines.model.join(" ")} · categories {game.categories.join(", ")} (change them in Configuration)
       </p>
       <button className="link" onClick={() => nav.open({ name: "configuration" })}>Configuration (Settings → Configuration)</button>
-      <div className="chips">
-        <button className={view === "nesting" ? "on" : ""} onClick={() => setView("nesting")}>As the books nest</button>
-        <button className={view === "sections" ? "on" : ""} onClick={() => setView("sections")}>All, by type</button>
-        {present.map((t) => (
-          <button key={t.type} className={view === t.type ? "on" : ""} onClick={() => setView(t.type)}>{t.title}</button>
-        ))}
-        <button className={view === "empty" ? "on" : ""} onClick={() => setView("empty")}>Empty</button>
-      </div>
+      <ViewMenu
+        options={[{ id: "nesting", label: "As the books nest" }, { id: "sections", label: "All, by type" }, ...present.map((t) => ({ id: t.type, label: t.title })), { id: "empty", label: "Empty" }]}
+        value={view}
+        onChange={(v) => setView(v as View)}
+      />
 
       {view === "empty" ? (
         <EmptyList packages={packages.filter((p) => !p.stubsFor)} items={data.items} nav={nav} />

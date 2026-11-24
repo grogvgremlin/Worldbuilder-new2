@@ -1,7 +1,8 @@
-// A list in game view (owner, 24 Nov; after the Old World Builder's): each unit's lines, kit, special
-// rules (tap one for its text), magic items, page and your note, filtered by the chips at the top.
-// Battle tracking comes with the Battle tool (owner, 24 Nov).
-// Logic: src/lists/game-view.ts.
+// A list in game view (owner, 24 Nov; after the Old World Builder's): each unit's stat lines, its
+// equipment and command (each model with its own kit), its special rules (tap one for its précis, ↗
+// for its card), magic items, page and your note. "Show" picks what's there; "Print" lays it out for
+// paper, each rule written out. Turned sideways, units sit two abreast. Battle tracking comes with the
+// Battle tool. Logic: src/lists/game-view.ts.
 import { useState } from "react";
 import type { Context, Game, Roster } from "../../../items/items";
 import { gameUnits, type GameUnit } from "../../../lists/game-view";
@@ -9,39 +10,40 @@ import type { RosterView } from "../../../lists/roster";
 import { writeStat } from "../../../notation/values";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
+import { ShowMenu } from "../../filter-menu";
+import { ItemPopup } from "../ItemPopup";
 
 const FILTERS = [
   { id: "points", label: "Points" },
   { id: "stats", label: "Stats" },
-  { id: "kit", label: "Kit" },
+  { id: "kit", label: "Equipment and command" },
   { id: "rules", label: "Special rules" },
   { id: "items", label: "Magic items" },
   { id: "pages", label: "Pages" },
   { id: "notes", label: "Notes" },
-] as const;
-type Filter = (typeof FILTERS)[number]["id"];
+  { id: "print", label: "Print: rules written out" },
+];
 
-// The filters chosen are kept on this device (a convenience: lost, they're simply all on again).
-function loadFilters(): Set<Filter> {
+// What's shown is kept on this device (a convenience: lost, it's simply the default again).
+function loadFilters(): Set<string> {
   try {
     const saved = localStorage.getItem("game-view-filters");
     if (saved) return new Set(JSON.parse(saved));
   } catch {}
   return new Set(["points", "stats", "kit", "rules", "items"]);
 }
-function saveFilters(f: Set<Filter>) {
+function saveFilters(f: Set<string>) {
   try {
     localStorage.setItem("game-view-filters", JSON.stringify([...f]));
   } catch {}
 }
 
 export function GameView({ data, nav, view, save }: { data: AppData; nav: Nav; view: RosterView; save: (r: Roster) => void }) {
-  const [on, setOn] = useState<Set<Filter>>(loadFilters);
-  const [openRule, setOpenRule] = useState<string | null>(null);
+  const [on, setOn] = useState<Set<string>>(loadFilters);
+  const [popup, setPopup] = useState<string | null>(null);
   const roster = view.roster;
   const units = gameUnits(view, data.items);
-  const show = (f: Filter) => on.has(f);
-  const toggle = (f: Filter) => {
+  const toggle = (f: string) => {
     const next = new Set(on);
     if (next.has(f)) next.delete(f);
     else next.add(f);
@@ -53,37 +55,41 @@ export function GameView({ data, nav, view, save }: { data: AppData; nav: Nav; v
   const sections = [...new Set((view.armyList?.entries ?? []).map((e) => e.category))].filter((c) => units.some((u) => u.category === c));
 
   return (
-    <div className="game-view">
-      <div className="chips">
-        {FILTERS.map((f) => (
-          <button key={f.id} className={show(f.id) ? "on" : ""} onClick={() => toggle(f.id)}>{f.label}</button>
-        ))}
-      </div>
-
+    <div className={"game-view" + (on.has("print") ? " print" : "")}>
+      <ShowMenu options={FILTERS} on={on} onToggle={toggle} />
       {sections.map((section) => (
         <div key={section}>
-          <h2>{section} {show("points") && <span className="sub">{units.filter((u) => u.category === section).reduce((n, u) => n + u.points, 0)} pts</span>}</h2>
-          {units.filter((u) => u.category === section).map((u) => (
-            <UnitCard key={u.id} u={u} stats={stats} show={show} openRule={openRule} setOpenRule={setOpenRule} nav={nav} onNote={(note) => save({ ...roster, units: roster.units.map((x) => (x.id === u.id ? { ...x, note: note || undefined } : x)) })} />
-          ))}
+          <h2>
+            {section} {on.has("points") && <span className="sub">{units.filter((u) => u.category === section).reduce((n, u) => n + u.points, 0)} pts</span>}
+          </h2>
+          <div className="game-units">
+            {units.filter((u) => u.category === section).map((u) => (
+              <UnitCard
+                key={u.id}
+                u={u}
+                stats={stats}
+                on={on}
+                openItem={setPopup}
+                onNote={(note) => save({ ...roster, units: roster.units.map((x) => (x.id === u.id ? { ...x, note: note || undefined } : x)) })}
+              />
+            ))}
+          </div>
         </div>
       ))}
+      {popup && <ItemPopup data={data} nav={nav} itemKey={popup} onClose={() => setPopup(null)} />}
     </div>
   );
 }
 
-type CardProps = {
-  u: GameUnit;
-  stats: string[];
-  show: (f: Filter) => boolean;
-  openRule: string | null;
-  setOpenRule: (k: string | null) => void;
-  nav: Nav;
-  onNote: (note: string) => void;
-};
+type CardProps = { u: GameUnit; stats: string[]; on: Set<string>; openItem: (key: string) => void; onNote: (note: string) => void };
 
-function UnitCard({ u, stats, show, openRule, setOpenRule, nav, onNote }: CardProps) {
+function UnitCard({ u, stats, on, openItem, onNote }: CardProps) {
+  const [openRule, setOpenRule] = useState<number | null>(null);
+  const print = on.has("print");
   const cols = stats.filter((s) => u.lines.some((l) => l.stats[s] !== undefined));
+  const named = u.lines.length > 1; // one line: no name column
+  const link = (name: string, key: string | undefined) => (key ? <button className="link" onClick={() => openItem(key)}>{name}</button> : <span>{name}</span>);
+
   return (
     <div className="game-unit">
       <div className="game-unit-head">
@@ -92,50 +98,98 @@ function UnitCard({ u, stats, show, openRule, setOpenRule, nav, onNote }: CardPr
           {u.size > 1 && <span className="sub"> ×{u.size}</span>}
           {u.general && <span className="sub"> · General</span>}
         </span>
-        {show("points") && <span className="sub">{u.points} pts</span>}
+        {on.has("points") && <span className="sub">{u.points} pts</span>}
       </div>
-      {show("stats") && cols.length > 0 && (
+
+      {on.has("stats") && cols.length > 0 && (
         <div className="grid-wrap">
           <table className="stats">
             <thead>
-              <tr><th></th>{cols.map((s) => <th key={s}>{s}</th>)}</tr>
+              <tr>
+                {named && <th></th>}
+                {cols.map((s) => <th key={s}>{s}</th>)}
+              </tr>
             </thead>
             <tbody>
               {u.lines.map((l, i) => (
-                <tr key={i}><th>{l.name}</th>{cols.map((s) => <td key={s}>{writeStat(l.stats[s])}</td>)}</tr>
+                <tr key={i}>
+                  {named && <th>{l.name}</th>}
+                  {cols.map((s) => <td key={s}>{writeStat(l.stats[s])}</td>)}
+                </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
-      {show("kit") && u.equipment.length > 0 && <p><span className="sub">Kit </span>{u.equipment.join(", ")}{u.command.length ? <span className="sub"> · {u.command.join(", ")}</span> : null}</p>}
-      {show("items") && u.items.length > 0 && (
+
+      {on.has("kit") && (u.equipment.length > 0 || u.command.length > 0) && (
+        <details className="game-section" open>
+          <summary>Equipment{u.command.length > 0 ? " and command" : ""}</summary>
+          {u.equipment.length > 0 && <p><span className="sub">Equipment: </span>{u.equipment.join(", ")}</p>}
+          {u.command.map((c) => (
+            <p key={c.section}>
+              <span className="sub">{c.section}: </span>
+              {c.models.map((m, i) => (
+                <span key={m.name}>
+                  {i > 0 && ", "}
+                  {m.name}
+                  {m.kit.length > 0 && <span className="sub"> · {m.kit.join(", ")}</span>}
+                </span>
+              ))}
+            </p>
+          ))}
+        </details>
+      )}
+
+      {on.has("items") && u.items.length > 0 && (
         <p>
-          <span className="sub">Magic items </span>
+          <span className="sub">Magic items: </span>
           {u.items.map((i, n) => (
             <span key={n}>
               {n > 0 && ", "}
-              <button className="link" onClick={() => nav.open({ name: "item", key: i.key })}>{i.name}</button>
-              <span className="sub"> ({i.type}{i.bearer ? `, ${i.bearer}` : ""})</span>
+              {link(i.name, i.key)}
+              <span className="sub"> ({i.type})</span>
             </span>
           ))}
         </p>
       )}
-      {show("rules") && u.rules.length > 0 && (
-        <div className="game-rules">
-          {u.rules.map((r, n) => {
-            const id = `${u.id}|${r.name}`;
-            return (
-              <span key={n}>
-                <button className={"rule-chip" + (openRule === id ? " on" : "")} onClick={() => setOpenRule(openRule === id ? null : id)}>{r.name}</button>
-                {openRule === id && <span className="rule-text">{r.text ?? "Not entered yet."}{r.key && <> <button className="link" onClick={() => nav.open({ name: "item", key: r.key! })}>Open</button></>}</span>}
-              </span>
-            );
-          })}
-        </div>
+
+      {on.has("rules") && u.rules.length > 0 && (
+        <details className="game-section" open>
+          <summary>Rules</summary>
+          {print ? (
+            <ul className="print-rules">
+              {u.rules.map((r, n) => (
+                <li key={n}>
+                  <b>{r.name}</b>: {r.text ?? "not entered yet"}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            // Tapping a rule opens its précis on a row of its own; the rules after it move below.
+            <div className="game-rules">
+              {u.rules.flatMap((r, n) => {
+                const parts = [
+                  <button key={`r${n}`} className={"link rule-link" + (openRule === n ? " on" : "")} onClick={() => setOpenRule(openRule === n ? null : n)}>
+                    {r.name}
+                  </button>,
+                ];
+                if (openRule === n)
+                  parts.push(
+                    <div key={`t${n}`} className="rule-text">
+                      {r.text ?? "Not entered yet."}
+                      {r.key && <button className="link" aria-label="Open the rule's card" onClick={() => openItem(r.key!)}> ↗</button>}
+                    </div>,
+                  );
+                return parts;
+              })}
+            </div>
+          )}
+        </details>
       )}
-      {show("pages") && u.page && <p className="sub">{u.page}</p>}
-      {show("notes") && <textarea className="note" placeholder="Your notes" defaultValue={u.note ?? ""} onBlur={(e) => e.target.value !== (u.note ?? "") && onNote(e.target.value.trim())} />}
+
+      {on.has("pages") && u.page && <p className="sub">{u.page}</p>}
+      {on.has("notes") && <textarea className="note" placeholder="Your notes" defaultValue={u.note ?? ""} onBlur={(e) => e.target.value !== (u.note ?? "") && onNote(e.target.value.trim())} />}
     </div>
   );
 }

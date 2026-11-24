@@ -20,29 +20,46 @@ export function readSlots(text: string | undefined, problems: Problems): Slots |
       cell.none = true;
       continue;
     }
+    // A section: "Command(C(slots);SB(slots);M(0-1;upgrade;+6))" groups slots under a heading of the
+    // owner's naming (owner, 24 Nov); a slot's own brackets never hold brackets, a section's do.
     const [head, round] = pieces(part);
-    const slot: Slot = { code: head?.text ?? part };
-    const args = round ? splitTop(round.text, ";") : [];
-    if (args.length === 1 && /^slots$/i.test(args[0])) slot.fromUnitRows = true;
-    else {
-      const [count, type, cost] = args;
-      const c = readRange(count, problems);
-      if (c) slot.count = c;
-      if (type) slot.type = type;
-      const k = readCost(cost, problems);
-      if (k) slot.cost = k;
+    if (round && round.text.includes("(")) {
+      for (const inner of splitTop(round.text, ";")) cell.slots.push({ ...readSlot(inner, problems), section: head.text });
+      continue;
     }
-    cell.slots.push(slot);
+    cell.slots.push(readSlot(part, problems));
   }
   return cell;
+}
+
+function readSlot(part: string, problems: Problems): Slot {
+  const [head, round] = pieces(part);
+  const slot: Slot = { code: head?.text ?? part };
+  const args = round ? splitTop(round.text, ";") : [];
+  if (args.length === 1 && /^slots$/i.test(args[0])) slot.fromUnitRows = true;
+  else {
+    const [count, type, cost] = args;
+    const c = readRange(count, problems);
+    if (c) slot.count = c;
+    if (type) slot.type = type;
+    const k = readCost(cost, problems);
+    if (k) slot.cost = k;
+  }
+  return slot;
 }
 
 export function writeSlots(cell: Slots | undefined): string {
   if (!cell) return "";
   const parts: string[] = cell.none ? ["None"] : [];
+  const one = (slot: Slot) => (slot.fromUnitRows ? `${slot.code}(slots)` : `${slot.code}(${[writeRange(slot.count), slot.type ?? "", writeCost(slot.cost)].join(";")})`);
+  // Slots in a section are written inside it, sections in the order they first appear.
+  const sections: string[] = [];
   for (const slot of cell.slots) {
-    if (slot.fromUnitRows) parts.push(`${slot.code}(slots)`);
-    else parts.push(`${slot.code}(${[writeRange(slot.count), slot.type ?? "", writeCost(slot.cost)].join(";")})`);
+    if (!slot.section) parts.push(one(slot));
+    else if (!sections.includes(slot.section)) {
+      sections.push(slot.section);
+      parts.push(`${slot.section}(${cell.slots.filter((x) => x.section === slot.section).map(one).join(";")})`);
+    }
   }
   return parts.join(";");
 }

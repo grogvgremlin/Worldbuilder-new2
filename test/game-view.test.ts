@@ -28,17 +28,28 @@ function knights(): Roster {
 }
 
 describe("the game view", () => {
-  it("shows the unit's lines: its own, the Preceptor (A +1 applied), its horse", () => {
+  it("lines: the unit's own unnamed, then the Preceptor (A +1 applied), then its horse (barding M -1)", () => {
     const g = gameUnits(viewRoster(knights(), all), all)[0];
-    expect(g.lines.map((l) => l.name)).toEqual(["Empire Knight", "Preceptor", "Barded Warhorse"]);
+    expect(g.lines.map((l) => l.name)).toEqual(["", "Preceptor", "Barded Warhorse"]);
     expect(g.lines[1].stats.A).toBe(2);
-    expect(g.lines[2].stats.M).toBe(8); // the horse's line comes from the Horse race profile
+    expect(g.lines[2].stats.M).toBe(7); // Horse M 8, barding M -1
   });
-  it("its kit with the options taken, its rules with those taken, its magic items", () => {
+  it("equipment with the options taken; command models with their own kit; rules with those taken", () => {
     const g = gameUnits(viewRoster(knights(), all), all)[0];
     expect(g.equipment).toEqual(["Hand Weapon", "Heavy Armour", "Shield", "Lances"]);
+    expect(g.command).toEqual([{ section: "Command", models: [{ name: "Preceptor", kit: ["Sample Blade"] }] }]);
     expect(g.rules.map((r) => r.name)).toContain("Drilled");
-    expect(g.items).toEqual([{ name: "Sample Blade", type: "magic weapon", bearer: "Preceptor", key: "tow.magic-item.sample-blade" }]);
-    expect(g.command).toEqual(["Preceptor"]);
+    expect(g.items).toEqual([]);
+  });
+  it("a magic standard is carried instead of the Standard (its allowance replaces it)", () => {
+    let r = choose(knights(), "u1", "Standard Bearer");
+    r = toggleItem(r, "u1", "slot:Standard Bearer", "Magic Standard", "tow.magic-item.sample-banner");
+    const sb = gameUnits(viewRoster(r, all), all)[0].command[0].models.find((m) => m.name === "Standard Bearer")!;
+    expect(sb.kit).toEqual(["Sample Banner"]);
+  });
+  it("an option taken instead of something takes it out of the kit (Great Weapons instead of Shield)", () => {
+    let r = newRoster("x", context, armyListsIn(context, all)[0], 1000, all);
+    r = choose(addUnit(r, unit("tow.unit.empire-knights"), all), "u1", "Great Weapons instead of Shield");
+    expect(gameUnits(viewRoster(r, all), all)[0].equipment).toEqual(["Hand Weapon", "Heavy Armour", "Great Weapons"]);
   });
 });

@@ -1,13 +1,24 @@
 // One unit in a list: its size, the General, its options and command, what it costs and why.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Roster } from "../../../items/items";
 import { removeUnit, toggleChoice, updateUnit, viewRoster, type ChoiceGroup } from "../../../lists/roster";
 import type { AppData } from "../../app-data";
-import type { Nav } from "../../App";
+import { setLeaveGuard, type Nav } from "../../App";
 import { NumberBox } from "../../number-box";
 
 export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppData; nav: Nav; rosterKey: string; unitId: string }) {
   const [, setChanged] = useState(0);
+  // A required choice not made: can't leave (hide or grey out), or leave after a warning (allow).
+  useEffect(() => {
+    setLeaveGuard(() => {
+      const r = data.items.find((i): i is Roster => i.kind === "roster" && i.key === rosterKey);
+      const v = r ? viewRoster(r, data.items) : null;
+      const unit = v?.units.find((x) => x.rosterUnit.id === unitId);
+      const missing = unit?.issues.filter((i) => i.message.includes(": choose one of")).map((i) => i.message) ?? [];
+      return missing.length ? { message: missing.join("\n"), mayLeave: v!.limitMode === "allow" } : null;
+    });
+    return () => setLeaveGuard(null);
+  }, [data, rosterKey, unitId]);
   const roster = data.items.find((i): i is Roster => i.kind === "roster" && i.key === rosterKey);
   const view = roster ? viewRoster(roster, data.items) : null;
   const u = view?.units.find((x) => x.rosterUnit.id === unitId);

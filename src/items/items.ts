@@ -75,7 +75,7 @@ export const StatDetail = z.strictObject({
   // A unit's stat entered as printed and stored as a difference (races-and-units.md §2): from its race
   // profile, so a change to the race flows down; with no matching race, from 0. Shown as base + change.
   asPrinted: z.literal(true).optional(),
-  against: z.string().optional(), // what the difference is from: a race profile's key, "line" (a command row: the unit's own line), or "none" (0)
+  against: z.string().optional(), // what the difference is from: a race profile's key, or "none" (0)
 });
 export const Stat = z.union([z.number(), StatDetail]);
 export type Stat = z.infer<typeof Stat>;

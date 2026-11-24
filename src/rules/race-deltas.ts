@@ -5,7 +5,6 @@
 // delta to 0". So every plain number on a unit is stored as a difference, from:
 //   its race profile                    printed 4, Human WS 4   ->  { change: 0, asPrinted: true, against: "tow.race.human.core.base" }
 //   nothing (no matching race)          printed 4               ->  { change: 4, asPrinted: true, against: "none" }
-//   a command row: the unit's own line  Sergeant printed BS 4, line BS 3 -> { change: 1, asPrinted: true, against: "line" }
 // A difference from "none" is moved onto the race once the race is on the device. Shown and
 // downloaded as base + difference (as printed). "-", "3+" and text stay as entered.
 //
@@ -16,34 +15,32 @@ import { dimensionsOf, gameOf, profileKey } from "../items/race-dimensions";
 
 type ByKey = Map<string, Item>;
 
-// The race profile a row draws on: the unit's own line takes the nearest race cells up its
-// inheritance chain; any other row (crew, a steed) only its own.
+// The race profile a row draws on. The unit's own line takes the nearest race cells up its
+// inheritance chain. Its other rows (a champion, a standard bearer) inherit those cells from the unit
+// and may set their own (a Rank) on top (owner, 24 Nov: "slots explicitly inherit human etc. from
+// the unit"); a row naming a race of its own (a steed, crew) uses only its own cells.
 export function raceOfRow(unit: Unit, rowIndex: number, items: Item[], byKey: ByKey = new Map(items.map((i) => [i.key, i]))): RaceProfile | undefined {
-  let profile: Record<string, string> = {};
-  if (rowIndex === 0) {
-    const chain: Unit[] = [unit];
-    for (let k = unit.inherits?.item; k; ) {
-      const next = byKey.get(k);
-      if (next?.kind !== "unit" || chain.includes(next)) break;
-      chain.push(next);
-      k = next.inherits?.item;
-    }
-    profile = Object.assign({}, ...[...chain].reverse().map((u) => u.rows[0].profile ?? {}));
-  } else profile = unit.rows[rowIndex].profile ?? {};
   const dims = dimensionsOf(gameOf(unit.key, items));
+  const chain: Unit[] = [unit];
+  for (let k = unit.inherits?.item; k; ) {
+    const next = byKey.get(k);
+    if (next?.kind !== "unit" || chain.includes(next)) break;
+    chain.push(next);
+    k = next.inherits?.item;
+  }
+  const unitProfile: Record<string, string> = Object.assign({}, ...[...chain].reverse().map((u) => u.rows[0].profile ?? {}));
+  const own = rowIndex === 0 ? {} : unit.rows[rowIndex].profile ?? {};
+  const profile = own[dims[0].name] ? own : { ...unitProfile, ...own };
   if (!profile[dims[0].name]) return undefined;
   const found = byKey.get(profileKey(unit.key.split(".")[0], profile, dims));
   return found?.kind === "race-profile" ? found : undefined;
 }
 
-// What a row's differences are from: its race; a command row with no race of its own, the unit's
-// own line (as printed); otherwise nothing (0).
+// What a row's differences are from: its race profile, or nothing (0) when no race matches.
 type Base = { against: string; stats: Stats };
 function baseOf(unit: Unit, rowIndex: number, items: Item[], byKey: ByKey): Base {
   const race = raceOfRow(unit, rowIndex, items, byKey);
-  if (race) return { against: race.key, stats: race.stats };
-  if (rowIndex > 0 && !unit.rows[rowIndex].profile) return { against: "line", stats: printedRow(unit, 0, items, byKey) };
-  return { against: "none", stats: {} };
+  return race ? { against: race.key, stats: race.stats } : { against: "none", stats: {} };
 }
 
 const num = (s: Stat | undefined) => (typeof s === "number" ? s : 0); // "-" or no stat: 0

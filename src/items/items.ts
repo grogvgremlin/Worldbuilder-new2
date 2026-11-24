@@ -479,17 +479,6 @@ export const Roster = z.strictObject({
   target: z.number(), // points
   units: z.array(RosterUnit),
   settings: z.record(z.string(), z.string()).optional(), // this list's own values: setting name -> value
-  // The battle being played with it, marked in the game view: units dead or fleeing, the General and
-  // Battle Standard Bearer lost, banners captured, scenario points. Cleared with "New battle".
-  battle: z
-    .strictObject({
-      units: z.record(z.string(), z.enum(["fleeing", "dead"])), // roster unit id -> state
-      generalLost: z.boolean(),
-      bsbLost: z.boolean(),
-      banners: z.number(),
-      scenario: z.number(),
-    })
-    .optional(),
 });
 export type Roster = z.infer<typeof Roster>;
 

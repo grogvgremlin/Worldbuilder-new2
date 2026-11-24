@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { Context, Game, Item, Roster, Unit } from "../src/items/items";
 import { newContext, switchOn } from "../src/context/context";
 import { addUnit, armyListsIn, newRoster, toggleChoice, toggleItem, viewRoster } from "../src/lists/roster";
-import { battleTally, gameUnits } from "../src/lists/game-view";
+import { gameUnits } from "../src/lists/game-view";
 import { loadFolder } from "./helpers";
 import { readFolder } from "./read-folder";
 
@@ -40,13 +40,5 @@ describe("the game view", () => {
     expect(g.rules.map((r) => r.name)).toContain("Drilled");
     expect(g.items).toEqual([{ name: "Sample Blade", type: "magic weapon", bearer: "Preceptor", key: "tow.magic-item.sample-blade" }]);
     expect(g.command).toEqual(["Preceptor"]);
-  });
-  it("a battle: units dead or fleeing; scenario points kept apart", () => {
-    const r = { ...knights(), battle: { units: { u1: "dead" as const }, generalLost: false, bsbLost: false, banners: 1, scenario: 3 } };
-    const view = viewRoster(r, all);
-    const t = battleTally(view, all);
-    expect(t.destroyed).toBe(view.units[0].points);
-    expect(t.total).toBe(view.units[0].points); // no banner value set for this game: counted, not scored
-    expect(t.scenario).toBe(3);
   });
 });

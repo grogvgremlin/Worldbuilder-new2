@@ -8,6 +8,7 @@
 import type { Equipment, Item, Package, SpecialRule, Unit } from "../items/items";
 import { itemKey } from "../items/keys";
 import { NameIndex, resolveNames, type Unmatched } from "../packages/resolve";
+import { unitsToDifferences } from "../rules/race-deltas";
 
 export type Refreshed = { items: Item[]; stubbed: Unmatched[] };
 
@@ -18,7 +19,8 @@ export function refreshLibrary(all: Item[]): Refreshed {
   const stubs = makeStubs(firstPass, items);
   const withStubs = [...items, ...stubs];
   resolveNames(withStubs, new NameIndex(withStubs));
-  return { items: withStubs, stubbed: firstPass };
+  // Units' printed stats kept as differences from their race, now every name is matched.
+  return { items: unitsToDifferences(withStubs), stubbed: firstPass };
 }
 
 // Everything except what the app made last time: stub packages and the stubs in them.

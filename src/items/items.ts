@@ -72,6 +72,9 @@ export const StatDetail = z.strictObject({
   target: z.number().optional(),
   text: z.string().optional(),
   when: z.array(Term).optional(),
+  // A unit's stat entered as printed and stored as its difference from the unit's race profile
+  // (printed − race: races-and-units.md §2), so a change to the race flows down. Shown as race + change.
+  asPrinted: z.literal(true).optional(),
 });
 export const Stat = z.union([z.number(), StatDetail]);
 export type Stat = z.infer<typeof Stat>;

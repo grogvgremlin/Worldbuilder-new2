@@ -86,3 +86,21 @@ describe("changing the dimensions applies at once", () => {
     expect(after).toBe(items);
   });
 });
+
+describe("unit stats are differences from their race (races-and-units.md §2)", () => {
+  it("a change to the race flows down to the unit, and the sheet prints it", async () => {
+    const { unitAsPrinted } = await import("../src/rules/race-deltas");
+    const { items } = loadFolder(files);
+    // Human · Core · Base WS 3 -> 4: State Missile Troops (entered WS 3, the same as the race) follow.
+    const human = items.find((i): i is RaceProfile => i.key === "tow.race.human.core.base")!;
+    const changed = items.map((i) => (i.key === human.key ? { ...human, stats: { ...human.stats, WS: 4 } } : i));
+    const smt = changed.find((i) => i.key === "tow.unit.state-missile-troops") as any;
+    expect(unitAsPrinted(smt, changed).rows[0].stats.WS).toBe(4);
+    expect(readCsv(saveFolder(changed)["forces-of-fantasy/the-empire/units.csv"]).rows.find((r) => r.Unit === "State Missile Troops")!.WS).toBe("4");
+  });
+  it("blank stays blank, and a stat that isn't a plain number stays as entered", async () => {
+    const { items } = loadFolder(files);
+    const horse = items.find((i) => i.key === "tow.unit.barded-warhorse") as any;
+    expect(horse.rows[0].stats).toEqual({});
+  });
+});

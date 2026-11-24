@@ -15,6 +15,7 @@ import { matchName } from "../items/keys";
 import { readContext } from "../context/context";
 import { patched, patchesInPlay } from "../rules/patches";
 import { optionKey, unitAsTaken, type UnitAsTaken } from "./unit-as-taken";
+import { headingFor } from "../items/race-dimensions";
 import { passesFilter, readFilter, type Filterable } from "./unit-filter";
 import { itemPick, itemRuleIssues, itemsForAllowance, notForBearer, readItemPick, type PickedItem } from "./magic-items";
 
@@ -82,7 +83,9 @@ export function viewRoster(roster: Roster, items: Item[]): RosterView {
   const categoryOf = new Map((armyList?.entries ?? []).map((e) => [e.unit, e.category]));
   const slotKinds = new Map(reach.filter((i): i is SlotKind => i.kind === "slot-kind").map((s) => [s.code, s.name]));
 
-  const units = roster.units.map((ru) => viewUnit(ru, reach, patches, categoryOf, slotKinds));
+  const gameHere = items.find((i): i is Game => i.kind === "game" && i.shortName === context?.game);
+  const heading = (column: string) => headingFor(gameHere, column);
+  const units = roster.units.map((ru) => viewUnit(ru, reach, patches, categoryOf, slotKinds, heading));
   const total = units.reduce((n, u) => n + u.points, 0);
   const issues: Issue[] = [];
   if (!context) issues.push({ severity: "warning", message: "its pick-up game isn't on the device", units: [] });
@@ -104,7 +107,7 @@ export function viewRoster(roster: Roster, items: Item[]): RosterView {
   return { roster, armyList, units, total, categories, issues: dedupe(issues), full, generalFull: generalFull(rules, units, allowed), limitMode: mode };
 }
 
-function viewUnit(ru: RosterUnit, reach: Item[], patches: Patch[], categoryOf: Map<string, string>, slotKinds: Map<string, string>): UnitView {
+function viewUnit(ru: RosterUnit, reach: Item[], patches: Patch[], categoryOf: Map<string, string>, slotKinds: Map<string, string>, heading: (column: string) => string): UnitView {
   const unit = reach.find((i): i is Unit => i.kind === "unit" && i.key === ru.unit);
   const view: UnitView = { rosterUnit: ru, taken: null, category: categoryOf.get(ru.unit) ?? "Other", points: 0, breakdown: [], choices: [], issues: [], limits: [] };
   if (!unit) {
@@ -113,7 +116,7 @@ function viewUnit(ru: RosterUnit, reach: Item[], patches: Patch[], categoryOf: M
   }
   const taken = unitAsTaken(unit, reach, patches);
   view.taken = taken;
-  view.choices = choicesFor(taken, slotKinds);
+  view.choices = choicesFor(taken, slotKinds, heading);
 
   // The unit itself.
   if (taken.cost) {
@@ -193,7 +196,9 @@ function pickedItems(units: UnitView[], reach: Item[]): PickedItem[] {
 
 // --- Choices a unit offers ----------------------------------------------------------------------
 
-function choicesFor(taken: UnitAsTaken, slotKinds: Map<string, string>): ChoiceGroup[] {
+// Each group's title is its column's heading: the column's own name unless the game renames it
+// (TOW: Slots -> Command, Equipment Options -> Options, Rules Options -> Special rules).
+function choicesFor(taken: UnitAsTaken, slotKinds: Map<string, string>, heading: (column: string) => string): ChoiceGroup[] {
   const groups: ChoiceGroup[] = [];
   const command: Choice[] = [];
   for (const slot of taken.slots) {
@@ -203,9 +208,9 @@ function choicesFor(taken: UnitAsTaken, slotKinds: Map<string, string>): ChoiceG
     const cost = row?.cost ?? slot.cost;
     command.push({ pick: `command|${name}`, label: name, costText: costText(cost), cost });
   }
-  if (command.length) groups.push({ where: "command", title: "Command", required: false, oneOf: false, choices: command });
-  taken.options.forEach((g, i) => groups.push(groupChoices(g, "options", i === 0 ? "Options" : "")));
-  taken.rulesOptions.forEach((g) => groups.push(groupChoices(g, "rules options", "Special rules")));
+  if (command.length) groups.push({ where: "command", title: heading("Slots"), required: false, oneOf: false, choices: command });
+  taken.options.forEach((g, i) => groups.push(groupChoices(g, "options", i === 0 ? heading("Equipment Options") : "")));
+  taken.rulesOptions.forEach((g) => groups.push(groupChoices(g, "rules options", heading("Rules Options"))));
   for (const row of taken.slotRows) {
     for (const g of row.equipmentOptions?.groups ?? []) groups.push(groupChoices(g, `slot:${row.name}`, `${row.name}`));
   }

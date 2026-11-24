@@ -1,9 +1,10 @@
 // One unit in a list: its size, the General, its options and command, what it costs and why.
 import { useEffect, useState } from "react";
-import type { Roster } from "../../../items/items";
+import type { Context, Game, Roster } from "../../../items/items";
 import { removeUnit, toggleChoice, updateUnit, viewRoster, type ChoiceGroup } from "../../../lists/roster";
 import type { AppData } from "../../app-data";
 import { setLeaveGuard, type Nav } from "../../App";
+import { headingFor } from "../../../items/race-dimensions";
 import { NumberBox } from "../../number-box";
 
 export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppData; nav: Nav; rosterKey: string; unitId: string }) {
@@ -60,6 +61,8 @@ export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppDa
       </div>
     );
   };
+  const context = data.items.find((i): i is Context => i.kind === "context" && i.key === roster.context);
+  const heading = (column: string) => headingFor(data.items.find((i): i is Game => i.kind === "game" && i.shortName === context?.game), column);
   const isOn = (group: string, pick: string) => (group === "command" ? ru.slots.includes(pick.split("|")[1]) : ru.picks.includes(pick));
 
   return (
@@ -86,7 +89,7 @@ export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppDa
       {problems.length > 0 && <ul className="plain problems">{problems.map((m, n) => <li key={n}>{m}</li>)}</ul>}
       {u.limits.length > 0 && (
         <div className="field block">
-          <span className="label">Limits</span>
+          <span className="label">{heading("Unit Limit")}</span>
           <ul className="plain">{u.limits.map((l, i) => <li key={i} className="sub">{l}</li>)}</ul>
         </div>
       )}
@@ -157,7 +160,7 @@ export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppDa
         </div>
       )}
       <div className="field block">
-        <span className="label">Cost</span>
+        <span className="label">{heading("Cost")}</span>
         <ul className="plain">{u.breakdown.map((b, i) => <li key={i}>{b}</li>)}</ul>
       </div>
 

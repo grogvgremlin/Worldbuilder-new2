@@ -12,6 +12,7 @@ import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { ShowMenu } from "../../filter-menu";
 import { ItemPopup } from "../ItemPopup";
+import { headingFor } from "../../../items/race-dimensions";
 
 const FILTERS = [
   { id: "points", label: "Points" },
@@ -52,7 +53,8 @@ export function GameView({ data, nav, view, save }: { data: AppData; nav: Nav; v
     setOn(next);
   };
   const context = data.items.find((i): i is Context => i.kind === "context" && i.key === roster.context);
-  const stats = data.items.find((i): i is Game => i.kind === "game" && i.shortName === context?.game)?.statlines.model ?? [];
+  const game = data.items.find((i): i is Game => i.kind === "game" && i.shortName === context?.game);
+  const stats = game?.statlines.model ?? [];
   const sectionPoints = (section: string) => units.filter((u) => u.category === section).reduce((n, u) => n + u.points, 0);
   const sections = [...new Set((view.armyList?.entries ?? []).map((e) => e.category))].filter((c) => units.some((u) => u.category === c));
 
@@ -72,6 +74,7 @@ export function GameView({ data, nav, view, save }: { data: AppData; nav: Nav; v
                 stats={stats}
                 on={on}
                 openItem={setPopup}
+                heading={(column) => headingFor(game, column)}
                 onNote={(note) => save({ ...roster, units: roster.units.map((x) => (x.id === u.id ? { ...x, note: note || undefined } : x)) })}
               />
             ))}
@@ -83,9 +86,9 @@ export function GameView({ data, nav, view, save }: { data: AppData; nav: Nav; v
   );
 }
 
-type CardProps = { u: GameUnit; stats: string[]; on: Set<string>; openItem: (key: string) => void; onNote: (note: string) => void };
+type CardProps = { u: GameUnit; stats: string[]; on: Set<string>; openItem: (key: string) => void; onNote: (note: string) => void; heading: (column: string) => string };
 
-function UnitCard({ u, stats, on, openItem, onNote }: CardProps) {
+function UnitCard({ u, stats, on, openItem, onNote, heading }: CardProps) {
   const [openRule, setOpenRule] = useState<number | null>(null);
   const print = on.has("print");
   const cols = stats.filter((s) => u.lines.some((l) => l.stats[s] !== undefined));
@@ -130,8 +133,8 @@ function UnitCard({ u, stats, on, openItem, onNote }: CardProps) {
 
       {on.has("kit") && (u.equipment.length > 0 || u.command.length > 0) && (
         <details className="game-section" open>
-          <summary>Equipment{u.command.length > 0 ? " and command" : ""}</summary>
-          {u.equipment.length > 0 && <p><span className="sub">Equipment: </span>{refs(u.equipment)}</p>}
+          <summary>{heading("Equipment")}{u.command.length > 0 ? ` and ${heading("Slots").toLowerCase()}` : ""}</summary>
+          {u.equipment.length > 0 && <p><span className="sub">{heading("Equipment")}: </span>{refs(u.equipment)}</p>}
           {u.command.map((c) => (
             <p key={c.section}>
               <span className="sub">{c.section}: </span>
@@ -149,7 +152,7 @@ function UnitCard({ u, stats, on, openItem, onNote }: CardProps) {
 
       {on.has("items") && u.items.length > 0 && (
         <p>
-          <span className="sub">Magic items: </span>
+          <span className="sub">{heading("Magic Items")}: </span>
           {u.items.map((i, n) => (
             <span key={n}>
               {n > 0 && ", "}
@@ -162,7 +165,7 @@ function UnitCard({ u, stats, on, openItem, onNote }: CardProps) {
 
       {on.has("rules") && u.rules.length > 0 && (
         <details className="game-section" open>
-          <summary>Rules</summary>
+          <summary>{heading("Rules")}</summary>
           {print ? (
             <ul className="print-rules">
               {u.rules.map((r, n) => (

@@ -88,3 +88,8 @@ export function changeDimensions(items: Item[], game: Game, change: DimensionCha
     problems,
   };
 }
+
+// A column's heading as shown: the game's own name for it, or the column's name (owner, 24 Nov).
+export function headingFor(game: Game | undefined, column: string): string {
+  return game?.headings?.[column] || column;
+}

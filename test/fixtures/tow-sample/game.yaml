@@ -53,3 +53,11 @@ presets:
     books: [Forces of Fantasy, Ravening Hordes]
     armies: all
     composition: [Standard composition]
+
+# What sheet columns are called when shown; a column's own name otherwise.
+headings:
+  Slots: Command
+  Equipment Options: Options
+  Rules Options: Special rules
+  Magic Items: Magic items
+  Unit Limit: Limits

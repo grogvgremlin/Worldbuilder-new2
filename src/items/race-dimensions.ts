@@ -4,6 +4,7 @@
 
 import type { Game, Item, RaceDimension } from "./items";
 import { itemKey } from "./keys";
+import { renameAgainst } from "../rules/race-deltas";
 
 export const DEFAULT_DIMENSIONS: RaceDimension[] = [{ name: "Race" }, { name: "Tree", blank: "Core" }, { name: "Rank", blank: "Base" }];
 
@@ -82,5 +83,8 @@ export function changeDimensions(items: Item[], game: Game, change: DimensionCha
     return i;
   });
   if (problems.length) return { items, problems };
-  return { items: out.map((i) => (i.kind === "package" ? { ...i, members: i.members.map((k) => newKeys.get(k) ?? k) } : i)), problems };
+  return {
+    items: out.map((i) => (i.kind === "package" ? { ...i, members: i.members.map((k) => newKeys.get(k) ?? k) } : renameAgainst(i, newKeys))),
+    problems,
+  };
 }

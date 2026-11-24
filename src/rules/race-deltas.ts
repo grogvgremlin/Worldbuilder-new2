@@ -1,18 +1,24 @@
-// A unit's stats against its race profile. Design: races-and-units.md §2 "Book entry: statlines
-// entered as printed; the stored delta is printed − derived", so editing a race (or tree, or rank)
-// flows down to every unit that draws on it; §1 "store only what differs, let changes flow down".
-//   In:   printed 4 against Human · Professional · Veteran WS 4  ->  { change: 0, asPrinted: true }
-//   Out:  race WS 4 + change 0 -> 4 (on cards, in grids, in downloads: back as printed)
-// Only plain numbers are turned into differences; "-", "3+", text stay as entered.
+// A unit's stats as differences. Design: races-and-units.md §2 "Book entry: statlines entered as
+// printed; the stored delta is printed − derived", so editing a race (or tree, or rank) flows down to
+// every unit that draws on it; §1 "store only what differs, let changes flow down". Owner, 24 Nov:
+// "the only time it's not a delta [to a race] is if there's no matching race, in which case it's a
+// delta to 0". So every plain number on a unit is stored as a difference, from:
+//   its race profile                    printed 4, Human WS 4   ->  { change: 0, asPrinted: true, against: "tow.race.human.core.base" }
+//   nothing (no matching race)          printed 4               ->  { change: 4, asPrinted: true, against: "none" }
+//   a command row: the unit's own line  Sergeant printed BS 4, line BS 3 -> { change: 1, asPrinted: true, against: "line" }
+// A difference from "none" is moved onto the race once the race is on the device. Shown and
+// downloaded as base + difference (as printed). "-", "3+" and text stay as entered.
 //
 // Pure.
 
 import type { Item, RaceProfile, Stat, Stats, Unit, UnitRow } from "../items/items";
 import { dimensionsOf, gameOf, profileKey } from "../items/race-dimensions";
 
+type ByKey = Map<string, Item>;
+
 // The race profile a row draws on: the unit's own line takes the nearest race cells up its
 // inheritance chain; any other row (crew, a steed) only its own.
-export function raceOfRow(unit: Unit, rowIndex: number, items: Item[], byKey = new Map(items.map((i) => [i.key, i]))): RaceProfile | undefined {
+export function raceOfRow(unit: Unit, rowIndex: number, items: Item[], byKey: ByKey = new Map(items.map((i) => [i.key, i]))): RaceProfile | undefined {
   let profile: Record<string, string> = {};
   if (rowIndex === 0) {
     const chain: Unit[] = [unit];
@@ -24,55 +30,75 @@ export function raceOfRow(unit: Unit, rowIndex: number, items: Item[], byKey = n
     }
     profile = Object.assign({}, ...[...chain].reverse().map((u) => u.rows[0].profile ?? {}));
   } else profile = unit.rows[rowIndex].profile ?? {};
-  const game = gameOf(unit.key, items);
-  const dims = dimensionsOf(game);
+  const dims = dimensionsOf(gameOf(unit.key, items));
   if (!profile[dims[0].name]) return undefined;
   const found = byKey.get(profileKey(unit.key.split(".")[0], profile, dims));
   return found?.kind === "race-profile" ? found : undefined;
 }
 
-// Printed numbers stored as differences from the race; anything else left as it is.
-export function toDifferences(stats: Stats, race: RaceProfile): Stats {
+// What a row's differences are from: its race; a command row with no race of its own, the unit's
+// own line (as printed); otherwise nothing (0).
+type Base = { against: string; stats: Stats };
+function baseOf(unit: Unit, rowIndex: number, items: Item[], byKey: ByKey): Base {
+  const race = raceOfRow(unit, rowIndex, items, byKey);
+  if (race) return { against: race.key, stats: race.stats };
+  if (rowIndex > 0 && !unit.rows[rowIndex].profile) return { against: "line", stats: printedRow(unit, 0, items, byKey) };
+  return { against: "none", stats: {} };
+}
+
+const num = (s: Stat | undefined) => (typeof s === "number" ? s : 0); // "-" or no stat: 0
+
+// Plain numbers to differences from the base; a difference from nothing moved onto a race now there.
+function toDifferences(stats: Stats, base: Base): Stats {
   const out: Stats = {};
   for (const [name, stat] of Object.entries(stats)) {
-    const base = race.stats[name];
-    out[name] = typeof stat === "number" && typeof base === "number" ? { change: stat - base, asPrinted: true } : stat;
+    if (typeof stat === "number") out[name] = { change: stat - num(base.stats[name]), asPrinted: true, against: base.against };
+    else if (stat.asPrinted && stat.against === "none" && base.against !== "none" && stat.change !== undefined)
+      out[name] = { change: stat.change - num(base.stats[name]), asPrinted: true, against: base.against };
+    else out[name] = stat;
   }
   return out;
 }
 
-// Back to as printed: race + difference.
-export function toPrinted(stats: Stats, race: RaceProfile | undefined): Stats {
+function printedRow(unit: Unit, rowIndex: number, items: Item[], byKey: ByKey): Stats {
+  const row = unit.rows[rowIndex];
+  const base = baseOf(unit, rowIndex, items, byKey);
   const out: Stats = {};
-  for (const [name, stat] of Object.entries(stats)) out[name] = printed(stat, race?.stats[name]);
+  for (const [name, stat] of Object.entries(row.stats)) {
+    if (typeof stat === "number" || !stat.asPrinted || stat.change === undefined) out[name] = stat;
+    else out[name] = (stat.against === "none" ? 0 : num(base.stats[name])) + stat.change;
+  }
   return out;
 }
 
-function printed(stat: Stat, base: Stat | undefined): Stat {
-  if (typeof stat === "number" || !stat.asPrinted || stat.change === undefined) return stat;
-  return typeof base === "number" ? base + stat.change : { change: stat.change }; // no race on the device: the difference as a change
-}
-
-// Every unit's printed stats turned into differences from its race (rows whose race is on the device).
-// Run whenever the library changes; a stat already a difference stays one.
+// Every unit's plain numbers stored as differences (run whenever the library changes, and on load).
 export function unitsToDifferences(items: Item[]): Item[] {
-  const byKey = new Map(items.map((i) => [i.key, i]));
+  const byKey: ByKey = new Map(items.map((i) => [i.key, i]));
   return items.map((item) => {
     if (item.kind !== "unit") return item;
     let changed = false;
     const rows = item.rows.map((row, i): UnitRow => {
-      if (!Object.values(row.stats).some((s) => typeof s === "number")) return row;
-      const race = raceOfRow(item, i, items, byKey);
-      if (!race) return row;
+      const needs = Object.values(row.stats).some((s) => typeof s === "number" || (s.asPrinted && s.against === "none"));
+      if (!needs) return row;
+      const stats = toDifferences(row.stats, baseOf(item, i, items, byKey));
+      if (JSON.stringify(stats) === JSON.stringify(row.stats)) return row;
       changed = true;
-      return { ...row, stats: toDifferences(row.stats, race) };
+      return { ...row, stats };
     });
     return changed ? { ...item, rows } : item;
   });
 }
 
 // A unit with every row's stats as printed (for a card, a grid, a download).
-export function unitAsPrinted(unit: Unit, items: Item[], byKey = new Map(items.map((i) => [i.key, i]))): Unit {
+export function unitAsPrinted(unit: Unit, items: Item[], byKey: ByKey = new Map(items.map((i) => [i.key, i]))): Unit {
   if (!unit.rows.some((r) => Object.values(r.stats).some((s) => typeof s !== "number" && s.asPrinted))) return unit;
-  return { ...unit, rows: unit.rows.map((row, i) => ({ ...row, stats: toPrinted(row.stats, raceOfRow(unit, i, items, byKey)) })) };
+  return { ...unit, rows: unit.rows.map((row, i) => ({ ...row, stats: printedRow(unit, i, items, byKey) })) };
+}
+
+// The base a difference is against has a new key (a race dimension renamed or added): follow it.
+export function renameAgainst(item: Item, newKeys: Map<string, string>): Item {
+  if (item.kind !== "unit") return item;
+  const fix = (stats: Stats): Stats =>
+    Object.fromEntries(Object.entries(stats).map(([n, s]) => [n, typeof s !== "number" && s.against && newKeys.has(s.against) ? { ...s, against: newKeys.get(s.against)! } : s]));
+  return { ...item, rows: item.rows.map((r) => ({ ...r, stats: fix(r.stats) })) };
 }

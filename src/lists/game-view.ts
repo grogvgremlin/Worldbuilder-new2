@@ -7,6 +7,7 @@
 import type { Equipment, Game, Item, MagicItem, Option, OptionGroup, RaceProfile, SlotKind, SpecialRule, Stats, Term, Unit } from "../items/items";
 import { dimensionsOf, gameOf, headingFor, profileKey } from "../items/race-dimensions";
 import { unitAsPrinted } from "../rules/race-deltas";
+import { groupFor } from "./summary-groups";
 import { readItemPick } from "./magic-items";
 import { patchStats } from "../rules/patches";
 import { optionKey, unitAsTaken } from "./unit-as-taken";
@@ -89,7 +90,7 @@ function gameUnit(u: UnitView, reach: Item[], game: Game | undefined, all: Item[
 
   // Stat lines: the unit's own (its race under it, its kit's effects on it), each command model taken
   // with its changes, each mount. One line: no name; several: only the others are named.
-  const base = withKit(withRace(t.unit, t.stats, reach, game), ownKit.terms, unitOptions, reach);
+  const base = withKit(withRace(t.unit, t.stats, reach, game), ownKit.terms, unitOptions, reach, game?.bearerTypes ?? ["armour"]);
   const lines: StatLine[] = [{ name: "", stats: base }];
   for (const row of t.slotRows) {
     if (!row.name || !ru.slots.includes(row.name) || Object.keys(row.stats).length === 0) continue;
@@ -102,7 +103,7 @@ function gameUnit(u: UnitView, reach: Item[], game: Game | undefined, all: Item[
     const mount = reach.find((i): i is Unit => i.kind === "unit" && (i.key === m.item || matchName(i.name) === matchName(m.name)));
     if (!mount) continue;
     const mt = unitAsTaken(mount, reach);
-    lines.push({ name: mount.rows[0].name ?? mount.name, stats: withKit(withRace(mount, mt.stats, reach, game), mt.equipment, [], reach) });
+    lines.push({ name: mount.rows[0].name ?? mount.name, stats: withKit(withRace(mount, mt.stats, reach, game), mt.equipment, [], reach, game?.bearerTypes ?? ["armour"]) });
   }
 
   // Command models taken, by section, each with its own kit.
@@ -152,13 +153,13 @@ function gameUnit(u: UnitView, reach: Item[], game: Game | undefined, all: Item[
   };
 }
 
-// What a model's own kit does to its line: armour and barding change the bearer (Barding: M -1);
-// weapons don't (their S is the weapon's), so only kit that isn't a weapon counts.
-function withKit(stats: Stats, kit: (Term | Option)[], options: Option[], reach: Item[]): Stats {
+// What a model's own kit does to its line: kit of the game's bearer types (Configuration; armour by
+// default) changes the bearer (Barding: M -1); other kit doesn't (a weapon's S is the weapon's).
+function withKit(stats: Stats, kit: (Term | Option)[], options: Option[], reach: Item[], bearerTypes: string[]): Stats {
   let out = stats;
   for (const t of [...kit, ...options]) {
     const eq = reach.find((i): i is Equipment => i.kind === "equipment" && (i.key === t.item || matchName(i.name) === matchName(t.name)));
-    if (!eq || eq.type === "weapon" || eq.range) continue;
+    if (!eq || !bearerTypes.some((t) => (eq.type ?? "").toLowerCase() === t.toLowerCase())) continue;
     out = patchStats(out, eq.stats);
   }
   return out;
@@ -182,15 +183,15 @@ function withRace(unit: Unit, stats: Stats, reach: Item[], game: Game | undefine
 }
 
 // --- Army summary cards (owner, 24 Nov) ------------------------------------------------------------
-// Everything in the list collated, one card per kind, grouped by type: equipment as hand weapons,
-// ranged weapons, armour and other; special rules by their rule type; magic items by theirs. Each entry
-// says which units have it.
+// Everything in the list collated, one card per kind (equipment, special rules, magic items), grouped
+// by each item's own label (its Type, unless the game says otherwise); a blank label falls under what
+// the game's Configuration says. Each entry says which units have it.
 
 export type SummaryEntry = { name: string; key?: string; text?: string; units: string[] };
 export type SummaryGroup = { type: string; entries: SummaryEntry[] };
 export type SummaryCard = { title: string; groups: SummaryGroup[] };
 
-export function armySummary(units: GameUnit[], items: Item[]): SummaryCard[] {
+export function armySummary(units: GameUnit[], items: Item[], game?: Game): SummaryCard[] {
   const byKey = new Map(items.map((i) => [i.key, i]));
   const label = (u: GameUnit) => u.title ?? u.name;
   const collect = (pick: (u: GameUnit) => (Ref & { text?: string })[], typeOf: (r: Ref) => string, order: string[]): SummaryGroup[] => {
@@ -213,26 +214,16 @@ export function armySummary(units: GameUnit[], items: Item[]): SummaryCard[] {
   const isMagic = (r: Ref) => !!r.key && byKey.get(r.key)?.kind === "magic-item";
   const kitOf = (u: GameUnit) => [...u.equipment, ...u.command.flatMap((c) => c.models.flatMap((m) => m.kit))];
 
-  const equipmentType = (r: Ref) => {
-    const eq = r.key ? byKey.get(r.key) : undefined;
-    if (eq?.kind !== "equipment") return "Other";
-    if (eq.type === "weapon") return !eq.range || /^combat$/i.test(eq.range) ? "Hand weapons" : "Ranged weapons";
-    if (eq.type === "armour") return "Armour";
-    return eq.type ? eq.type[0].toUpperCase() + eq.type.slice(1) : "Other";
-  };
-  const ruleType = (r: Ref) => {
-    const rule = r.key ? byKey.get(r.key) : undefined;
-    return rule?.kind === "special-rule" && rule.ruleType ? rule.ruleType : "Other";
-  };
-  const itemType = (r: Ref) => {
-    const m = r.key ? byKey.get(r.key) : undefined;
-    return m?.kind === "magic-item" ? m.type[0].toUpperCase() + m.type.slice(1) : "Other";
+  // Each card's groups come from the items' own labels (src/lists/summary-groups.ts).
+  const typeOf = (card: string) => (r: Ref) => {
+    const item = r.key ? byKey.get(r.key) : undefined;
+    return item ? groupFor(item, card, game) : (game?.summaries?.[card]?.otherwise ?? "Other");
   };
 
   const cards: SummaryCard[] = [
-    { title: "Equipment", groups: collect((u) => kitOf(u).filter((r) => !isMagic(r)), equipmentType, ["Hand weapons", "Ranged weapons", "Armour"]) },
-    { title: "Special rules", groups: collect((u) => u.rules, ruleType, []) },
-    { title: "Magic items", groups: collect((u) => [...u.items, ...kitOf(u).filter(isMagic)], itemType, []) },
+    { title: "Equipment", groups: collect((u) => kitOf(u).filter((r) => !isMagic(r)), typeOf("Equipment"), []) },
+    { title: "Special rules", groups: collect((u) => u.rules, typeOf("Special rules"), []) },
+    { title: "Magic items", groups: collect((u) => [...u.items, ...kitOf(u).filter(isMagic)], typeOf("Magic items"), []) },
   ];
   return cards.filter((c) => c.groups.length > 0);
 }

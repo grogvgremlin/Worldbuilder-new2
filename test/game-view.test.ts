@@ -69,9 +69,27 @@ describe("army summary cards", () => {
     const { armySummary } = await import("../src/lists/game-view");
     const cards = armySummary(gameUnits(viewRoster(knights(), all), all), all);
     expect(cards.map((c) => c.title)).toEqual(["Equipment", "Special rules", "Magic items"]);
+    // Grouped by each item's own Type label, as entered.
     const kit = cards[0].groups;
-    expect(kit.map((g) => g.type)).toEqual(["Hand weapons", "Armour"]);
-    expect(kit[0].entries.map((e) => e.name)).toContain("Lances");
+    expect(kit.map((g) => g.type)).toEqual(["Armour", "Weapon"]);
+    expect(kit[1].entries.map((e) => e.name)).toContain("Lances");
     expect(cards[2].groups[0]).toEqual({ type: "Magic weapon", entries: [{ name: "Sample Blade", key: "tow.magic-item.sample-blade", text: undefined, units: ["Empire Knights"] }] });
+  });
+});
+
+describe("a blank label follows the game's conditions (owner, 24 Nov)", () => {
+  it("Not(R) -> Hand weapons puts the label-less Hand Weapon there; otherwise names the rest", async () => {
+    const { armySummary } = await import("../src/lists/game-view");
+    // Hand Weapon with its Type left blank and no range: Hand weapons.
+    const unlabelled = all.map((i) => (i.key === "tow.equipment.hand-weapon" ? { ...i, type: undefined } : i)) as Item[];
+    const game = { ...(all.find((i) => i.kind === "game") as Game), summaries: { Equipment: { whenBlank: [{ when: "Not(R)", group: "Hand weapons" }], otherwise: "Unlabelled" } } };
+    const cards = armySummary(gameUnits(viewRoster(knights(), unlabelled), unlabelled), unlabelled, game);
+    expect(cards[0].groups.find((g) => g.type === "Hand weapons")!.entries.map((e) => e.name)).toContain("Hand Weapon");
+  });
+  it("a condition reads any column: R(Combat), Not(R), and ';' for and", async () => {
+    const { holds } = await import("../src/lists/summary-groups");
+    expect(holds({ R: "Combat", AP: "" }, "R(Combat)")).toBe(true);
+    expect(holds({ R: "24\"", AP: "-1" }, "Not(R)")).toBe(false);
+    expect(holds({ R: "", AP: "-1" }, "Not(R);AP")).toBe(true);
   });
 });

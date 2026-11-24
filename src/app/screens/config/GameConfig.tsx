@@ -4,6 +4,7 @@
 import { useState } from "react";
 import type { Game, RaceDimension } from "../../../items/items";
 import { changeDimensions, dimensionsOf, type DimensionChange } from "../../../items/race-dimensions";
+import { SUMMARY_CARDS, type SummaryRule } from "../../../lists/summary-groups";
 import { compositionSets, gamePackages, movePreset } from "../../../context/game-config";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
@@ -97,6 +98,18 @@ export function GameConfig({ data, nav, game, onSaved }: { data: AppData; nav: N
         ))}
       </Fold>
 
+      <Fold id={`${game.key}|summaries`} title="Army summary cards">
+        <p className="sub">
+          Each card groups the list's items by a label column, as entered (Type unless you name another). For an item whose label is blank: the first
+          condition it meets, written on its own columns (e.g. <code>Not(R)</code>: no range; <code>R(Combat)</code>; <code>;</code> for and), else the
+          “otherwise” heading.
+        </p>
+        {SUMMARY_CARDS.map((card) => (
+          <SummaryRuleEditor key={card} card={card} rule={game.summaries?.[card] ?? {}} onSave={(rule) => save({ ...game, summaries: { ...(game.summaries ?? {}), [card]: rule } })} />
+        ))}
+        <ListField label="Equipment types that change the bearer's line (Barding M -1)" value={game.bearerTypes ?? ["armour"]} onSave={(bearerTypes) => save({ ...game, bearerTypes })} />
+      </Fold>
+
       <Fold id={`${game.key}|app`} title="App only">
         <h3>Race dimensions</h3>
         <p className="sub">
@@ -184,5 +197,32 @@ function ListField({ label, value, onSave }: { label: string; value: string[]; o
         }}
       />
     </label>
+  );
+}
+
+// One summary card's grouping: the label column, conditions for a blank label, and the otherwise heading.
+function SummaryRuleEditor({ card, rule, onSave }: { card: string; rule: SummaryRule; onSave: (rule: SummaryRule) => void }) {
+  const [rows, setRows] = useState(rule.whenBlank ?? []);
+  const commit = (next: { when: string; group: string }[], change: Partial<SummaryRule> = {}) => {
+    setRows(next);
+    const kept = next.filter((r) => r.when.trim() && r.group.trim());
+    onSave({ ...rule, ...change, whenBlank: kept.length ? kept : undefined });
+  };
+  return (
+    <div className="summary-rule">
+      <h3>{card}</h3>
+      <div className="row">
+        <input className="filter" placeholder="Grouped by (Type)" defaultValue={rule.by ?? ""} onBlur={(e) => e.target.value.trim() !== (rule.by ?? "") && onSave({ ...rule, by: e.target.value.trim() || undefined })} />
+        <input className="filter" placeholder="Otherwise (Other)" defaultValue={rule.otherwise ?? ""} onBlur={(e) => e.target.value.trim() !== (rule.otherwise ?? "") && onSave({ ...rule, otherwise: e.target.value.trim() || undefined })} />
+      </div>
+      {rows.map((r, i) => (
+        <div key={i} className="row">
+          <input className="filter" placeholder="When blank and… e.g. Not(R)" value={r.when} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, when: e.target.value } : x)))} onBlur={() => commit(rows)} />
+          <input className="filter" placeholder="… group it under" value={r.group} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, group: e.target.value } : x)))} onBlur={() => commit(rows)} />
+          <button aria-label="Remove" onClick={() => commit(rows.filter((_, j) => j !== i))}>×</button>
+        </div>
+      ))}
+      <button className="add" onClick={() => setRows([...rows, { when: "", group: "" }])}>+ A condition for a blank label</button>
+    </div>
   );
 }

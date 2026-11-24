@@ -76,6 +76,20 @@ describe("a pick-up roster (sample)", () => {
     expect(u.issues).toEqual([]);
   });
 
+  it("when a limit is reached: hide, grey out, or allow with a warning (a setting)", () => {
+    const listWith = (mode: string | undefined) => {
+      let r = newRoster("x", context as Context, empire, 1000, all);
+      r = add(add(r, all, "tow.unit.empire-knights"), all, "tow.unit.empire-knights");
+      r = pick(r, all, "u1", "Drilled");
+      return mode ? { ...r, settings: { "When a limit is reached": mode } } : r;
+    };
+    const groups = (mode: string | undefined) => viewRoster(listWith(mode), all).units[1].choices.filter((g) => g.where === "rules options");
+    expect(groups(undefined).flatMap((g) => g.choices)).toEqual([]); // hide is the default
+    expect(groups("grey").flatMap((g) => g.choices).map((c) => [c.label, !!c.blocked])).toEqual([["Drilled", true], ["Stubborn", true]]);
+    expect(groups("allow").flatMap((g) => g.choices).map((c) => !!c.blocked)).toEqual([false, false]);
+    expect(groups("allow")[0].full).toMatch(/^⚠ /);
+  });
+
   it("a unit's own limit on its special-rule options: 0–1 per 1,000", () => {
     let r = newRoster("x", context as Context, empire, 1000, all);
     r = add(r, all, "tow.unit.empire-knights");

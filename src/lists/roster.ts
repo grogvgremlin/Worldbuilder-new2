@@ -10,7 +10,7 @@
 // (src/lists/magic-items.ts).
 
 import type { ArmyList, CompositionRule, Context, Cost, Game, Item, Limit, MagicItem, OptionGroup, Patch, Roster, RosterUnit, SlotKind, Unit } from "../items/items";
-import { applyScaling, settingForLimit, settingValue } from "../settings/settings";
+import { applyScaling, limitMode, settingForLimit, settingValue, type LimitMode } from "../settings/settings";
 import { matchName } from "../items/keys";
 import { readContext } from "../context/context";
 import { patched, patchesInPlay } from "../rules/patches";
@@ -24,7 +24,8 @@ import { itemPick, itemRuleIssues, itemsForAllowance, notForBearer, readItemPick
 export type Issue = { severity: "illegal" | "warning"; message: string; units: string[]; categories?: string[]; about?: "items" };
 
 // A choice the unit offers: an option in a group, or a command slot.
-export type Choice = { pick: string; label: string; costText: string; cost?: Cost };
+// `blocked`: greyed out, and why (the limit mode "grey").
+export type Choice = { pick: string; label: string; costText: string; cost?: Cost; blocked?: string };
 // `full`: the group's limit is reached by other units, so its choices aren't offered here (the reason).
 // An allowance: points to spend on items of some types ("Magic Items: up to 50 pts").
 export type Allowance = { name: string; budget: number | null; most: number | null; text: string };
@@ -52,6 +53,7 @@ export type RosterView = {
   issues: Issue[]; // the roster's own (each unit's are on the unit too)
   full: Record<string, string>; // entries that can't be added now (their limit is reached): unit key -> why
   generalFull?: string; // the General role is taken as often as allowed: why another can't be (owner, 23 Nov)
+  limitMode: LimitMode; // what to do with a choice over a limit: hide it, grey it out, or allow it with a warning
 };
 
 // --- What's in reach --------------------------------------------------------------------------
@@ -93,12 +95,13 @@ export function viewRoster(roster: Roster, items: Item[]): RosterView {
   const allowed = allowedBy(game, items, context, roster, issues);
   const entries = entryUnits(armyList, reach, patches);
   for (const rule of rules) for (const limit of rule.limits.limits) checkArmyLimit(rule.name, limit, units, entries, allowed, roster.target, issues);
-  checkEntryLimits(units, allowed, roster.target, issues);
+  const mode = limitMode(game, items, context, roster);
+  checkEntryLimits(units, allowed, roster.target, issues, mode);
   for (const found of itemRuleIssues(pickedItems(units, reach), rules)) issues.push({ severity: "illegal", ...found, about: "items" });
   const full = fullEntries(rules, units, entries, allowed, roster.target);
   describeLimits(units, rules, allowed, roster.target);
   for (const u of units) issues.push(...u.issues);
-  return { roster, armyList, units, total, categories, issues: dedupe(issues), full, generalFull: generalFull(rules, units, allowed) };
+  return { roster, armyList, units, total, categories, issues: dedupe(issues), full, generalFull: generalFull(rules, units, allowed), limitMode: mode };
 }
 
 function viewUnit(ru: RosterUnit, reach: Item[], patches: Patch[], categoryOf: Map<string, string>, slotKinds: Map<string, string>): UnitView {
@@ -391,7 +394,7 @@ function checkArmyLimit(ruleName: string, limit: Limit, units: UnitView[], entri
 // A unit's own limits: "unit~0-1~1000 roster target" (this entry), "rules options~0-1~…" (this entry
 // taking any special-rule option). An army rule about the same units is checked as well; the
 // tighter one shows.
-function checkEntryLimits(units: UnitView[], allowed: Allowed, target: number, issues: Issue[]): void {
+function checkEntryLimits(units: UnitView[], allowed: Allowed, target: number, issues: Issue[], mode: LimitMode): void {
   const byEntry = new Map<string, UnitView[]>();
   for (const u of units) if (u.taken) byEntry.set(u.taken.unit.key, [...(byEntry.get(u.taken.unit.key) ?? []), u]);
   for (const entry of byEntry.values()) {
@@ -411,8 +414,15 @@ function checkEntryLimits(units: UnitView[], allowed: Allowed, target: number, i
           const groups = u.choices.filter((c) => c.where === "rules options");
           if (groups.length === 0) continue;
           const labels = groups.flatMap((g) => g.choices.map((c) => c.label)).join(", ");
-          groups[0].full = `${labels}: ${counted.length ? "already taken by another unit" : "none allowed"}, ${allowedText(range.max, limit, target)}`;
-          for (const g of groups) g.choices = [];
+          const why = `${counted.length ? "already taken by another unit" : "none allowed"}, ${allowedText(range.max, limit, target)}`;
+          // The limit mode: hide the choices, grey them out, or leave them with a warning.
+          if (mode === "hide") {
+            groups[0].full = `${labels}: ${why}`;
+            for (const g of groups) g.choices = [];
+          } else if (mode === "grey") {
+            groups[0].full = `${labels}: ${why}`;
+            for (const g of groups) for (const c of g.choices) c.blocked = why;
+          } else groups[0].full = `⚠ ${labels}: ${why} (allowed here, but the list will show an issue)`;
         }
     }
   }

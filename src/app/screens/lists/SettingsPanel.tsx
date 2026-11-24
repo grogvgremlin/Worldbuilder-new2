@@ -3,14 +3,13 @@
 // the game's choices, written by hand, or put back to what it would otherwise be.
 import { useState } from "react";
 import type { Context, Game, Item, Roster } from "../../../items/items";
-import { settingValue } from "../../../settings/settings";
+import { APP_SETTINGS, settingValue } from "../../../settings/settings";
 
 type Props = { game: Game | undefined; items: Item[]; context: Context; roster?: Roster; onChange: (settings: Record<string, string>) => void };
 
 export function SettingsPanel({ game, items, context, roster, onChange }: Props) {
   const [writing, setWriting] = useState<string | null>(null);
-  const settings = game?.settings ?? [];
-  if (settings.length === 0) return <p className="sub">This game has no settings.</p>;
+  const settings = [...(game?.settings ?? []), ...APP_SETTINGS];
   const own = (roster ? roster.settings : context.settings) ?? {};
   const set = (name: string, value: string | null) => {
     const next = { ...own };

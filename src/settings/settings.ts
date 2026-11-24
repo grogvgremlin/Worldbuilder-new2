@@ -13,10 +13,28 @@
 //
 // Pure.
 
-import type { Context, Game, Item, Roster, SettingValue } from "../items/items";
+import type { Context, Game, GameSetting, Item, Roster, SettingValue } from "../items/items";
 import { readContext } from "../context/context";
 
 export type Found = { value: string; from: string };
+
+// Settings the app itself offers for every game, beside the game's own (owner, 24 Nov).
+export const LIMIT_MODE = "When a limit is reached";
+export const APP_SETTINGS: GameSetting[] = [
+  {
+    name: LIMIT_MODE,
+    about: "What list building does with a choice that's over a limit, or would hit it",
+    default: "hide",
+    choices: { "Hide it (say why)": "hide", "Grey it out (say why)": "grey", "Allow it, with a warning": "allow" },
+  },
+];
+
+export type LimitMode = "hide" | "grey" | "allow";
+
+export function limitMode(game: Game | undefined, items: Item[], context?: Context, roster?: Roster): LimitMode {
+  const v = settingValue(LIMIT_MODE, game, items, context, roster)?.value;
+  return v === "grey" || v === "allow" ? v : "hide";
+}
 
 export function settingValue(name: string, game: Game | undefined, items: Item[], context?: Context, roster?: Roster): Found | null {
   if (roster?.settings?.[name] !== undefined) return { value: roster.settings[name], from: "this list" };
@@ -28,7 +46,7 @@ export function settingValue(name: string, game: Game | undefined, items: Item[]
       if (set) return { value: set.value, from: p.name };
     }
   }
-  const declared = game?.settings?.find((s) => s.name === name);
+  const declared = [...(game?.settings ?? []), ...APP_SETTINGS].find((s) => s.name === name);
   return declared ? { value: declared.default, from: "the game's default" } : null;
 }
 

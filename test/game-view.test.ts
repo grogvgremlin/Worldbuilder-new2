@@ -118,3 +118,19 @@ describe("search within a scope", () => {
     expect(searchIn(items, "blade", { kind: "package", key: "tow.the-empire" }).map((h) => h.label)).toEqual(["Sample Blade"]);
   });
 });
+
+describe("searching a list finds units by what they carry (owner, 24 Nov)", () => {
+  it("iron finds the knights (their horse's Iron Shod Hooves); horses finds them too", async () => {
+    const { searchIn } = await import("../src/library/search");
+    const r = knights();
+    const items = [...all, r];
+    expect(searchIn(items, "iron", { kind: "roster", key: r.key }).map((h) => [h.label, h.detail])).toEqual([["Empire Knights", "Core · has Iron Shod Hooves"]]);
+    expect(searchIn(items, "horses", { kind: "roster", key: r.key }).map((h) => h.label)).toEqual(["Empire Knights"]);
+    expect(searchIn(items, "drilled", { kind: "roster", key: r.key }).map((h) => h.label)).toEqual(["Empire Knights"]);
+  });
+  it("a game's scope searches only that game's library", async () => {
+    const { searchIn } = await import("../src/library/search");
+    expect(searchIn(all, "knight", { kind: "game", key: "tow" }).map((h) => h.label)).toContain("Empire Knights");
+    expect(searchIn(all, "knight", { kind: "game", key: "wfb6" })).toEqual([]);
+  });
+});

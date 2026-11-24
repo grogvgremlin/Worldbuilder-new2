@@ -476,6 +476,7 @@ export const RosterUnit = z.strictObject({
   slots: z.array(z.string()), // command taken, by name: "Sergeant", "Musician"
   general: z.boolean(), // holds the General role
   note: z.string().optional(), // the owner's own note, shown in the game view
+  battleNote: z.string().optional(), // a note for the battle being played (Show → Battle → Battle notes)
   // The unit as a character of its own (owner, 24 Nov): a name ("Marcus Aurelius"), an icon, a
   // description. Later a world record can hold these, with the list pointing at it.
   title: z.string().optional(),

@@ -23,6 +23,9 @@ const FILTERS = [
   { id: "pages", label: "Pages" },
   { id: "description", label: "Description" },
   { id: "notes", label: "Notes" },
+  // Battle: its own group, more to come in it (owner, 24 Nov), each part switched on or off.
+  { id: "battle", label: "Battle" },
+  { id: "battle-notes", label: "Battle notes", parent: "battle" },
   { id: "print", label: "Print: rules written out" },
 ];
 
@@ -68,10 +71,12 @@ export function GameView({ data, nav, view, save }: { data: AppData; nav: Nav; v
         </details>
       )}
       {sections.map((section) => (
-        <div key={section}>
-          <h2>
-            {section} {on.has("points") && <span className="sub">{sectionPoints(section)} pts · {roster.target ? Math.round((sectionPoints(section) * 100) / roster.target) : 0}% of {roster.target}</span>}
-          </h2>
+        <details key={section} className="browse-group" open>
+          <summary>
+            <h2>
+              {section} {on.has("points") && <span className="sub">{sectionPoints(section)} pts · {roster.target ? Math.round((sectionPoints(section) * 100) / roster.target) : 0}%</span>}
+            </h2>
+          </summary>
           <div className="game-units">
             {units.filter((u) => u.category === section).map((u) => (
               <UnitCard
@@ -82,19 +87,28 @@ export function GameView({ data, nav, view, save }: { data: AppData; nav: Nav; v
                 openItem={setPopup}
                 heading={(column) => headingFor(game, column)}
                 onNote={(note) => save({ ...roster, units: roster.units.map((x) => (x.id === u.id ? { ...x, note: note || undefined } : x)) })}
+                onBattleNote={(battleNote) => save({ ...roster, units: roster.units.map((x) => (x.id === u.id ? { ...x, battleNote: battleNote || undefined } : x)) })}
               />
             ))}
           </div>
-        </div>
+        </details>
       ))}
       {popup && <ItemPopup data={data} nav={nav} itemKey={popup} onClose={() => setPopup(null)} />}
     </div>
   );
 }
 
-type CardProps = { u: GameUnit; stats: string[]; on: Set<string>; openItem: (key: string) => void; onNote: (note: string) => void; heading: (column: string) => string };
+type CardProps = {
+  u: GameUnit;
+  stats: string[];
+  on: Set<string>;
+  openItem: (key: string) => void;
+  onNote: (note: string) => void;
+  onBattleNote: (note: string) => void;
+  heading: (column: string) => string;
+};
 
-function UnitCard({ u, stats, on, openItem, onNote, heading }: CardProps) {
+function UnitCard({ u, stats, on, openItem, onNote, onBattleNote, heading }: CardProps) {
   const [openRule, setOpenRule] = useState<number | null>(null);
   const print = on.has("print");
   const cols = stats.filter((s) => u.lines.some((l) => l.stats[s] !== undefined));
@@ -117,7 +131,7 @@ function UnitCard({ u, stats, on, openItem, onNote, heading }: CardProps) {
       </div>
 
       {on.has("stats") && cols.length > 0 && (
-        <div className="grid-wrap">
+        <div className="grid-wrap fit">
           <table className="stats">
             <thead>
               <tr>
@@ -128,7 +142,7 @@ function UnitCard({ u, stats, on, openItem, onNote, heading }: CardProps) {
             <tbody>
               {u.lines.map((l, i) => (
                 <tr key={i}>
-                  {named && <th>{l.name}</th>}
+                  {named && <th>{l.name || "Unit"}</th>}
                   {cols.map((s) => <td key={s}>{writeStat(l.stats[s])}</td>)}
                 </tr>
               ))}
@@ -185,9 +199,12 @@ function UnitCard({ u, stats, on, openItem, onNote, heading }: CardProps) {
             <div className="game-rules">
               {u.rules.flatMap((r, n) => {
                 const parts = [
-                  <button key={`r${n}`} className={"link rule-link" + (openRule === n ? " on" : "")} onClick={() => setOpenRule(openRule === n ? null : n)}>
-                    {r.name}
-                  </button>,
+                  <span key={`r${n}`} className="rule-item">
+                    <button className={"link rule-link" + (openRule === n ? " on" : "")} onClick={() => setOpenRule(openRule === n ? null : n)}>
+                      {r.name}
+                    </button>
+                    {n < u.rules.length - 1 && ","}
+                  </span>,
                 ];
                 if (openRule === n)
                   parts.push(
@@ -203,7 +220,12 @@ function UnitCard({ u, stats, on, openItem, onNote, heading }: CardProps) {
         </details>
       )}
 
-      {on.has("pages") && u.page && <p className="sub">{link(u.page.name, u.page.key)}</p>}
+      {on.has("pages") && u.ref && (
+        <p className="sub">
+          Ref: {link(u.ref.source.name, u.ref.source.key)}
+          {u.ref.page && <> [{link(`p. ${u.ref.page}`, u.ref.source.key)}]</>}
+        </p>
+      )}
       {on.has("description") && u.description && (
         <details className="game-section" open>
           <summary>Description</summary>
@@ -213,7 +235,13 @@ function UnitCard({ u, stats, on, openItem, onNote, heading }: CardProps) {
       {on.has("notes") && (
         <details className="game-section" open>
           <summary>Notes</summary>
-          <textarea className="note" placeholder="Your notes for this game" defaultValue={u.note ?? ""} onBlur={(e) => e.target.value !== (u.note ?? "") && onNote(e.target.value.trim())} />
+          <textarea className="note" placeholder="Your notes" defaultValue={u.note ?? ""} onBlur={(e) => e.target.value !== (u.note ?? "") && onNote(e.target.value.trim())} />
+        </details>
+      )}
+      {on.has("battle") && on.has("battle-notes") && (
+        <details className="game-section" open>
+          <summary>Battle notes</summary>
+          <textarea className="note" placeholder="Notes for this battle" defaultValue={u.battleNote ?? ""} onBlur={(e) => e.target.value !== (u.battleNote ?? "") && onBattleNote(e.target.value.trim())} />
         </details>
       )}
     </div>

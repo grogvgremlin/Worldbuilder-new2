@@ -312,12 +312,36 @@ function RaceCard({ race, ctx }: { race: RaceProfile; ctx: Ctx }) {
   );
 }
 
+// A slot kind is a mask (owner, 24 Nov: "make clear that it's a mask"): not a model of its own, but
+// what every command model in its slot takes on (its name and kit) unless the unit says otherwise.
 function SlotKindCard({ slot, ctx }: { slot: SlotKind; ctx: Ctx }) {
+  const wearers = ctx.items
+    .filter((i): i is Unit => i.kind === "unit")
+    .flatMap((u) => u.rows.filter((r) => r.slotCode === slot.code).map((r) => ({ unit: u, name: r.name ?? slot.name })));
   return (
     <>
+      <p className="mask-note">
+        A mask, not a model of its own: each unit's <b>{slot.code}</b> slot wears it. Its models take this name and kit unless their unit gives them their own
+        {wearers.length > 0 ? `, as ${[...new Set(wearers.map((w) => w.name))].slice(0, 4).join(", ")} do.` : "."}
+      </p>
       <Field label="Code">{slot.code}</Field>
       <Field label="Carries">{slot.equipment.length > 0 && <Links terms={slot.equipment} ctx={ctx} />}</Field>
       <Field label="Also called">{slot.aliases.join(", ")}</Field>
+      {wearers.length > 0 && (
+        <div className="field block">
+          <span className="label">Worn by</span>
+          <span>
+            {wearers.map((w, i) => (
+              <span key={i}>
+                {i > 0 && ", "}
+                {w.name} <span className="sub">(</span>
+                <ItemLink name={w.unit.name} itemKey={w.unit.key} ctx={ctx} />
+                <span className="sub">)</span>
+              </span>
+            ))}
+          </span>
+        </div>
+      )}
     </>
   );
 }

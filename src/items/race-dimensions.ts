@@ -40,6 +40,10 @@ export function upgradeItem(item: Record<string, any>): Record<string, any> {
     const { race, tree, rank, ...rest } = o;
     return { rest, profile };
   };
+  if (item.kind === "roster" && "battle" in item) {
+    const { battle, ...rest } = item; // battle marks from a short-lived build (24 Nov): battles come with the Battle tool
+    return rest;
+  }
   if (item.kind === "race-profile" && !item.profile) {
     const { rest, profile } = old(item);
     return { ...rest, profile };

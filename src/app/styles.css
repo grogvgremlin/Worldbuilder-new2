@@ -192,8 +192,6 @@ h2 .sub { text-transform: none; letter-spacing: normal; }
 .header-links { display: flex; gap: 16px; } .search-results li { padding: 6px 0; border-bottom: 1px solid var(--line); } .search-box { width: 100%; }
 .dims .row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; } .dims .row input { flex: 1; min-width: 0; width: auto; margin: 0; } .race-table .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin: 6px 0; }
 .game-unit { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 8px 10px; margin-bottom: 8px; }
-.game-unit.fleeing { border-color: #b8860b; }
-.game-unit.dead { opacity: .5; }
 .game-unit-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .game-unit p { margin: 6px 0; }
 .game-rules { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
@@ -201,7 +199,3 @@ h2 .sub { text-transform: none; letter-spacing: normal; }
 .rule-chip.on { background: var(--link); color: #fff; }
 .rule-text { display: block; flex-basis: 100%; font-size: .9rem; margin: 4px 0; }
 .game-unit .note { width: 100%; min-height: 2.5em; font: inherit; border: 1px solid var(--line); border-radius: var(--radius); padding: 6px; }
-.game-unit .buttons button.on, .battle .buttons button.on { background: #b3261e; color: #fff; }
-.battle { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 8px 10px; margin: 8px 0; }
-.battle-total { font-size: 1.1rem; margin-bottom: 4px; }
-.stepper .count { display: inline-block; min-width: 2em; text-align: center; }

@@ -1,10 +1,10 @@
 // A list in game view (owner, 24 Nov; after the Old World Builder's): each unit's lines, kit, special
-// rules (tap one for its text), magic items and page, filtered by the chips at the top; and a battle
-// panel: units marked fleeing or dead, the General or Battle Standard lost, banners, scenario points.
+// rules (tap one for its text), magic items, page and your note, filtered by the chips at the top.
+// Battle tracking comes with the Battle tool (owner, 24 Nov).
 // Logic: src/lists/game-view.ts.
 import { useState } from "react";
 import type { Context, Game, Roster } from "../../../items/items";
-import { battleTally, gameUnits, type GameUnit } from "../../../lists/game-view";
+import { gameUnits, type GameUnit } from "../../../lists/game-view";
 import type { RosterView } from "../../../lists/roster";
 import { writeStat } from "../../../notation/values";
 import type { AppData } from "../../app-data";
@@ -18,7 +18,6 @@ const FILTERS = [
   { id: "items", label: "Magic items" },
   { id: "pages", label: "Pages" },
   { id: "notes", label: "Notes" },
-  { id: "battle", label: "Battle" },
 ] as const;
 type Filter = (typeof FILTERS)[number]["id"];
 
@@ -49,17 +48,8 @@ export function GameView({ data, nav, view, save }: { data: AppData; nav: Nav; v
     saveFilters(next);
     setOn(next);
   };
-  const battle = roster.battle ?? { units: {}, generalLost: false, bsbLost: false, banners: 0, scenario: 0 };
-  const setBattle = (change: Partial<typeof battle>) => save({ ...roster, battle: { ...battle, ...change } });
-  const mark = (id: string, state: "fleeing" | "dead") => {
-    const units = { ...battle.units };
-    if (units[id] === state) delete units[id];
-    else units[id] = state;
-    setBattle({ units });
-  };
   const context = data.items.find((i): i is Context => i.kind === "context" && i.key === roster.context);
   const stats = data.items.find((i): i is Game => i.kind === "game" && i.shortName === context?.game)?.statlines.model ?? [];
-  const tally = battleTally(view, data.items);
   const sections = [...new Set((view.armyList?.entries ?? []).map((e) => e.category))].filter((c) => units.some((u) => u.category === c));
 
   return (
@@ -70,29 +60,11 @@ export function GameView({ data, nav, view, save }: { data: AppData; nav: Nav; v
         ))}
       </div>
 
-      {show("battle") && (
-        <div className="battle">
-          <div className="battle-total">
-            <b>{tally.total}</b> given up
-            {tally.fleeing > 0 && <span className="sub"> · {tally.fleeing} fleeing</span>}
-            {tally.extra.length > 0 && <span className="sub"> · {tally.extra.map((e) => `${e.label} ${e.points}`).join(", ")}</span>}
-          </div>
-          <label className="choice"><input type="checkbox" checked={battle.generalLost} onChange={() => setBattle({ generalLost: !battle.generalLost })} /> General killed or fled</label>
-          <label className="choice"><input type="checkbox" checked={battle.bsbLost} onChange={() => setBattle({ bsbLost: !battle.bsbLost })} /> Battle Standard Bearer killed or fled</label>
-          <div className="row">
-            <Counter label="Banners captured" value={battle.banners} onChange={(banners) => setBattle({ banners })} />
-            <Counter label="Scenario points" value={battle.scenario} onChange={(scenario) => setBattle({ scenario })} />
-          </div>
-          <button className="link" onClick={() => confirm("Start a new battle? The marks are cleared.") && save({ ...roster, battle: undefined })}>New battle</button>
-        </div>
-      )}
-
       {sections.map((section) => (
         <div key={section}>
           <h2>{section} {show("points") && <span className="sub">{units.filter((u) => u.category === section).reduce((n, u) => n + u.points, 0)} pts</span>}</h2>
           {units.filter((u) => u.category === section).map((u) => (
-            <UnitCard key={u.id} u={u} stats={stats} show={show} openRule={openRule} setOpenRule={setOpenRule} nav={nav} mark={mark}
-              onNote={(note) => save({ ...roster, units: roster.units.map((x) => (x.id === u.id ? { ...x, note: note || undefined } : x)) })} />
+            <UnitCard key={u.id} u={u} stats={stats} show={show} openRule={openRule} setOpenRule={setOpenRule} nav={nav} onNote={(note) => save({ ...roster, units: roster.units.map((x) => (x.id === u.id ? { ...x, note: note || undefined } : x)) })} />
           ))}
         </div>
       ))}
@@ -107,14 +79,13 @@ type CardProps = {
   openRule: string | null;
   setOpenRule: (k: string | null) => void;
   nav: Nav;
-  mark: (id: string, s: "fleeing" | "dead") => void;
   onNote: (note: string) => void;
 };
 
-function UnitCard({ u, stats, show, openRule, setOpenRule, nav, mark, onNote }: CardProps) {
+function UnitCard({ u, stats, show, openRule, setOpenRule, nav, onNote }: CardProps) {
   const cols = stats.filter((s) => u.lines.some((l) => l.stats[s] !== undefined));
   return (
-    <div className={"game-unit" + (u.state ? ` ${u.state}` : "")}>
+    <div className="game-unit">
       <div className="game-unit-head">
         <span className="title">
           {u.name}
@@ -165,25 +136,6 @@ function UnitCard({ u, stats, show, openRule, setOpenRule, nav, mark, onNote }: 
       )}
       {show("pages") && u.page && <p className="sub">{u.page}</p>}
       {show("notes") && <textarea className="note" placeholder="Your notes" defaultValue={u.note ?? ""} onBlur={(e) => e.target.value !== (u.note ?? "") && onNote(e.target.value.trim())} />}
-      {show("battle") && (
-        <div className="buttons">
-          <button className={u.state === "fleeing" ? "on" : ""} onClick={() => mark(u.id, "fleeing")}>Fleeing</button>
-          <button className={u.state === "dead" ? "on" : ""} onClick={() => mark(u.id, "dead")}>Dead / fled</button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Counter({ label, value, onChange }: { label: string; value: number; onChange: (n: number) => void }) {
-  return (
-    <div className="field">
-      <span className="label">{label}</span>
-      <span className="stepper">
-        <button onClick={() => onChange(Math.max(0, value - 1))}>−</button>
-        <span className="count">{value}</span>
-        <button onClick={() => onChange(value + 1)}>+</button>
-      </span>
     </div>
   );
 }

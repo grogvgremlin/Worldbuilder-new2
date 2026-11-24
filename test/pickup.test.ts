@@ -114,3 +114,10 @@ describe("items stored before race dimensions", () => {
     expect(upgradeItem({ key: "tow.race.human.core.base", kind: "race-profile", name: "Human · Core · Base", race: "Human", stats: {}, rules: [] })).toEqual({ key: "tow.race.human.core.base", kind: "race-profile", name: "Human · Core · Base", profile: { Race: "Human" }, stats: {}, rules: [] });
   });
 });
+
+describe("a list stored with battle marks (a short-lived build)", () => {
+  it("drops them when read", async () => {
+    const { upgradeItem } = await import("../src/items/race-dimensions");
+    expect(upgradeItem({ key: "roster.x", kind: "roster", battle: { units: {} } })).toEqual({ key: "roster.x", kind: "roster" });
+  });
+});

@@ -1,7 +1,7 @@
 // A list as you'd want it at the table (owner, 24 Nov; after the Old World Builder's game view): for
 // each unit, its stat lines (its own, the command models taken, its mount), its kit with the options
-// taken, its special rules with those taken and given, its magic items, its page, and how a battle is
-// going. Filters choose what shows. Pure: a roster view and the library in.
+// taken, its special rules with those taken and given, its magic items, its page. Filters choose what
+// shows. Battle tracking comes with the Battle tool (owner, 24 Nov). Pure: a roster view and the library in.
 // Design: design/rosters.md §4 (views of a roster are derived, never stored).
 
 import type { Game, Item, MagicItem, RaceProfile, Roster, SpecialRule, Stats, Term, Unit } from "../items/items";
@@ -12,7 +12,6 @@ import { unitAsTaken } from "./unit-as-taken";
 import type { RosterView, UnitView } from "./roster";
 import { inReach } from "./roster";
 import { matchName } from "../items/keys";
-import { settingValue } from "../settings/settings";
 
 export type StatLine = { name: string; stats: Stats };
 export type RuleRef = { name: string; key?: string; text?: string };
@@ -30,7 +29,6 @@ export type GameUnit = {
   command: string[];
   page?: string;
   note?: string;
-  state?: "fleeing" | "dead";
 };
 
 export function gameUnits(view: RosterView, items: Item[]): GameUnit[] {
@@ -109,7 +107,6 @@ function gameUnit(u: UnitView, roster: Roster, reach: Item[]): GameUnit {
     command: ru.slots,
     page: ref ? (ref.page ? `${ref.source} p. ${ref.page}` : ref.source) : undefined,
     note: ru.note,
-    state: roster.battle?.units[ru.id],
   };
 }
 
@@ -128,31 +125,4 @@ function withRace(unit: Unit, stats: Stats, reach: Item[]): Stats {
   if (!profile[dims[0].name]) return stats;
   const race = reach.find((i): i is RaceProfile => i.kind === "race-profile" && i.key === profileKey(unit.key.split(".")[0], profile, dims));
   return race ? patchStats(race.stats, stats) : stats;
-}
-
-// --- The battle ---------------------------------------------------------------------------------
-
-export type BattleTally = { destroyed: number; fleeing: number; scenario: number; banners: number; generalLost: boolean; bsbLost: boolean; extra: { label: string; points: number }[]; total: number };
-
-// Points this list has given up so far (scenario points, the list's own, are kept apart): each unit dead or fled, at its points. The General, the Battle Standard and
-// captured banners score what the game's settings say ("Victory points: General", "Victory points:
-// Battle Standard Bearer", "Victory points: banner"); without those settings they're counted, not scored.
-export function battleTally(view: RosterView, items: Item[]): BattleTally {
-  const b = view.roster.battle ?? { units: {}, generalLost: false, bsbLost: false, banners: 0, scenario: 0 };
-  const points = (state: string) => view.units.filter((u) => b.units[u.rosterUnit.id] === state).reduce((n, u) => n + u.points, 0);
-  const context = items.find((i) => i.kind === "context" && i.key === view.roster.context);
-  const game = items.find((i) => i.kind === "game" && context?.kind === "context" && i.shortName === context.game);
-  const vp = (name: string) => {
-    const v = settingValue(name, game?.kind === "game" ? game : undefined, items, context?.kind === "context" ? context : undefined, view.roster)?.value;
-    return v !== undefined && /^\d+$/.test(v) ? Number(v) : null;
-  };
-  const extra: BattleTally["extra"] = [];
-  const general = vp("Victory points: General");
-  const bsb = vp("Victory points: Battle Standard Bearer");
-  const banner = vp("Victory points: banner");
-  if (b.generalLost && general !== null) extra.push({ label: "General lost", points: general });
-  if (b.bsbLost && bsb !== null) extra.push({ label: "Battle Standard Bearer lost", points: bsb });
-  if (b.banners && banner !== null) extra.push({ label: `${b.banners} banner${b.banners > 1 ? "s" : ""} lost`, points: b.banners * banner });
-  const destroyed = points("dead");
-  return { destroyed, fleeing: points("fleeing"), scenario: b.scenario, banners: b.banners, generalLost: b.generalLost, bsbLost: b.bsbLost, extra, total: destroyed + extra.reduce((n, e) => n + e.points, 0) }; // given up; scenario points are kept apart
 }

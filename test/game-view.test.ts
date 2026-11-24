@@ -93,3 +93,28 @@ describe("a blank label follows the game's conditions (owner, 24 Nov)", () => {
     expect(holds({ R: "", AP: "-1" }, "Not(R);AP")).toBe(true);
   });
 });
+
+describe("the rules reference", () => {
+  it("writes out each rule, piece of kit and magic item, with no units, rules first", async () => {
+    const { armyReference } = await import("../src/lists/game-view");
+    const ref = armyReference(gameUnits(viewRoster(knights(), all), all), all);
+    expect(ref.map((s) => s.title)).toEqual(["Special rules", "Equipment", "Magic items"]);
+    const blade = ref[2].groups[0].entries[0];
+    expect(blade.name).toBe("Sample Blade");
+    expect(blade.facts).toContain("AP -1");
+    expect(blade.text).toBe("A made-up magic weapon for tests.");
+    expect(JSON.stringify(ref)).not.toContain("units");
+  });
+});
+
+describe("search within a scope", () => {
+  it("a list's units by your name, the unit's name or its section; set-ups and lists by name", async () => {
+    const { searchIn } = await import("../src/library/search");
+    const r = { ...knights(), units: knights().units.map((u) => ({ ...u, title: "Sir Gerhart" })) };
+    const items = [...all, r];
+    expect(searchIn(items, "gerhart", { kind: "roster", key: r.key }).map((h) => h.label)).toEqual(["Sir Gerhart"]);
+    expect(searchIn(items, "core", { kind: "lists" }).map((h) => h.detail)).toContain("Empire Knights · Core · x");
+    expect(searchIn(items, "friday", { kind: "lists" }).map((h) => h.target.kind)).toContain("pickup");
+    expect(searchIn(items, "blade", { kind: "package", key: "tow.the-empire" }).map((h) => h.label)).toEqual(["Sample Blade"]);
+  });
+});

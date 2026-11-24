@@ -236,3 +236,10 @@ h2 .sub { text-transform: none; letter-spacing: normal; }
 .summary-group { margin: 6px 0; }
 .summary-group ul { margin: 2px 0 0; }
 .summary-rule .row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; } .summary-rule .row input { flex: 1; min-width: 0; margin: 0; }
+.search-row { position: relative; }
+.search-row .search-box { padding-right: 40px; }
+.search-clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); border: 0; background: var(--line); color: var(--ink); width: 26px; height: 26px; border-radius: 50%; padding: 0; line-height: 26px; }
+.reference-group { margin-left: 2px; }
+.reference-entry { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.reference-entry p { margin: 2px 0 0; font-size: .92rem; }
+.reference-name { font-weight: 600; }

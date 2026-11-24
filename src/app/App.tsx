@@ -14,6 +14,7 @@ import { ItemScreen } from "./screens/ItemScreen";
 import { DraftScreen } from "./screens/DraftScreen";
 import { DataScreen } from "./screens/DataScreen";
 import { SearchScreen } from "./screens/SearchScreen";
+import type { Scope } from "../library/search";
 import { BrowseScreen, type BrowseKind } from "./screens/BrowseScreen";
 import { ListsScreen } from "./screens/lists/ListsScreen";
 import { PickupGameScreen } from "./screens/lists/PickupGameScreen";
@@ -34,7 +35,7 @@ export type Screen =
   | { name: "preset"; game: string; index: number }
   | { name: "game-setting"; game: string; index: number }
   | { name: "draft" }
-  | { name: "search" }
+  | { name: "search"; start: Scope }
   | { name: "data" }
   | { name: "lists" }
   | { name: "pickup"; key: string }
@@ -99,7 +100,7 @@ export function App({ data }: { data: AppData }) {
           <span className="brand">Worldbuilder</span>
         )}
         <span className="header-links">
-          <button className="link" aria-label="Search" onClick={() => screen?.name !== "search" && nav.open({ name: "search" })}>Search</button>
+          <button className="link" aria-label="Search" onClick={() => screen?.name !== "search" && nav.open({ name: "search", start: scopeOf(screen, data) })}>Search</button>
           <button className={"link" + (tool === "settings" ? " current" : "")} onClick={() => mayLeave() && setTool("settings")}>
             Settings
           </button>
@@ -168,7 +169,7 @@ function render(screen: Screen, data: AppData, nav: Nav, draft: Draft | null, se
     case "data":
       return <DataScreen data={data} onWiped={refresh} />;
     case "search":
-      return <SearchScreen data={data} nav={nav} />;
+      return <SearchScreen data={data} nav={nav} start={screen.start} />;
     case "lists":
       return <ListsScreen data={data} nav={nav} />;
     case "pickup":
@@ -180,4 +181,20 @@ function render(screen: Screen, data: AppData, nav: Nav, draft: Draft | null, se
     case "roster-items":
       return <RosterItemsScreen data={data} nav={nav} rosterKey={screen.roster} unitId={screen.unit} where={screen.where} allowance={screen.allowance} />;
   }
+}
+
+// Search opens on where you are (owner, 24 Nov): a list, a set-up, your lists, a package, the library.
+function scopeOf(screen: Screen | undefined, data: AppData): Scope {
+  if (!screen) return { kind: "library" };
+  if (screen.name === "roster") return { kind: "roster", key: screen.key };
+  if (screen.name === "roster-unit" || screen.name === "roster-items") return { kind: "roster", key: screen.roster };
+  if (screen.name === "pickup") return { kind: "context", key: screen.key };
+  if (screen.name === "lists") return { kind: "lists" };
+  if (screen.name === "package") return { kind: "package", key: screen.key };
+  if (screen.name === "grid") return { kind: "package", key: screen.packageKey };
+  if (screen.name === "item") {
+    const home = data.items.find((i) => i.key === screen.key)?.homePackage;
+    return home ? { kind: "package", key: home } : { kind: "library" };
+  }
+  return { kind: "library" };
 }

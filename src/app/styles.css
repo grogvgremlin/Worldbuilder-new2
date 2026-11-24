@@ -224,3 +224,5 @@ h2 .sub { text-transform: none; letter-spacing: normal; }
 .persona { display: flex; gap: 10px; align-items: center; margin: 6px 0; }
 .persona input { flex: 1; margin: 0; }
 .icon-spot { width: 56px; height: 56px; flex: none; border: 1px dashed var(--line); border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: .65rem; text-align: center; }
+.description-box { width: 100%; min-height: 7em; font: inherit; border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; resize: vertical; background: var(--panel); color: var(--ink); }
+.banner-spot { flex: 1; height: 56px; border: 1px dashed var(--line); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: .7rem; }

@@ -83,7 +83,7 @@ export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppDa
           </div>
           <input className="filter" placeholder="Its name, e.g. Marcus Aurelius" defaultValue={ru.title ?? ""} onBlur={(e) => e.target.value.trim() !== (ru.title ?? "") && save(updateUnit(roster, ru.id, { title: e.target.value.trim() || undefined }))} />
         </div>
-        <textarea className="note" placeholder="Description: who they are, their story" defaultValue={ru.description ?? ""} onBlur={(e) => e.target.value.trim() !== (ru.description ?? "") && save(updateUnit(roster, ru.id, { description: e.target.value.trim() || undefined }))} />
+        <textarea className="description-box" rows={5} placeholder="Description: who they are, their story" defaultValue={ru.description ?? ""} onBlur={(e) => e.target.value.trim() !== (ru.description ?? "") && save(updateUnit(roster, ru.id, { description: e.target.value.trim() || undefined }))} />
       </details>
       {/* What's wrong with this unit: its own issues and the list's issues that name it. */}
       {problems.length > 0 && <ul className="plain problems">{problems.map((m, n) => <li key={n}>{m}</li>)}</ul>}

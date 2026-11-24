@@ -217,7 +217,7 @@ export const Game = z.strictObject({
   presets: z.array(GamePreset).optional(),
   raceDimensions: z.array(RaceDimension).optional(), // absent: Race, Tree (blank Core), Rank (blank Base)
   // What a sheet column is called when shown (owner, 24 Nov): a column's heading is its own name
-  // unless the game says otherwise, e.g. { Slots: "Command" }. Set in Settings → Configuration.
+  // unless the game says otherwise, e.g. { Slots: "Command" }. Set in Library → the game → Configuration.
   headings: z.record(z.string(), z.string()).optional(),
 });
 export type Game = z.infer<typeof Game>;
@@ -240,7 +240,7 @@ export const Package = z.strictObject({
 export type Package = z.infer<typeof Package>;
 
 // One cell of a race's grid, placed by the game's race dimensions (Race, Tree, Rank by default;
-// configurable: Settings → Configuration). `profile` holds the values as written, by
+// configurable: Library → the game → Configuration). `profile` holds the values as written, by
 // dimension name: { Race: Human, Tree: Professional, Rank: Veteran }; a dimension left blank takes its
 // "blank means" value (Tree: Core, Rank: Base).
 export const RaceProfile = z.strictObject({
@@ -491,6 +491,11 @@ export const Roster = z.strictObject({
   armyList: z.string(), // the army list's key
   target: z.number(), // points
   units: z.array(RosterUnit),
+  // The list as an army of its own (owner, 24 Nov): its name is the list's name (above); an icon
+  // and a banner come with images (parked); a description.
+  icon: z.string().optional(),
+  banner: z.string().optional(),
+  description: z.string().optional(),
   settings: z.record(z.string(), z.string()).optional(), // this list's own values: setting name -> value
 });
 export type Roster = z.infer<typeof Roster>;

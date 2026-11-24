@@ -8,12 +8,16 @@ import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { SwipeRow } from "../../swipe";
 import { NumberBox } from "../../number-box";
+import { GameView } from "./GameView";
 import { SettingsPanel } from "./SettingsPanel";
 import type { Context, Game } from "../../../items/items";
+
+let lastMode: "build" | "game" = "build"; // kept while the app is open
 
 export function RosterScreen({ data, nav, rosterKey }: { data: AppData; nav: Nav; rosterKey: string }) {
   const [adding, setAdding] = useState<string | null>(null);
   const [openWhy, setOpenWhy] = useState<string | null>(null); // the section whose reasons are showing
+  const [mode, setMode] = useState<"build" | "game">(lastMode); // building the list, or playing with it
   const [, setChanged] = useState(0);
   const roster = data.items.find((i): i is Roster => i.kind === "roster" && i.key === rosterKey);
   if (!roster) return <p>Not on the device any more.</p>;
@@ -36,6 +40,14 @@ export function RosterScreen({ data, nav, rosterKey }: { data: AppData; nav: Nav
         <b>{view.total}</b> of{" "}
         <NumberBox value={roster.target} min={0} onChange={(target) => save({ ...roster, target })} /> pts
       </div>
+      <nav className="segments">
+        <button className={mode === "build" ? "on" : ""} onClick={() => setMode((lastMode = "build"))}>Build</button>
+        <button className={mode === "game" ? "on" : ""} onClick={() => setMode((lastMode = "game"))}>Game</button>
+      </nav>
+      {mode === "game" ? (
+        <GameView data={data} nav={nav} view={view} save={save} />
+      ) : (
+        <>
       <ul className="plain categories">
         {view.categories.map((c) => (
           <li key={c.category} className={c.ok && !view.issues.some((i) => i.categories?.includes(c.category)) ? "ok" : "bad"}>
@@ -99,11 +111,13 @@ export function RosterScreen({ data, nav, rosterKey }: { data: AppData; nav: Nav
                 {entries
                   .filter((e) => e.category === section)
                   .map((e) => reach.find((i): i is Unit => i.kind === "unit" && i.key === e.unit))
-                  .filter((u): u is Unit => u !== undefined && !view.full[u.key])
+                  // At its limit: hidden (its reason listed below), greyed out, or offered with a warning.
+                  .filter((u): u is Unit => u !== undefined && !(view.full[u.key] && view.limitMode === "hide"))
                   .map((u) => (
                     <li key={u.key}>
                       <button
                         className="link"
+                        disabled={!!view.full[u.key] && view.limitMode === "grey"}
                         onClick={async () => {
                           const next = addUnit(roster, u, data.items);
                           await save(next);
@@ -113,10 +127,11 @@ export function RosterScreen({ data, nav, rosterKey }: { data: AppData; nav: Nav
                       >
                         + {u.name}
                       </button>
+                      {view.full[u.key] && <span className="full-note"> {view.limitMode === "allow" ? "⚠ " : ""}{view.full[u.key]}</span>}
                     </li>
                   ))}
                 {entries
-                  .filter((e) => e.category === section && view.full[e.unit])
+                  .filter((e) => e.category === section && view.full[e.unit] && view.limitMode === "hide")
                   .map((e) => (
                     <li key={e.unit} className="full-note">{view.full[e.unit]}</li>
                   ))}
@@ -130,6 +145,8 @@ export function RosterScreen({ data, nav, rosterKey }: { data: AppData; nav: Nav
           </div>
         );
       })}
+        </>
+      )}
     </section>
   );
 }

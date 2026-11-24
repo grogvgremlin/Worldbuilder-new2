@@ -80,9 +80,15 @@ export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppDa
         <div className="field">
           <span className="label">General</span>
           <label>
-            <input type="checkbox" checked={ru.general} disabled={!ru.general && !!view.generalFull} onChange={() => save(updateUnit(roster, ru.id, { general: !ru.general }))} /> this character is the General
+            <input
+              type="checkbox"
+              checked={ru.general}
+              disabled={!ru.general && !!view.generalFull && view.limitMode !== "allow"}
+              onChange={() => save(updateUnit(roster, ru.id, { general: !ru.general }))}
+            />{" "}
+            this character is the General
           </label>
-          {!ru.general && view.generalFull && <span className="full-note"> {view.generalFull}: take it off the other first</span>}
+          {!ru.general && view.generalFull && <span className="full-note"> {view.limitMode === "allow" ? "⚠ " : ""}{view.generalFull}{view.limitMode === "allow" ? "" : ": take it off the other first"}</span>}
         </div>
       )}
 
@@ -98,8 +104,15 @@ export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppDa
             {block.map((g) => (
               <div key={u.choices.indexOf(g)}>
                 {g.choices.map((c) => (
-                  <label key={c.pick} className="choice">
-                    <input type={g.oneOf ? "radio" : "checkbox"} name={`${ru.id}-${u.choices.indexOf(g)}`} checked={isOn(g.where, c.pick)} onClick={() => save(toggleChoice(roster, ru.id, g, c))} onChange={() => {}} />
+                  <label key={c.pick} className={"choice" + (c.blocked && !isOn(g.where, c.pick) ? " unavailable" : "")}>
+                    <input
+                      type={g.oneOf ? "radio" : "checkbox"}
+                      name={`${ru.id}-${u.choices.indexOf(g)}`}
+                      checked={isOn(g.where, c.pick)}
+                      disabled={!!c.blocked && !isOn(g.where, c.pick)}
+                      onClick={() => save(toggleChoice(roster, ru.id, g, c))}
+                      onChange={() => {}}
+                    />
                     <span>{c.label}</span>
                     <span className="sub">{c.costText}</span>
                   </label>

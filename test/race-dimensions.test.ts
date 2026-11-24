@@ -104,3 +104,22 @@ describe("unit stats are differences from their race (races-and-units.md §2)", 
     expect(horse.rows[0].stats).toEqual({});
   });
 });
+
+describe("with no matching race, a difference from 0 (owner, 24 Nov)", () => {
+  it("a unit whose race isn't loaded yet is stored against nothing, and moved onto the race when it arrives", async () => {
+    const { unitAsPrinted } = await import("../src/rules/race-deltas");
+    const noRaces = Object.fromEntries(Object.entries(files).filter(([p]) => !p.startsWith("races/")));
+    noRaces["game.yaml"] = noRaces["game.yaml"].replace(/core: \[[^\]]*\]/, (m) => m.replace(/,?\s*Races/, ""));
+    const before = loadFolder(noRaces).items;
+    const smt = before.find((i) => i.key === "tow.unit.state-missile-troops") as any;
+    expect(smt.rows[0].stats.WS).toEqual({ change: 3, asPrinted: true, against: "none" });
+    expect(unitAsPrinted(smt, before).rows[0].stats.WS).toBe(3);
+    // The races arrive: the difference moves onto Human · Core · Base.
+    const after = loadFolder(files).items;
+    const { refreshLibrary } = await import("../src/library/library");
+    const merged = refreshLibrary([...before.filter((i) => !after.some((a) => a.key === i.key)), ...after.filter((a) => a.kind === "race-profile" || a.key === "tow.races"), ...before.filter((i) => after.some((a) => a.key === i.key) && i.kind !== "race-profile")]).items;
+    const smt2 = merged.find((i) => i.key === "tow.unit.state-missile-troops") as any;
+    expect(smt2.rows[0].stats.WS).toEqual({ change: 0, asPrinted: true, against: "tow.race.human.core.base" });
+    expect(unitAsPrinted(smt2, merged).rows[0].stats.WS).toBe(3);
+  });
+});

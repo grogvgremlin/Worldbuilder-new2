@@ -28,7 +28,7 @@ describe("the TOW sample", () => {
     expect(own.name).toBe("State Missile Trooper");
     // Entered as printed (4 3 3 3 3 1 3 1 7); stored as the difference from Human · Core · Base, which
     // prints the same, so every difference is 0 (races-and-units.md §2).
-    const same = { change: 0, asPrinted: true };
+    const same = { change: 0, asPrinted: true, against: "tow.race.human.core.base" };
     expect(own.stats).toEqual({ M: same, WS: same, BS: same, S: same, T: same, W: same, I: same, A: same, Ld: same });
     expect(unitAsPrinted(smt, result.items).rows[0].stats).toEqual({ M: 4, WS: 3, BS: 3, S: 3, T: 3, W: 1, I: 3, A: 1, Ld: 7 });
     expect(own.cost).toEqual({ points: 7, per: "model", adds: false });

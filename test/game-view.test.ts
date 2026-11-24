@@ -63,3 +63,15 @@ describe("headings: a column's own name unless the game renames it (owner, 24 No
     expect(gameUnits(viewRoster(r, renamed), renamed)[0].command[0].section).toBe("Slots");
   });
 });
+
+describe("army summary cards", () => {
+  it("collate the list's equipment by type, rules, and magic items, each with its units", async () => {
+    const { armySummary } = await import("../src/lists/game-view");
+    const cards = armySummary(gameUnits(viewRoster(knights(), all), all), all);
+    expect(cards.map((c) => c.title)).toEqual(["Equipment", "Special rules", "Magic items"]);
+    const kit = cards[0].groups;
+    expect(kit.map((g) => g.type)).toEqual(["Hand weapons", "Armour"]);
+    expect(kit[0].entries.map((e) => e.name)).toContain("Lances");
+    expect(cards[2].groups[0]).toEqual({ type: "Magic weapon", entries: [{ name: "Sample Blade", key: "tow.magic-item.sample-blade", text: undefined, units: ["Empire Knights"] }] });
+  });
+});

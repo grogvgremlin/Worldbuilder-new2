@@ -5,7 +5,7 @@
 // Battle tool. Logic: src/lists/game-view.ts.
 import { useState } from "react";
 import type { Context, Game, Roster } from "../../../items/items";
-import { gameUnits, type GameUnit, type Ref } from "../../../lists/game-view";
+import { armySummary, gameUnits, type GameUnit, type Ref, type SummaryCard } from "../../../lists/game-view";
 import type { RosterView } from "../../../lists/roster";
 import { writeStat } from "../../../notation/values";
 import type { AppData } from "../../app-data";
@@ -23,6 +23,7 @@ const FILTERS = [
   { id: "pages", label: "Pages" },
   { id: "description", label: "Description" },
   { id: "notes", label: "Notes" },
+  { id: "summary", label: "Army summary cards" },
   // Battle: its own group, more to come in it (owner, 24 Nov), each part switched on or off.
   { id: "battle", label: "Battle" },
   { id: "battle-notes", label: "Battle notes", parent: "battle" },
@@ -35,7 +36,7 @@ function loadFilters(): Set<string> {
     const saved = localStorage.getItem("game-view-filters");
     if (saved) return new Set(JSON.parse(saved));
   } catch {}
-  return new Set(["points", "stats", "kit", "rules", "items", "description"]);
+  return new Set(["points", "stats", "kit", "rules", "items", "description", "summary"]);
 }
 function saveFilters(f: Set<string>) {
   try {
@@ -93,6 +94,7 @@ export function GameView({ data, nav, view, save }: { data: AppData; nav: Nav; v
           </div>
         </details>
       ))}
+      {on.has("summary") && <Summary cards={armySummary(units, data.items)} openItem={setPopup} />}
       {popup && <ItemPopup data={data} nav={nav} itemKey={popup} onClose={() => setPopup(null)} />}
     </div>
   );
@@ -112,23 +114,25 @@ function UnitCard({ u, stats, on, openItem, onNote, onBattleNote, heading }: Car
   const [openRule, setOpenRule] = useState<number | null>(null);
   const print = on.has("print");
   const cols = stats.filter((s) => u.lines.some((l) => l.stats[s] !== undefined));
-  const named = u.lines.length > 1; // one line: no name column
+  const named = true; // every row named; the unit's own as "Unit" (owner, 24 Nov)
   // Anything with a card opens it, over the list.
   const link = (name: string, key: string | undefined) => (key ? <button className="link" onClick={() => openItem(key)}>{name}</button> : <span>{name}</span>);
   const refs = (list: Ref[]) => list.map((r, i) => <span key={i}>{i > 0 && ", "}{link(r.name, r.key)}</span>);
 
   return (
-    <div className="game-unit">
-      {/* The owner's name for the unit first ("Marcus Aurelius"), then what it is. */}
-      {u.title && <div className="game-unit-title">{u.title}</div>}
-      <div className="game-unit-head">
-        <span className={u.title ? "" : "title"}>
-          {u.name}
-          {u.size > 1 && <span className="sub"> ×{u.size}</span>}
-          {u.general && <span className="sub"> · General</span>}
-        </span>
-        {on.has("points") && <span className="sub">{u.points} pts</span>}
-      </div>
+    <details className="game-unit" open>
+      {/* The owner's name for the unit first ("Marcus Aurelius"), then what it is; tap to fold the card. */}
+      <summary className="game-unit-summary">
+        {u.title && <div className="game-unit-title">{u.title}</div>}
+        <div className="game-unit-head">
+          <span className={u.title ? "" : "title"}>
+            {u.name}
+            {u.size > 1 && <span className="sub"> ×{u.size}</span>}
+            {u.general && <span className="sub"> · General</span>}
+          </span>
+          {on.has("points") && <span className="sub">{u.points} pts</span>}
+        </div>
+      </summary>
 
       {on.has("stats") && cols.length > 0 && (
         <div className="grid-wrap fit">
@@ -244,6 +248,40 @@ function UnitCard({ u, stats, on, openItem, onNote, onBattleNote, heading }: Car
           <textarea className="note" placeholder="Notes for this battle" defaultValue={u.battleNote ?? ""} onBlur={(e) => e.target.value !== (u.battleNote ?? "") && onBattleNote(e.target.value.trim())} />
         </details>
       )}
-    </div>
+    </details>
+  );
+}
+
+// The army summary: one card per kind (equipment, special rules, magic items), grouped by type, each
+// entry with the units that have it.
+function Summary({ cards, openItem }: { cards: SummaryCard[]; openItem: (key: string) => void }) {
+  return (
+    <details className="browse-group" open>
+      <summary>
+        <h2>Army summary</h2>
+      </summary>
+      <div className="game-units">
+        {cards.map((card) => (
+          <details key={card.title} className="game-unit" open>
+            <summary className="game-unit-summary">
+              <span className="title">{card.title}</span>
+            </summary>
+            {card.groups.map((g) => (
+              <div key={g.type} className="summary-group">
+                <span className="sub">{g.type}</span>
+                <ul className="plain">
+                  {g.entries.map((e) => (
+                    <li key={e.key ?? e.name}>
+                      {e.key ? <button className="link" onClick={() => openItem(e.key!)}>{e.name}</button> : <span>{e.name}</span>}
+                      <span className="sub"> · {e.units.join(", ")}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </details>
+        ))}
+      </div>
+    </details>
   );
 }

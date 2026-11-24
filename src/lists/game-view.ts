@@ -180,3 +180,59 @@ function withRace(unit: Unit, stats: Stats, reach: Item[], game: Game | undefine
   const race = reach.find((i): i is RaceProfile => i.kind === "race-profile" && i.key === profileKey(unit.key.split(".")[0], profile, dims));
   return race ? patchStats(race.stats, stats) : stats;
 }
+
+// --- Army summary cards (owner, 24 Nov) ------------------------------------------------------------
+// Everything in the list collated, one card per kind, grouped by type: equipment as hand weapons,
+// ranged weapons, armour and other; special rules by their rule type; magic items by theirs. Each entry
+// says which units have it.
+
+export type SummaryEntry = { name: string; key?: string; text?: string; units: string[] };
+export type SummaryGroup = { type: string; entries: SummaryEntry[] };
+export type SummaryCard = { title: string; groups: SummaryGroup[] };
+
+export function armySummary(units: GameUnit[], items: Item[]): SummaryCard[] {
+  const byKey = new Map(items.map((i) => [i.key, i]));
+  const label = (u: GameUnit) => u.title ?? u.name;
+  const collect = (pick: (u: GameUnit) => (Ref & { text?: string })[], typeOf: (r: Ref) => string, order: string[]): SummaryGroup[] => {
+    const groups = new Map<string, Map<string, SummaryEntry>>();
+    for (const u of units)
+      for (const r of pick(u)) {
+        const type = typeOf(r);
+        const id = r.key ?? matchName(r.name);
+        const group = groups.get(type) ?? new Map<string, SummaryEntry>();
+        const entry = group.get(id) ?? { name: r.name, key: r.key, text: r.text, units: [] };
+        if (!entry.units.includes(label(u))) entry.units.push(label(u));
+        group.set(id, entry);
+        groups.set(type, group);
+      }
+    const rank = (t: string) => (t === "Other" ? order.length + 1 : order.includes(t) ? order.indexOf(t) : order.length); // "Other" last
+    return [...groups]
+      .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
+      .map(([type, entries]) => ({ type, entries: [...entries.values()].sort((a, b) => a.name.localeCompare(b.name)) }));
+  };
+  const isMagic = (r: Ref) => !!r.key && byKey.get(r.key)?.kind === "magic-item";
+  const kitOf = (u: GameUnit) => [...u.equipment, ...u.command.flatMap((c) => c.models.flatMap((m) => m.kit))];
+
+  const equipmentType = (r: Ref) => {
+    const eq = r.key ? byKey.get(r.key) : undefined;
+    if (eq?.kind !== "equipment") return "Other";
+    if (eq.type === "weapon") return !eq.range || /^combat$/i.test(eq.range) ? "Hand weapons" : "Ranged weapons";
+    if (eq.type === "armour") return "Armour";
+    return eq.type ? eq.type[0].toUpperCase() + eq.type.slice(1) : "Other";
+  };
+  const ruleType = (r: Ref) => {
+    const rule = r.key ? byKey.get(r.key) : undefined;
+    return rule?.kind === "special-rule" && rule.ruleType ? rule.ruleType : "Other";
+  };
+  const itemType = (r: Ref) => {
+    const m = r.key ? byKey.get(r.key) : undefined;
+    return m?.kind === "magic-item" ? m.type[0].toUpperCase() + m.type.slice(1) : "Other";
+  };
+
+  const cards: SummaryCard[] = [
+    { title: "Equipment", groups: collect((u) => kitOf(u).filter((r) => !isMagic(r)), equipmentType, ["Hand weapons", "Ranged weapons", "Armour"]) },
+    { title: "Special rules", groups: collect((u) => u.rules, ruleType, []) },
+    { title: "Magic items", groups: collect((u) => [...u.items, ...kitOf(u).filter(isMagic)], itemType, []) },
+  ];
+  return cards.filter((c) => c.groups.length > 0);
+}

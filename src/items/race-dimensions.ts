@@ -48,3 +48,35 @@ export function upgradeItem(item: Record<string, any>): Record<string, any> {
     return { ...item, rows: item.rows.map((r: any) => (r.race || r.tree || r.rank ? (({ rest, profile }) => ({ ...rest, profile }))(old(r)) : r)) };
   return item;
 }
+
+// --- Changing the dimensions, applied at once (owner, 24 Nov: "adjust the app on the fly") ---------
+
+export type DimensionChange = { dims: RaceDimension[]; renames: Record<string, string> }; // renames: old name -> new
+
+// The game with its new dimensions, and every race profile and unit of that game brought into line:
+// renamed dimensions renamed in each profile; every profile keyed and named again; packages listing
+// them updated. Values of a removed dimension are kept in the profile, unused. If two profiles would
+// end up the same (a dimension removed that told them apart), nothing changes and that's said.
+export function changeDimensions(items: Item[], game: Game, change: DimensionChange): { items: Item[]; problems: string[] } {
+  const rename = (profile: Record<string, string>) => Object.fromEntries(Object.entries(profile).map(([k, v]) => [change.renames[k] ?? k, v]));
+  const inGame = (i: Item) => i.key.split(".")[0] === game.shortName;
+  const newKeys = new Map<string, string>();
+  const seen = new Map<string, string>();
+  const problems: string[] = [];
+  const out = items.map((i) => {
+    if (i.kind === "game" && i.key === game.key) return { ...i, raceDimensions: change.dims };
+    if (i.kind === "race-profile" && inGame(i)) {
+      const profile = rename(i.profile);
+      const key = profileKey(game.shortName, profile, change.dims);
+      if (seen.has(key)) problems.push(`${seen.get(key)} and ${i.name} would become the same profile (${key})`);
+      seen.set(key, i.name);
+      newKeys.set(i.key, key);
+      return { ...i, profile, key, name: profileName(profile, change.dims) };
+    }
+    if (i.kind === "unit" && inGame(i) && i.rows.some((r) => r.profile))
+      return { ...i, rows: i.rows.map((r) => (r.profile ? { ...r, profile: rename(r.profile) } : r)) };
+    return i;
+  });
+  if (problems.length) return { items, problems };
+  return { items: out.map((i) => (i.kind === "package" ? { ...i, members: i.members.map((k) => newKeys.get(k) ?? k) } : i)), problems };
+}

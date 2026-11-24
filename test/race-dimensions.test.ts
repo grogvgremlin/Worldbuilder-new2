@@ -54,3 +54,35 @@ describe("the race table, any way round", () => {
     expect(t.rows.find((r) => r.label[0] === "Human")!.cells[t.columns.indexOf("Core")]).toBe("3");
   });
 });
+
+describe("changing the dimensions applies at once", () => {
+  it("renaming Tree to Path renames it in every profile and unit; keys stay", async () => {
+    const { changeDimensions } = await import("../src/items/race-dimensions");
+    const { items } = loadFolder(files);
+    const game = items.find((i): i is Game => i.kind === "game")!;
+    const dims = [{ name: "Race" }, { name: "Path", blank: "Core" }, { name: "Rank", blank: "Base" }];
+    const { items: after, problems } = changeDimensions(items, game, { dims, renames: { Tree: "Path" } });
+    expect(problems).toEqual([]);
+    const human = after.find((i): i is RaceProfile => i.key === "tow.race.human.core.base")!;
+    expect(human.profile).toEqual({ Race: "Human", Path: "Core", Rank: "Base" });
+    const knights = after.find((i) => i.key === "tow.unit.empire-knights") as any;
+    expect(knights.rows[0].profile).toEqual({ Race: "Human", Rank: "Veteran", Path: "Professional" });
+  });
+  it("adding Age (blank Adult) re-keys profiles and their packages' lists", async () => {
+    const { changeDimensions } = await import("../src/items/race-dimensions");
+    const { items } = loadFolder(files);
+    const game = items.find((i): i is Game => i.kind === "game")!;
+    const dims = [{ name: "Race" }, { name: "Tree", blank: "Core" }, { name: "Rank", blank: "Base" }, { name: "Age", blank: "Adult" }];
+    const { items: after } = changeDimensions(items, game, { dims, renames: {} });
+    expect(after.some((i) => i.key === "tow.race.human.core.base.adult")).toBe(true);
+    expect((after.find((i) => i.key === "tow.races") as any).members).toContain("tow.race.human.core.base.adult");
+  });
+  it("removing the dimension that tells two profiles apart changes nothing, and says why", async () => {
+    const { changeDimensions } = await import("../src/items/race-dimensions");
+    const { items } = loadFolder(files);
+    const game = items.find((i): i is Game => i.kind === "game")!;
+    const { items: after, problems } = changeDimensions(items, game, { dims: [{ name: "Race" }], renames: {} });
+    expect(problems.length).toBeGreaterThan(0);
+    expect(after).toBe(items);
+  });
+});

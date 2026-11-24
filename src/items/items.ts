@@ -75,7 +75,7 @@ export const StatDetail = z.strictObject({
   // A unit's stat entered as printed and stored as a difference (races-and-units.md §2): from its race
   // profile, so a change to the race flows down; with no matching race, from 0. Shown as base + change.
   asPrinted: z.literal(true).optional(),
-  against: z.string().optional(), // what the difference is from: a race profile's key, or "none" (0)
+  against: z.string().optional(), // what the difference is from: a race profile's key, "line" (an upgrade slot: the unit's own line), or "none" (0)
 });
 export const Stat = z.union([z.number(), StatDetail]);
 export type Stat = z.infer<typeof Stat>;
@@ -473,6 +473,11 @@ export const RosterUnit = z.strictObject({
   slots: z.array(z.string()), // command taken, by name: "Sergeant", "Musician"
   general: z.boolean(), // holds the General role
   note: z.string().optional(), // the owner's own note, shown in the game view
+  // The unit as a character of its own (owner, 24 Nov): a name ("Marcus Aurelius"), an icon, a
+  // description. Later a world record can hold these, with the list pointing at it.
+  title: z.string().optional(),
+  icon: z.string().optional(), // a symbol or emoji for now
+  description: z.string().optional(),
 });
 export type RosterUnit = z.infer<typeof RosterUnit>;
 

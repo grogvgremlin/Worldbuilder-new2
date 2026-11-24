@@ -36,8 +36,9 @@ describe("the game view", () => {
   });
   it("equipment with the options taken; command models with their own kit; rules with those taken", () => {
     const g = gameUnits(viewRoster(knights(), all), all)[0];
-    expect(g.equipment).toEqual(["Hand Weapon", "Heavy Armour", "Shield", "Lances"]);
-    expect(g.command).toEqual([{ section: "Command", models: [{ name: "Preceptor", kit: ["Sample Blade"] }] }]);
+    expect(g.equipment.map((e) => e.name)).toEqual(["Hand Weapon", "Heavy Armour", "Shield", "Lances"]);
+    expect(g.equipment[0].key).toBe("tow.equipment.hand-weapon"); // each opens its card
+    expect(g.command).toEqual([{ section: "Command", models: [{ name: "Preceptor", key: "tow.slot.c", kit: [{ name: "Sample Blade", key: "tow.magic-item.sample-blade" }] }] }]);
     expect(g.rules.map((r) => r.name)).toContain("Drilled");
     expect(g.items).toEqual([]);
   });
@@ -45,11 +46,11 @@ describe("the game view", () => {
     let r = choose(knights(), "u1", "Standard Bearer");
     r = toggleItem(r, "u1", "slot:Standard Bearer", "Magic Standard", "tow.magic-item.sample-banner");
     const sb = gameUnits(viewRoster(r, all), all)[0].command[0].models.find((m) => m.name === "Standard Bearer")!;
-    expect(sb.kit).toEqual(["Sample Banner"]);
+    expect(sb.kit.map((k) => k.name)).toEqual(["Sample Banner"]);
   });
   it("an option taken instead of something takes it out of the kit (Great Weapons instead of Shield)", () => {
     let r = newRoster("x", context, armyListsIn(context, all)[0], 1000, all);
     r = choose(addUnit(r, unit("tow.unit.empire-knights"), all), "u1", "Great Weapons instead of Shield");
-    expect(gameUnits(viewRoster(r, all), all)[0].equipment).toEqual(["Hand Weapon", "Heavy Armour", "Great Weapons"]);
+    expect(gameUnits(viewRoster(r, all), all)[0].equipment.map((e) => e.name)).toEqual(["Hand Weapon", "Heavy Armour", "Great Weapons"]);
   });
 });

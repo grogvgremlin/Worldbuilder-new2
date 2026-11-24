@@ -5,6 +5,8 @@
 // delta to 0". So every plain number on a unit is stored as a difference, from:
 //   its race profile                    printed 4, Human WS 4   ->  { change: 0, asPrinted: true, against: "tow.race.human.core.base" }
 //   nothing (no matching race)          printed 4               ->  { change: 4, asPrinted: true, against: "none" }
+//   an upgrade slot row: the unit's line Sergeant printed BS 4, line BS 3 -> { change: 1, asPrinted: true, against: "line" }
+//     (owner, 24 Nov: "slots entered as upgrades should delta to the unit rather than the race")
 // A difference from "none" is moved onto the race once the race is on the device. Shown and
 // downloaded as base + difference (as printed). "-", "3+" and text stay as entered.
 //
@@ -36,9 +38,12 @@ export function raceOfRow(unit: Unit, rowIndex: number, items: Item[], byKey: By
   return found?.kind === "race-profile" ? found : undefined;
 }
 
-// What a row's differences are from: its race profile, or nothing (0) when no race matches.
+// What a row's differences are from: an upgrade slot (a champion, a standard bearer) from the unit's
+// own line as printed; any other row from its race profile; with no race, nothing (0).
 type Base = { against: string; stats: Stats };
 function baseOf(unit: Unit, rowIndex: number, items: Item[], byKey: ByKey): Base {
+  const row = unit.rows[rowIndex];
+  if (rowIndex > 0 && /upgrade/i.test(row.type) && !row.profile) return { against: "line", stats: printedRow(unit, 0, items, byKey) };
   const race = raceOfRow(unit, rowIndex, items, byKey);
   return race ? { against: race.key, stats: race.stats } : { against: "none", stats: {} };
 }

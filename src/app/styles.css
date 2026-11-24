@@ -190,3 +190,4 @@ h2 .sub { text-transform: none; letter-spacing: normal; }
 .named-in { margin: 2px 0 4px; } .named-in summary { cursor: pointer; }
 .browse-group > summary { list-style: none; cursor: pointer; } .browse-group > summary::-webkit-details-marker { display: none; } .browse-group > summary h2::before { content: '▸ '; } .browse-group[open] > summary h2::before { content: '▾ '; } .browse-group > summary h2 { display: inline-block; }
 .header-links { display: flex; gap: 16px; } .search-results li { padding: 6px 0; border-bottom: 1px solid var(--line); } .search-box { width: 100%; }
+.dims .row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; } .dims .row input { flex: 1; min-width: 0; width: auto; margin: 0; } .race-table .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin: 6px 0; }

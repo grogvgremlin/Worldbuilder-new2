@@ -6,6 +6,7 @@ import { useState } from "react";
 import YAML from "yaml";
 import type { ArmyList, CompositionRule, Equipment, Game, Item, Limit, Source, Options as OptionsCell, Package, Patch, RaceProfile, SlotKind, SpecialRule, Stat, Stats, Term, Unit, UnitRow } from "../../items/items";
 import { writeStat } from "../../notation/values";
+import { dimensionsOf, gameOf } from "../../items/race-dimensions";
 import { changeText } from "../../packages/patch-tabs";
 import type { AppData } from "../app-data";
 import type { Nav } from "../App";
@@ -134,7 +135,7 @@ function cell(value: unknown): string {
   return writeStat(value as Stat);
 }
 
-// The game's statline (Library → the game → Configuration), from the item's key: tow.unit.… -> tow.
+// The game's statline (Settings → Configuration), from the item's key: tow.unit.… -> tow.
 function statNames(ctx: Ctx, itemKey: string): string[] {
   const game = ctx.items.find((i): i is Game => i.kind === "game" && i.shortName === itemKey.split(".")[0]);
   return game?.statlines.model.length ? game.statlines.model : STATS;
@@ -194,7 +195,7 @@ function UnitCard({ unit, ctx }: { unit: Unit; ctx: Ctx }) {
       <Field label="Size">{words.rangeText(own.size)}</Field>
       <Field label="Cost">{words.costText(own.cost)}</Field>
       <Field label="Base">{own.baseSize && (own.baseSize.text ?? `${own.baseSize.width}×${own.baseSize.depth} ${own.baseSize.unit ?? ""}`)}</Field>
-      <Field label="Profile">{[own.race, own.tree, own.rank].filter(Boolean).join(" · ")}</Field>
+      <Field label="Profile">{Object.values(own.profile ?? {}).join(" · ")}</Field>
       {lines.some((l) => Object.keys(l.stats).length > 0) && <StatTable stats={statNames(ctx, unit.key)} lines={lines} />}
       <Field label="Equipment">{own.equipment.length > 0 && <Links terms={own.equipment} ctx={ctx} />}</Field>
       <Field label="Special rules">{own.rules.length > 0 && <Links terms={own.rules} ctx={ctx} />}</Field>
@@ -258,7 +259,7 @@ function SlotRow({ row, ctx, slotNames, limits }: { row: UnitRow; ctx: Ctx; slot
         {row.name ?? kind} <span className="sub">{words.costText(row.cost)}{kind !== row.name ? ` · ${kind}` : ""}</span>
       </h3>
       <Field label="Equipment">{row.equipment.length > 0 && <Links terms={row.equipment} ctx={ctx} />}</Field>
-      <Field label="Profile">{[row.race, row.tree, row.rank].filter(Boolean).join(" · ")}</Field>
+      <Field label="Profile">{Object.values(row.profile ?? {}).join(" · ")}</Field>
       <OptionsField label="Options" cell={row.equipmentOptions} ctx={ctx} />
       <OptionsField label="Rules options" cell={row.rulesOptions} ctx={ctx} />
       {[...(row.limits?.limits ?? []), ...limits].map((l, i) => (
@@ -299,8 +300,10 @@ function RuleCard({ rule }: { rule: SpecialRule }) {
 function RaceCard({ race, ctx }: { race: RaceProfile; ctx: Ctx }) {
   return (
     <>
-      <Field label="Race · tree · rank">{[race.race, race.tree ?? "Core", race.rank ?? "Base"].join(" · ")}</Field>
-      <StatTable stats={statNames(ctx, race.key)} lines={[{ name: race.race, stats: race.stats }]} />
+      {dimensionsOf(gameOf(race.key, ctx.items)).map((d) => (
+        <Field key={d.name} label={d.name}>{race.profile[d.name] || (d.blank ? `${d.blank} (blank)` : "")}</Field>
+      ))}
+      <StatTable stats={statNames(ctx, race.key)} lines={[{ name: race.name, stats: race.stats }]} />
       <Field label="Rules">{race.rules.length > 0 && <Links terms={race.rules} ctx={ctx} />}</Field>
     </>
   );

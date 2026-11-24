@@ -8,12 +8,11 @@ import { downloadFullYaml, downloadGameSheetYaml, downloadGameWorkbook, download
 import type { AppData } from "../app-data";
 import type { Nav } from "../App";
 import { saveFile } from "../save-file";
-import { BROWSE_KINDS } from "./BrowseScreen";
+import { BROWSE_KINDS, isEmpty } from "./BrowseScreen";
 import { SwipeRow } from "../swipe";
 import { needsOf } from "../../context/context";
-import { GameConfig } from "./config/GameConfig";
 
-type View = "sections" | "nesting" | PackageType;
+type View = "sections" | "nesting" | "empty" | PackageType;
 
 export function GameScreen({ data, nav, gameKey }: { data: AppData; nav: Nav; gameKey: string }) {
   const [view, setView] = useState<View>("nesting");
@@ -42,16 +41,19 @@ export function GameScreen({ data, nav, gameKey }: { data: AppData; nav: Nav; ga
       <p className="sub">
         Statline {game.statlines.model.join(" ")} · categories {game.categories.join(", ")} (change them in Configuration)
       </p>
-      <GameConfig data={data} nav={nav} game={game} onSaved={() => setChanged((n) => n + 1)} />
+      <button className="link" onClick={() => nav.open({ name: "configuration" })}>Configuration (Settings → Configuration)</button>
       <div className="chips">
         <button className={view === "nesting" ? "on" : ""} onClick={() => setView("nesting")}>As the books nest</button>
         <button className={view === "sections" ? "on" : ""} onClick={() => setView("sections")}>All, by type</button>
         {present.map((t) => (
           <button key={t.type} className={view === t.type ? "on" : ""} onClick={() => setView(t.type)}>{t.title}</button>
         ))}
+        <button className={view === "empty" ? "on" : ""} onClick={() => setView("empty")}>Empty</button>
       </div>
 
-      {view === "nesting" ? (
+      {view === "empty" ? (
+        <EmptyList packages={packages.filter((p) => !p.stubsFor)} items={data.items} nav={nav} />
+      ) : view === "nesting" ? (
         sectionsOf(packages.filter((p) => !p.partOf && !p.stubsFor)).map(([section, tops]) => (
           <div key={section ?? ""}>
             {section && (
@@ -105,6 +107,35 @@ export function GameScreen({ data, nav, gameKey }: { data: AppData; nav: Nav; ga
         <button onClick={() => saveFile(downloadFullYaml(gameItems(data.items, game), `${game.shortName}-stored.yaml`))}>Stored form (YAML)</button>
       </div>
     </section>
+  );
+}
+
+// Items entered with nothing beyond a name (placeholders), by the package they're in (owner, 23 Nov).
+// "Not entered yet" is different: names the app found and stubbed.
+function EmptyList({ packages, items, nav }: { packages: Package[]; items: Item[]; nav: Nav }) {
+  const byKey = new Map(items.map((i) => [i.key, i]));
+  const rows = packages
+    .map((p) => ({ pkg: p, empty: p.members.map((k) => byKey.get(k)).filter((i): i is Item => !!i && i.status !== "stub" && isEmpty(i)) }))
+    .filter((r) => r.empty.length > 0);
+  if (rows.length === 0) return <p className="hint">Nothing empty: every item has something in it.</p>;
+  return (
+    <>
+      {rows.map(({ pkg, empty }) => (
+        <details key={pkg.key} className="browse-group">
+          <summary>
+            <h2>{pkg.name} <span className="sub">{empty.length}</span></h2>
+          </summary>
+          <ul className="plain">
+            {empty.map((i) => (
+              <li key={i.key}>
+                <button className="link" onClick={() => nav.open({ name: "item", key: i.key })}>{i.name}</button>
+                <span className="sub"> {i.kind.replace("-", " ")}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ))}
+    </>
   );
 }
 

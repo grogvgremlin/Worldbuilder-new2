@@ -8,7 +8,7 @@ import YAML from "yaml";
 import { readCsv, writeCsv, type Row } from "../sheets/csv";
 import { readXlsx, writeXlsx, type WorkbookTab } from "../sheets/xlsx";
 import { readZip, writeZip } from "../sheets/zip";
-import { TABS, tabByFile, tabByTitle, type GameSheets, type PackageSheets, type TabId } from "./package-sheets";
+import { TABS, columnsFor, tabByFile, tabByTitle, type GameSheets, type PackageSheets, type TabId } from "./package-sheets";
 
 export type Files = Record<string, string>; // path -> text
 export type Problem = { where: string; message: string };
@@ -47,7 +47,7 @@ export function sheetsToFolder(sheets: GameSheets): Files {
     files[join(pkg.folder, "package.yaml")] = YAML.stringify(info);
     for (const tab of TABS) {
       const rows = pkg.tabs[tab.id];
-      if (rows) files[join(pkg.folder, tab.file)] = writeCsv({ columns: [...tab.columns], rows });
+      if (rows) files[join(pkg.folder, tab.file)] = writeCsv({ columns: columnsFor(tab, rows), rows });
     }
   }
   return files;
@@ -82,7 +82,8 @@ export function packageToWorkbook(pkg: PackageSheets): Uint8Array {
   const tabs: WorkbookTab[] = [{ name: "Package", rows: settings }];
   for (const tab of TABS) {
     const rows = pkg.tabs[tab.id];
-    if (rows) tabs.push({ name: tab.title, rows: [[...tab.columns], ...rows.map((r) => tab.columns.map((c) => r[c] ?? ""))] });
+    const cols = rows ? columnsFor(tab, rows) : [];
+    if (rows) tabs.push({ name: tab.title, rows: [cols, ...rows.map((r) => cols.map((c) => r[c] ?? ""))] });
   }
   return writeXlsx(tabs);
 }
@@ -161,7 +162,7 @@ function yamlObjectToPackage(obj: Record<string, unknown>): PackageSheets {
   const pkg: PackageSheets = { folder: String(obj.folder ?? ""), info: {}, tabs: {} };
   for (const [key, value] of Object.entries(obj)) {
     const tab = TABS.find((t) => t.id === key);
-    if (tab && Array.isArray(value)) pkg.tabs[tab.id as TabId] = value.map((r) => yamlToRow(r, [...tab.columns]));
+    if (tab && Array.isArray(value)) pkg.tabs[tab.id as TabId] = value.map((r) => yamlToRow(r, [...new Set([...tab.columns, ...Object.keys(r)])]));
     else if (key !== "folder" && key !== "contents") pkg.info[key] = value;
   }
   return pkg;
@@ -215,8 +216,9 @@ export function gameToWorkbook(sheets: GameSheets): Uint8Array {
   tabs.push({ name: "Packages", rows: [PACKAGES_COLUMNS, ...packageRows] });
   for (const tab of TABS) {
     const rows: string[][] = [];
-    for (const p of sheets.packages) for (const r of p.tabs[tab.id] ?? []) rows.push([String(p.info["package"]), ...tab.columns.map((c) => r[c] ?? "")]);
-    if (rows.length) tabs.push({ name: tab.title, rows: [[IN_PACKAGE, ...tab.columns], ...rows] });
+    const cols = columnsFor(tab, sheets.packages.flatMap((p) => p.tabs[tab.id] ?? []));
+    for (const p of sheets.packages) for (const r of p.tabs[tab.id] ?? []) rows.push([String(p.info["package"]), ...cols.map((c) => r[c] ?? "")]);
+    if (rows.length) tabs.push({ name: tab.title, rows: [[IN_PACKAGE, ...cols], ...rows] });
   }
   return writeXlsx(tabs);
 }
@@ -277,5 +279,5 @@ function readSettingValue(text: string): unknown {
 // One tab of one package as CSV.
 export function tabToCsv(pkg: PackageSheets, tab: TabId): string {
   const def = TABS.find((t) => t.id === tab)!;
-  return writeCsv({ columns: [...def.columns], rows: pkg.tabs[tab] ?? [] });
+  return writeCsv({ columns: columnsFor(def, pkg.tabs[tab] ?? []), rows: pkg.tabs[tab] ?? [] });
 }

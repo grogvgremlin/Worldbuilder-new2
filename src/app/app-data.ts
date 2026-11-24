@@ -2,6 +2,7 @@
 // accepted), downloading, and wiping. Screens only show things and call these.
 // Data structure: rebuild/data-structure.md §9.
 
+import { upgradeItem } from "../items/race-dimensions";
 import type { Item } from "../items/items";
 import { moveItem, planUpload, removeGame, removePackages, type ClashChoice, type UploadPlan } from "../library/library";
 import { pickupSandbox } from "../context/context";
@@ -20,7 +21,8 @@ export class AppData {
 
   // Reads what's kept, and makes the permanent Pick-up sandbox if it isn't there.
   async load(): Promise<void> {
-    this.items = await this.store.listItems();
+    // Items stored by an older build are brought up to date (race cells as a profile: 24 Nov).
+    this.items = (await this.store.listItems()).map((i) => upgradeItem(i) as Item);
     if (!this.items.some((i) => i.kind === "sandbox" && i.key === "pickup")) {
       this.items = [...this.items, pickupSandbox()];
       await this.store.replaceItems(this.items);

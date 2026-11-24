@@ -5,6 +5,8 @@
 
 import type { Item, Option, Options, Package, Term, Unit } from "../items/items";
 import { itemKey, matchName } from "../items/keys";
+import type { RaceDimension } from "../items/items";
+import { DEFAULT_DIMENSIONS, dimensionsOf, gameOf, profileKey } from "../items/race-dimensions";
 
 export type Kind = "unit" | "equipment" | "magic-item" | "special-rule" | "slot-kind";
 
@@ -171,13 +173,14 @@ export function foundNeeds(pkg: Package, items: Item[]): Map<string, string[]> {
   };
   for (const key of pkg.members) {
     const item = byKey.get(key);
-    if (item) for (const ref of referencesOf(item)) note(ref);
+    if (item) for (const ref of referencesOf(item, dimensionsOf(gameOf(pkg.key, items)))) note(ref);
   }
   return new Map([...needs].map(([k, names]) => [k, [...names].sort()]));
 }
 
 // Every item key an item refers to.
-export function referencesOf(item: Item): string[] {
+// `dims`: the game's race dimensions, to place a unit's race cells.
+export function referencesOf(item: Item, dims: RaceDimension[] = DEFAULT_DIMENSIONS): string[] {
   const out: (string | null | undefined)[] = [];
   const terms = (list?: Term[]) => list?.forEach((t) => out.push(t.item));
   const options = (cell?: Options) => {
@@ -187,8 +190,8 @@ export function referencesOf(item: Item): string[] {
   if (item.kind === "unit") {
     out.push(item.inherits?.item);
     for (const row of (item as Unit).rows) {
-      // A row's race cell (blank tree = Core, blank rank = Base) is something the unit draws on.
-      if (row.race) out.push(itemKey(item.key.split(".")[0], "race-profile", row.race, row.tree ?? "Core", row.rank ?? "Base"));
+      // A row's race cells (blanks filled: Tree Core, Rank Base) name a profile the unit draws on.
+      if (row.profile?.[dims[0].name]) out.push(profileKey(item.key.split(".")[0], row.profile, dims));
       terms(row.equipment);
       terms(row.rules);
       options(row.equipmentOptions);

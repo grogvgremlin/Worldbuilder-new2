@@ -4,6 +4,7 @@
 
 import YAML from "yaml";
 import { Item } from "../items/items";
+import { upgradeItem } from "../items/race-dimensions";
 
 export function writeFullYaml(items: Item[]): string {
   return YAML.stringify({ items }, { lineWidth: 0 });
@@ -15,7 +16,7 @@ export function readFullYaml(text: string): { items: Item[]; problems: string[] 
   const items: Item[] = [];
   const problems: string[] = [];
   (parsed?.items ?? []).forEach((raw, i) => {
-    const result = Item.safeParse(raw);
+    const result = Item.safeParse(upgradeItem(raw as Record<string, any>)); // a backup from an older build is brought up to date
     if (result.success) items.push(result.data);
     else problems.push(`item ${i + 1}: ${result.error.issues.map((x) => `${x.path.join(".")}: ${x.message}`).join("; ")}`);
   });

@@ -64,10 +64,24 @@ export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppDa
 
   return (
     <section className="card">
-      <h1>{u.taken?.name ?? ru.unit}</h1>
+      <h1>{ru.title ?? u.taken?.name ?? ru.unit}</h1>
+      {ru.title && <p className="sub">{u.taken?.name}</p>}
       <p className="sub">
         {u.category} · <b>{u.points} pts</b>
       </p>
+      {/* The unit as a character of its own: a name, an icon, a description (owner, 24 Nov). Kept on the
+          list for now; a world record can hold them later, with the list pointing at it. */}
+      <details className="list-settings" open={!!(ru.title || ru.description)}>
+        <summary>Name, icon and description</summary>
+        <div className="persona">
+          <div className="icon-spot" title="Images come later">
+            <span className="sub">Icon</span>
+            <span className="sub">(images coming)</span>
+          </div>
+          <input className="filter" placeholder="Its name, e.g. Marcus Aurelius" defaultValue={ru.title ?? ""} onBlur={(e) => e.target.value.trim() !== (ru.title ?? "") && save(updateUnit(roster, ru.id, { title: e.target.value.trim() || undefined }))} />
+        </div>
+        <textarea className="note" placeholder="Description: who they are, their story" defaultValue={ru.description ?? ""} onBlur={(e) => e.target.value.trim() !== (ru.description ?? "") && save(updateUnit(roster, ru.id, { description: e.target.value.trim() || undefined }))} />
+      </details>
       {/* What's wrong with this unit: its own issues and the list's issues that name it. */}
       {problems.length > 0 && <ul className="plain problems">{problems.map((m, n) => <li key={n}>{m}</li>)}</ul>}
       {u.limits.length > 0 && (

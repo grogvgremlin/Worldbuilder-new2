@@ -96,7 +96,7 @@ export function RosterScreen({ data, nav, rosterKey }: { data: AppData; nav: Nav
                     <button onClick={() => nav.open({ name: "roster-unit", roster: roster.key, unit: u.rosterUnit.id })}>
                       <span className="title">
                         {flagged.has(u.rosterUnit.id) && <span className="warn">⚠ </span>}
-                        {u.taken?.name ?? u.rosterUnit.unit}
+                        {u.rosterUnit.title ? <>{u.rosterUnit.title} <span className="sub">{u.taken?.name}</span></> : u.taken?.name ?? u.rosterUnit.unit}
                         {u.rosterUnit.size > 1 && <span className="sub"> ×{u.rosterUnit.size}</span>}
                         {u.rosterUnit.general && <span className="sub"> · General</span>}
                       </span>

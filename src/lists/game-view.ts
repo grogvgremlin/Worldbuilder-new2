@@ -16,7 +16,8 @@ import { matchName } from "../items/keys";
 
 export type StatLine = { name: string; stats: Stats }; // name "" for the unit's own line
 export type RuleRef = { name: string; key?: string; text?: string };
-export type CommandModel = { name: string; kit: string[] };
+export type Ref = { name: string; key?: string }; // a name, and the card it opens
+export type CommandModel = { name: string; key?: string; kit: Ref[] }; // key: the slot kind it inherits from (Champion)
 export type GameUnit = {
   id: string;
   name: string;
@@ -25,12 +26,15 @@ export type GameUnit = {
   category: string;
   general: boolean;
   lines: StatLine[];
-  equipment: string[];
+  equipment: Ref[];
   command: { section: string; models: CommandModel[] }[]; // by the slots' sections (Command, …)
   rules: RuleRef[];
   items: { name: string; type: string; key: string }[]; // the unit's own (a character's); a command model's are in its kit
-  page?: string;
+  page?: Ref; // "Forces of Fantasy p. 64", opening the source's card
   note?: string;
+  title?: string; // the owner's name for it: "Marcus Aurelius"
+  icon?: string;
+  description?: string;
 };
 
 export function gameUnits(view: RosterView, items: Item[]): GameUnit[] {
@@ -47,6 +51,9 @@ function gameUnit(u: UnitView, reach: Item[]): GameUnit {
     return { name: term.name + (term.detail ? ` (${term.detail})` : ""), key: rule?.key, text: rule?.text };
   };
   const termName = (e: Term) => e.name + (e.detail ? ` (${e.detail})` : "");
+  // A thing's card: what the name was matched to, or an item of that name in reach.
+  const keyOf = (t: { name: string; item?: string | null }) =>
+    t.item ?? reach.find((i) => (i.kind === "equipment" || i.kind === "magic-item" || i.kind === "unit") && matchName(i.name) === matchName(t.name))?.key;
 
   // The options picked, each matched to its option by the same key the pick was made with.
   const picked = ru.picks.filter((p) => !readItemPick(p));
@@ -69,7 +76,12 @@ function gameUnit(u: UnitView, reach: Item[]): GameUnit {
   const kitOf = (base: Term[], options: Option[], magic: MagicItem[]) => {
     const replaced = new Set([...options, ...magic.map((m) => ({ replaces: m.countsAs }) as Option)].flatMap((o) => o.replaces ?? []).map((r) => matchName(r.name)));
     const kept = base.filter((e) => e.as !== "Mount" && !replaced.has(matchName(e.name)));
-    return { terms: kept, names: [...kept.map(termName), ...options.filter((o) => o.as !== "Mount").map((o) => o.name), ...magic.map((m) => m.name)] };
+    const refs: Ref[] = [
+      ...kept.map((e) => ({ name: termName(e), key: keyOf(e) })),
+      ...options.filter((o) => o.as !== "Mount" && o.name).map((o) => ({ name: o.name, key: keyOf(o) })),
+      ...magic.map((m) => ({ name: m.name, key: m.key })),
+    ];
+    return { terms: kept, names: refs };
   };
   const ownKit = kitOf(t.equipment, unitOptions, []);
 
@@ -106,10 +118,10 @@ function gameUnit(u: UnitView, reach: Item[]): GameUnit {
     // standard taken through "Magic Standard (replace~Standard)" is carried instead of the Standard.
     const allowances = ru.picks.map(readItemPick).filter((p) => p && p.where === where).map((p) => rowOptions.find((o) => o.name === p!.allowance)).filter((o): o is Option => !!o);
     const kit = kitOf([...(row?.equipment ?? []), ...(kind?.equipment ?? [])], [...options, ...allowances.map((a) => ({ name: "", replaces: a.replaces }) as Option)], itemsFor(where));
-    kit.names = kit.names.filter(Boolean);
+    kit.names = kit.names.filter((r) => r.name);
     const section = slot.section ?? "Command";
     const at = command.find((c) => c.section === section) ?? (command.push({ section, models: [] }), command[command.length - 1]);
-    at.models.push({ name, kit: kit.names });
+    at.models.push({ name, key: kind?.key, kit: kit.names });
   }
 
   // Rules: its own, the special-rule options taken, and what options give.
@@ -129,8 +141,11 @@ function gameUnit(u: UnitView, reach: Item[]): GameUnit {
     command,
     rules,
     items: itemsFor("options").map((m) => ({ name: m.name, type: m.type, key: m.key })),
-    page: ref ? (ref.page ? `${ref.source} p. ${ref.page}` : ref.source) : undefined,
+    page: ref ? { name: ref.page ? `${ref.source} p. ${ref.page}` : ref.source, key: reach.find((i) => i.kind === "source" && matchName(i.name) === matchName(ref.source))?.key } : undefined,
     note: ru.note,
+    title: ru.title,
+    icon: ru.icon,
+    description: ru.description,
   };
 }
 

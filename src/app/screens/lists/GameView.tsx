@@ -5,7 +5,7 @@
 // Battle tool. Logic: src/lists/game-view.ts.
 import { useState } from "react";
 import type { Context, Game, Roster } from "../../../items/items";
-import { gameUnits, type GameUnit } from "../../../lists/game-view";
+import { gameUnits, type GameUnit, type Ref } from "../../../lists/game-view";
 import type { RosterView } from "../../../lists/roster";
 import { writeStat } from "../../../notation/values";
 import type { AppData } from "../../app-data";
@@ -20,6 +20,7 @@ const FILTERS = [
   { id: "rules", label: "Special rules" },
   { id: "items", label: "Magic items" },
   { id: "pages", label: "Pages" },
+  { id: "description", label: "Description" },
   { id: "notes", label: "Notes" },
   { id: "print", label: "Print: rules written out" },
 ];
@@ -30,7 +31,7 @@ function loadFilters(): Set<string> {
     const saved = localStorage.getItem("game-view-filters");
     if (saved) return new Set(JSON.parse(saved));
   } catch {}
-  return new Set(["points", "stats", "kit", "rules", "items"]);
+  return new Set(["points", "stats", "kit", "rules", "items", "description"]);
 }
 function saveFilters(f: Set<string>) {
   try {
@@ -52,6 +53,7 @@ export function GameView({ data, nav, view, save }: { data: AppData; nav: Nav; v
   };
   const context = data.items.find((i): i is Context => i.kind === "context" && i.key === roster.context);
   const stats = data.items.find((i): i is Game => i.kind === "game" && i.shortName === context?.game)?.statlines.model ?? [];
+  const sectionPoints = (section: string) => units.filter((u) => u.category === section).reduce((n, u) => n + u.points, 0);
   const sections = [...new Set((view.armyList?.entries ?? []).map((e) => e.category))].filter((c) => units.some((u) => u.category === c));
 
   return (
@@ -60,7 +62,7 @@ export function GameView({ data, nav, view, save }: { data: AppData; nav: Nav; v
       {sections.map((section) => (
         <div key={section}>
           <h2>
-            {section} {on.has("points") && <span className="sub">{units.filter((u) => u.category === section).reduce((n, u) => n + u.points, 0)} pts</span>}
+            {section} {on.has("points") && <span className="sub">{sectionPoints(section)} pts · {roster.target ? Math.round((sectionPoints(section) * 100) / roster.target) : 0}% of {roster.target}</span>}
           </h2>
           <div className="game-units">
             {units.filter((u) => u.category === section).map((u) => (
@@ -88,12 +90,16 @@ function UnitCard({ u, stats, on, openItem, onNote }: CardProps) {
   const print = on.has("print");
   const cols = stats.filter((s) => u.lines.some((l) => l.stats[s] !== undefined));
   const named = u.lines.length > 1; // one line: no name column
+  // Anything with a card opens it, over the list.
   const link = (name: string, key: string | undefined) => (key ? <button className="link" onClick={() => openItem(key)}>{name}</button> : <span>{name}</span>);
+  const refs = (list: Ref[]) => list.map((r, i) => <span key={i}>{i > 0 && ", "}{link(r.name, r.key)}</span>);
 
   return (
     <div className="game-unit">
+      {/* The owner's name for the unit first ("Marcus Aurelius"), then what it is. */}
+      {u.title && <div className="game-unit-title">{u.title}</div>}
       <div className="game-unit-head">
-        <span className="title">
+        <span className={u.title ? "" : "title"}>
           {u.name}
           {u.size > 1 && <span className="sub"> ×{u.size}</span>}
           {u.general && <span className="sub"> · General</span>}
@@ -125,15 +131,15 @@ function UnitCard({ u, stats, on, openItem, onNote }: CardProps) {
       {on.has("kit") && (u.equipment.length > 0 || u.command.length > 0) && (
         <details className="game-section" open>
           <summary>Equipment{u.command.length > 0 ? " and command" : ""}</summary>
-          {u.equipment.length > 0 && <p><span className="sub">Equipment: </span>{u.equipment.join(", ")}</p>}
+          {u.equipment.length > 0 && <p><span className="sub">Equipment: </span>{refs(u.equipment)}</p>}
           {u.command.map((c) => (
             <p key={c.section}>
               <span className="sub">{c.section}: </span>
               {c.models.map((m, i) => (
                 <span key={m.name}>
                   {i > 0 && ", "}
-                  {m.name}
-                  {m.kit.length > 0 && <span className="sub"> · {m.kit.join(", ")}</span>}
+                  {link(m.name, m.key)}
+                  {m.kit.length > 0 && <span className="sub"> · {refs(m.kit)}</span>}
                 </span>
               ))}
             </p>
@@ -188,8 +194,19 @@ function UnitCard({ u, stats, on, openItem, onNote }: CardProps) {
         </details>
       )}
 
-      {on.has("pages") && u.page && <p className="sub">{u.page}</p>}
-      {on.has("notes") && <textarea className="note" placeholder="Your notes" defaultValue={u.note ?? ""} onBlur={(e) => e.target.value !== (u.note ?? "") && onNote(e.target.value.trim())} />}
+      {on.has("pages") && u.page && <p className="sub">{link(u.page.name, u.page.key)}</p>}
+      {on.has("description") && u.description && (
+        <details className="game-section" open>
+          <summary>Description</summary>
+          <p className="description">{u.description}</p>
+        </details>
+      )}
+      {on.has("notes") && (
+        <details className="game-section" open>
+          <summary>Notes</summary>
+          <textarea className="note" placeholder="Your notes for this game" defaultValue={u.note ?? ""} onBlur={(e) => e.target.value !== (u.note ?? "") && onNote(e.target.value.trim())} />
+        </details>
+      )}
     </div>
   );
 }

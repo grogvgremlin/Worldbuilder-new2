@@ -14,7 +14,6 @@ import { ItemScreen } from "./screens/ItemScreen";
 import { DraftScreen } from "./screens/DraftScreen";
 import { DataScreen } from "./screens/DataScreen";
 import { SearchScreen } from "./screens/SearchScreen";
-import { ConfigurationScreen } from "./screens/config/ConfigurationScreen";
 import { BrowseScreen, type BrowseKind } from "./screens/BrowseScreen";
 import { ListsScreen } from "./screens/lists/ListsScreen";
 import { PickupGameScreen } from "./screens/lists/PickupGameScreen";
@@ -36,7 +35,6 @@ export type Screen =
   | { name: "game-setting"; game: string; index: number }
   | { name: "draft" }
   | { name: "search" }
-  | { name: "configuration" }
   | { name: "data" }
   | { name: "lists" }
   | { name: "pickup"; key: string }
@@ -119,7 +117,6 @@ export function App({ data }: { data: AppData }) {
             {tool === "settings" && stack.length === 1 && (
               <nav className="segments">
                 <button className={screen.name === "library" ? "on" : ""} onClick={() => setStack(() => [{ name: "library" }])}>Library</button>
-                <button className={screen.name === "configuration" ? "on" : ""} onClick={() => setStack(() => [{ name: "configuration" }])}>Configuration</button>
                 <button className={screen.name === "data" ? "on" : ""} onClick={() => setStack(() => [{ name: "data" }])}>Data</button>
               </nav>
             )}
@@ -172,8 +169,6 @@ function render(screen: Screen, data: AppData, nav: Nav, draft: Draft | null, se
       return <DataScreen data={data} onWiped={refresh} />;
     case "search":
       return <SearchScreen data={data} nav={nav} />;
-    case "configuration":
-      return <ConfigurationScreen data={data} nav={nav} />;
     case "lists":
       return <ListsScreen data={data} nav={nav} />;
     case "pickup":

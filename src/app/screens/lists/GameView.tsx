@@ -61,6 +61,12 @@ export function GameView({ data, nav, view, save }: { data: AppData; nav: Nav; v
   return (
     <div className={"game-view" + (on.has("print") ? " print" : "")}>
       <ShowMenu options={FILTERS} on={on} onToggle={toggle} />
+      {on.has("description") && roster.description && (
+        <details className="game-section" open>
+          <summary>Description</summary>
+          <p className="description">{roster.description}</p>
+        </details>
+      )}
       {sections.map((section) => (
         <div key={section}>
           <h2>

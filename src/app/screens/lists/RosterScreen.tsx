@@ -34,8 +34,17 @@ export function RosterScreen({ data, nav, rosterKey }: { data: AppData; nav: Nav
 
   return (
     <section>
-      <h1>{roster.name}</h1>
+      {/* The list's name is edited here; an icon and a banner come with images; a description. */}
+      <input className="title-input" value={roster.name} onChange={(e) => save({ ...roster, name: e.target.value })} aria-label="The list's name" />
       <p className="sub">{view.armyList?.name}</p>
+      <details className="list-settings" open={!!roster.description}>
+        <summary>Icon, banner and description</summary>
+        <div className="persona">
+          <div className="icon-spot" title="Images come later"><span className="sub">Icon</span><span className="sub">(images coming)</span></div>
+          <div className="banner-spot" title="Images come later"><span className="sub">Banner (images coming)</span></div>
+        </div>
+        <textarea className="description-box" rows={5} placeholder="Description: the army, its story" defaultValue={roster.description ?? ""} onBlur={(e) => e.target.value.trim() !== (roster.description ?? "") && save({ ...roster, description: e.target.value.trim() || undefined })} />
+      </details>
       <div className={"total" + (view.total > roster.target ? " over" : "")}>
         <b>{view.total}</b> of{" "}
         <NumberBox value={roster.target} min={0} onChange={(target) => save({ ...roster, target })} /> pts

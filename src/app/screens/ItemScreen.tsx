@@ -136,7 +136,7 @@ function cell(value: unknown): string {
   return writeStat(value as Stat);
 }
 
-// The game's statline (Settings → Configuration), from the item's key: tow.unit.… -> tow.
+// The game's statline (Library → the game → Configuration), from the item's key: tow.unit.… -> tow.
 function statNames(ctx: Ctx, itemKey: string): string[] {
   const game = ctx.items.find((i): i is Game => i.kind === "game" && i.shortName === itemKey.split(".")[0]);
   return game?.statlines.model.length ? game.statlines.model : STATS;

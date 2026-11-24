@@ -12,10 +12,14 @@ import { ViewMenu } from "../filter-menu";
 import { BROWSE_KINDS, isEmpty } from "./BrowseScreen";
 import { SwipeRow } from "../swipe";
 import { needsOf } from "../../context/context";
+import { GameConfig } from "./config/GameConfig";
 
 type View = "sections" | "nesting" | "empty" | PackageType;
 
+let lastTab: "contents" | "configuration" = "contents"; // kept while the app is open
+
 export function GameScreen({ data, nav, gameKey }: { data: AppData; nav: Nav; gameKey: string }) {
+  const [tab, setTab] = useState<"contents" | "configuration">(lastTab);
   const [view, setView] = useState<View>("nesting");
   // "Not entered yet" starts folded: it grows with every book that names things not yet entered.
   const [folded, setFolded] = useState<Set<string>>(new Set(["stubs"]));
@@ -40,9 +44,17 @@ export function GameScreen({ data, nav, gameKey }: { data: AppData; nav: Nav; ga
     <section>
       <h1>{game.name}</h1>
       <p className="sub">
-        Statline {game.statlines.model.join(" ")} · categories {game.categories.join(", ")} (change them in Configuration)
+        Statline {game.statlines.model.join(" ")} · categories {game.categories.join(", ")}
       </p>
-      <button className="link" onClick={() => nav.open({ name: "configuration" })}>Configuration (Settings → Configuration)</button>
+      {/* The game's own page holds its configuration, as a tab (owner, 24 Nov). */}
+      <nav className="segments">
+        <button className={tab === "contents" ? "on" : ""} onClick={() => setTab((lastTab = "contents"))}>Contents</button>
+        <button className={tab === "configuration" ? "on" : ""} onClick={() => setTab((lastTab = "configuration"))}>Configuration</button>
+      </nav>
+      {tab === "configuration" ? (
+        <GameConfig data={data} nav={nav} game={game} onSaved={() => setChanged((n) => n + 1)} />
+      ) : (
+      <>
       <ViewMenu
         options={[{ id: "nesting", label: "As the books nest" }, { id: "sections", label: "All, by type" }, ...present.map((t) => ({ id: t.type, label: t.title })), { id: "empty", label: "Empty" }]}
         value={view}
@@ -104,6 +116,8 @@ export function GameScreen({ data, nav, gameKey }: { data: AppData; nav: Nav; ga
         <button onClick={() => saveFile(downloadGameSheetYaml(data.items, game))}>Sheet YAML</button>
         <button onClick={() => saveFile(downloadFullYaml(gameItems(data.items, game), `${game.shortName}-stored.yaml`))}>Stored form (YAML)</button>
       </div>
+      </>
+      )}
     </section>
   );
 }

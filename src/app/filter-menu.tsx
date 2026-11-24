@@ -2,7 +2,8 @@
 // Ticks for things to show, or one choice of how to show them.
 import { useState } from "react";
 
-type Option = { id: string; label: string };
+// `parent`: shown under another option, and only counts while that one is on (Battle → Battle notes).
+type Option = { id: string; label: string; parent?: string };
 
 // Several on or off: "Points", "Stats" …
 export function ShowMenu({ options, on, onToggle }: { options: Option[]; on: Set<string>; onToggle: (id: string) => void }) {
@@ -13,8 +14,8 @@ export function ShowMenu({ options, on, onToggle }: { options: Option[]; on: Set
       {open && (
         <div className="filter-panel">
           {options.map((o) => (
-            <label key={o.id} className="choice">
-              <input type="checkbox" checked={on.has(o.id)} onChange={() => onToggle(o.id)} /> {o.label}
+            <label key={o.id} className={"choice" + (o.parent ? " child" : "") + (o.parent && !on.has(o.parent) ? " unavailable" : "")}>
+              <input type="checkbox" checked={on.has(o.id)} disabled={!!o.parent && !on.has(o.parent)} onChange={() => onToggle(o.id)} /> {o.label}
             </label>
           ))}
           <button className="link" onClick={() => setOpen(false)}>Done</button>

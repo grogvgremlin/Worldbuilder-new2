@@ -30,8 +30,9 @@ export type GameUnit = {
   command: { section: string; models: CommandModel[] }[]; // by the slots' sections (Command, …)
   rules: RuleRef[];
   items: { name: string; type: string; key: string }[]; // the unit's own (a character's); a command model's are in its kit
-  page?: Ref; // "Forces of Fantasy p. 64", opening the source's card
+  ref?: { source: Ref; page?: string }; // "Ref: Forces of Fantasy [p. 64]": the source and the page, each a link
   note?: string;
+  battleNote?: string;
   title?: string; // the owner's name for it: "Marcus Aurelius"
   icon?: string;
   description?: string;
@@ -142,8 +143,9 @@ function gameUnit(u: UnitView, reach: Item[], game: Game | undefined, all: Item[
     command,
     rules,
     items: itemsFor("options").map((m) => ({ name: m.name, type: m.type, key: m.key })),
-    page: ref ? { name: ref.page ? `${ref.source} p. ${ref.page}` : ref.source, key: reach.find((i) => i.kind === "source" && matchName(i.name) === matchName(ref.source))?.key } : undefined,
+    ref: ref ? { source: { name: ref.source, key: reach.find((i) => i.kind === "source" && matchName(i.name) === matchName(ref.source))?.key }, page: ref.page } : undefined,
     note: ru.note,
+    battleNote: ru.battleNote,
     title: ru.title,
     icon: ru.icon,
     description: ru.description,

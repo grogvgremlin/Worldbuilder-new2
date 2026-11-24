@@ -8,6 +8,7 @@ import { dimensionsOf } from "../items/race-dimensions";
 import type { Row } from "../sheets/csv";
 import { PATCH_TABS, TABS, type GameSheets, type PackageSheets, type TabId } from "./package-sheets";
 import * as tabs from "./sheet-tabs";
+import { unitAsPrinted } from "../rules/race-deltas";
 import { readPatchRows, writePatchRows } from "./patch-tabs";
 
 export type ImportResult = { items: Item[]; problems: tabs.Problem[] };
@@ -215,7 +216,9 @@ export function exportPackage(pkg: Package, byKey: Map<string, Item>): PackageSh
   put("rules", ofKind("special-rule").map((i) => tabs.writeRuleRow(i as SpecialRule)));
   put("equipment", ofKind("equipment").map((i) => tabs.writeEquipmentRow(i as Equipment)));
   put("magic items", ofKind("magic-item").map((i) => tabs.writeMagicItemRow(i as MagicItem)));
-  put("units", ofKind("unit").flatMap((u) => tabs.writeUnitRows(u as Unit, categoryOf.get(u.key), columns)));
+  // Stats back as printed: each unit's race + the difference stored (races-and-units.md §2).
+  const all = [...byKey.values()];
+  put("units", ofKind("unit").flatMap((u) => tabs.writeUnitRows(unitAsPrinted(u as Unit, all, byKey), categoryOf.get(u.key), columns)));
   put("composition", ofKind("composition-rule").map((c) => tabs.writeCompositionRow(c as CompositionRule, columns)));
   for (const [id, kind] of Object.entries(PATCH_TABS)) put(id as TabId, ofKind("patch").flatMap((p) => writePatchRows(p as Patch, kind)));
 

@@ -6,6 +6,7 @@ import { useState } from "react";
 import YAML from "yaml";
 import type { ArmyList, CompositionRule, Equipment, Game, Item, Limit, Source, Options as OptionsCell, Package, Patch, RaceProfile, SlotKind, SpecialRule, Stat, Stats, Term, Unit, UnitRow } from "../../items/items";
 import { writeStat } from "../../notation/values";
+import { unitAsPrinted } from "../../rules/race-deltas";
 import { dimensionsOf, gameOf } from "../../items/race-dimensions";
 import { changeText } from "../../packages/patch-tabs";
 import type { AppData } from "../app-data";
@@ -171,7 +172,9 @@ function StatTable({ lines, stats: STATS }: { lines: { name: string; stats: Stat
 
 // The Library shows a unit as entered: its lines as typed (a champion's change as "+1"). Working
 // lines out (race, options taken, mount) is the roster card's job (owner, 22 Nov).
-function UnitCard({ unit, ctx }: { unit: Unit; ctx: Ctx }) {
+function UnitCard({ unit: stored, ctx }: { unit: Unit; ctx: Ctx }) {
+  // As entered: stats shown as printed (race + the difference stored).
+  const unit = unitAsPrinted(stored, ctx.items, ctx.byKey);
   const own = unit.rows[0];
   const category = ctx.items.find((i): i is ArmyList => i.kind === "army-list" && i.entries.some((e) => e.unit === unit.key))?.entries.find((e) => e.unit === unit.key)?.category;
   const slotNames = new Map(ctx.items.filter((i): i is SlotKind => i.kind === "slot-kind").map((s) => [s.code, s.name]));

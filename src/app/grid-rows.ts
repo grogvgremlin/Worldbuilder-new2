@@ -7,6 +7,7 @@ import type { Row } from "../sheets/csv";
 import { columnsFor, PATCH_TABS, TABS, type TabId } from "../packages/package-sheets";
 import { writePatchRows } from "../packages/patch-tabs";
 import * as tabs from "../packages/sheet-tabs";
+import { unitAsPrinted } from "../rules/race-deltas";
 
 export const KIND_OF_TAB: Record<TabId, Item["kind"]> = {
   bibliography: "source",
@@ -38,7 +39,7 @@ export function gridFor(pkg: Package, tab: TabId, byKey: Map<string, Item>): Gri
   const categoryOf = new Map((list?.entries ?? []).map((e) => [e.unit, e.category]));
   const rows: GridRow[] = [];
   for (const item of members.filter((i) => i.kind === KIND_OF_TAB[tab])) {
-    rowsOf(item, tab, columns, categoryOf).forEach((row, i) => rows.push({ key: item.key, row, first: i === 0 }));
+    rowsOf(item.kind === "unit" ? unitAsPrinted(item, [...byKey.values()], byKey) : item, tab, columns, categoryOf).forEach((row, i) => rows.push({ key: item.key, row, first: i === 0 }));
   }
   const all = columnsFor(TABS.find((t) => t.id === tab)!, rows.map((r) => r.row));
   return { columns: all.filter((c) => !HIDDEN.has(c) && rows.some((r) => (r.row[c] ?? "") !== "")), rows };

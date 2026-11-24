@@ -6,6 +6,7 @@
 //
 // Pure, and worked out on every read: nothing here is stored. Every line says how it was made.
 
+import { dimensionsOf, gameOf, profileKey, profileName } from "../items/race-dimensions";
 import type { Equipment, Item, RaceProfile, Stat, Stats, Term, Unit, UnitRow } from "../items/items";
 import { itemKey } from "../items/keys";
 
@@ -28,7 +29,7 @@ export function workOutLines(unit: Unit, items: Item[]): WorkedLine[] {
   const own = workOutOwnLine(unit, chain, byKey);
   const lines: WorkedLine[] = [own];
   for (const row of unit.rows.slice(1)) {
-    if (row.race) {
+    if (row.profile && Object.keys(row.profile).length) {
       // Crew and steeds have their own race: a line of their own (one crewman; a steed).
       const alone: Unit = { ...unit, inherits: undefined, rows: [row] };
       lines.push({ ...workOutOwnLine(alone, [alone], byKey), kind: "mount" });
@@ -71,14 +72,15 @@ function ownEquipment(chain: Unit[]): Term[] {
 function workOutOwnLine(unit: Unit, chain: Unit[], byKey: Map<string, Item>): WorkedLine {
   const steps: string[] = [];
   const line: Line = {};
-  const race = nearest(chain, (r) => r.race);
-  const tree = nearest(chain, (r) => r.tree) ?? "Core";
-  const rank = nearest(chain, (r) => r.rank) ?? "Base";
-  const cell = race ? (byKey.get(itemKey(unit.key.split(".")[0], "race-profile", race, tree, rank)) as RaceProfile | undefined) : undefined;
+  // The race cells, nearest written first for each dimension.
+  const dims = dimensionsOf(gameOf(unit.key, [...byKey.values()]));
+  const profile: Record<string, string> = Object.assign({}, ...[...chain].reverse().map((u) => u.rows[0].profile ?? {}));
+  const race = profile[dims[0].name];
+  const cell = race ? (byKey.get(profileKey(unit.key.split(".")[0], profile, dims)) as RaceProfile | undefined) : undefined;
   if (cell) {
     for (const s of STATS) if (cell.stats[s] !== undefined) line[s] = applyStat(undefined, cell.stats[s]);
     steps.push(`${cell.name}: ${show(line)}`);
-  } else if (race) steps.push(`no race cell ${race} · ${tree} · ${rank}: the line as entered`);
+  } else if (race) steps.push(`no race cell ${profileName(profile, dims)}: the line as entered`);
   const fromRace: Line = { ...line };
 
   // As entered, from the furthest unit in the chain to this one: a nearer entry wins.

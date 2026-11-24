@@ -68,7 +68,7 @@ function NewContext({ data, games, onMade }: { data: AppData; games: Game[]; onM
       </label>
       {(game.presets ?? []).length > 0 && (
         <label className="stack">
-          <span className="sub">Start from (the game's presets: Library → the game → Configuration)</span>
+          <span className="sub">Start from (the game's presets: Settings → Configuration)</span>
           <select value={preset} onChange={(e) => setPreset(e.target.value)}>
             {(game.presets ?? []).map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
           </select>

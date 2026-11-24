@@ -11,6 +11,8 @@ import { readOptions, writeOptions } from "../notation/options";
 import { readLimits, readSlots, writeLimits, writeSlots } from "../notation/slots-and-limits";
 import { readTerms, writeTerms } from "../notation/terms";
 import * as v from "../notation/values";
+import type { RaceDimension } from "../items/items";
+import { DEFAULT_DIMENSIONS, profileKey, profileName } from "../items/race-dimensions";
 
 // Where a problem was found, and what it was.
 export type Problem = { where: string; message: string };
@@ -22,7 +24,18 @@ export type TabContext = {
   packageName: string; // The Empire of Man
   file: string; // forces-of-fantasy/the-empire/units.csv (for problems)
   problems: Problem[];
+  dimensions?: RaceDimension[]; // the game's race dimensions (absent: Race, Tree, Rank)
 };
+
+// The race dimensions' values as written in a row: { Race: Human, Rank: Veteran } (blanks left out).
+function readProfile(row: Row, ctx: TabContext): Record<string, string> {
+  const profile: Record<string, string> = {};
+  for (const d of ctx.dimensions ?? DEFAULT_DIMENSIONS) {
+    const value = v.readText(row[d.name]);
+    if (value) profile[d.name] = value;
+  }
+  return profile;
+}
 
 export const STATS = ["M", "WS", "BS", "S", "T", "W", "I", "A", "Ld"];
 
@@ -122,17 +135,14 @@ export function writeSourceRow(item: Source): Row {
 export function readRaceRows(rows: Row[], ctx: TabContext): RaceProfile[] {
   return rows.map((row, i) => {
     const at = cellReader(ctx, i + 2);
-    const race = row["Race"].trim();
-    const tree = v.readText(row["Tree"]);
-    const rank = v.readText(row["Rank"]);
+    const dims = ctx.dimensions ?? DEFAULT_DIMENSIONS;
+    const profile = readProfile(row, ctx);
     return compact<RaceProfile>({
-      key: itemKey(ctx.game, "race-profile", race, tree ?? "Core", rank ?? "Base"),
+      key: profileKey(ctx.game, profile, dims),
       kind: "race-profile",
-      name: [race, tree ?? "Core", rank ?? "Base"].join(" · "),
+      name: profileName(profile, dims),
       homePackage: ctx.packageKey,
-      race,
-      tree,
-      rank,
+      profile,
       stats: readStats(row),
       rules: at("Rules", (p) => readTerms(row["Rules"], p)),
       reference: v.readReference(row["Reference"]),
@@ -142,7 +152,7 @@ export function readRaceRows(rows: Row[], ctx: TabContext): RaceProfile[] {
 }
 
 export function writeRaceRow(item: RaceProfile): Row {
-  const row: Row = { Race: item.race, Tree: item.tree ?? "", Rank: item.rank ?? "" };
+  const row: Row = { ...item.profile };
   writeStats(item.stats, row);
   row["Rules"] = writeTerms(item.rules);
   row["Reference"] = v.writeReference(item.reference);
@@ -328,7 +338,7 @@ export function readArmyEntryRows(rows: Row[], ctx: TabContext, categories: stri
     }
 
     const unitName = row["Unit"].trim();
-    const unitRow = readUnitRow(row, at);
+    const unitRow = readUnitRow(row, at, ctx);
     let unit = byName.get(unitName);
     if (!unit) {
       if (type !== "Unit") at("Type", (p) => p.push(`the first row of "${unitName}" is a ${type} row, not a Unit row`));
@@ -368,7 +378,8 @@ export function readArmyEntryRows(rows: Row[], ctx: TabContext, categories: stri
   return { units, armyList, composition };
 }
 
-export function readUnitRow(row: Row, at: ReturnType<typeof cellReader>): UnitRow {
+export function readUnitRow(row: Row, at: ReturnType<typeof cellReader>, ctx: TabContext): UnitRow {
+  const profile = readProfile(row, ctx);
   return compact<UnitRow>({
     type: row["Type"].trim(),
     name: v.readText(row["Name"]),
@@ -385,9 +396,7 @@ export function readUnitRow(row: Row, at: ReturnType<typeof cellReader>): UnitRo
     limits: at("Unit Limit", (p) => readLimits(row["Unit Limit"], p)),
     rules: at("Rules", (p) => readTerms(row["Rules"], p)),
     statuses: at("Status", (p) => readTerms(row["Status"], p)),
-    race: v.readText(row["Race"]),
-    tree: v.readText(row["Tree"]),
-    rank: v.readText(row["Rank"]),
+    profile: Object.keys(profile).length ? profile : undefined,
     reference: v.readReference(row["Reference"]),
     notes: v.readText(row["Notes"]),
   });
@@ -415,9 +424,7 @@ export function writeUnitRows(unit: Unit, category: string | undefined, columns:
     row["Rules"] = writeTerms(r.rules, "rules");
     row["Rules Options"] = writeOptions(r.rulesOptions);
     row["Status"] = writeTerms(r.statuses);
-    row["Race"] = r.race ?? "";
-    row["Rank"] = r.rank ?? "";
-    row["Tree"] = r.tree ?? "";
+    Object.assign(row, r.profile ?? {});
     row["Save"] = v.writeStat(r.save);
     row["Notes"] = r.notes ?? "";
     return row;

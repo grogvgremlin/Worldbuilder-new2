@@ -86,7 +86,7 @@ function groupLabel(item: Item, by: GroupBy, all: Item[], categoryOf: Map<string
   if (item.kind === "equipment") return item.type ?? "No type given";
   if (item.kind === "magic-item") return item.type || "No type given";
   if (item.kind === "unit") return item.class === "mount" ? "Mount" : categoryOf.get(item.key) ?? "No category";
-  if (item.kind === "race-profile") return item.race;
+  if (item.kind === "race-profile") return Object.values(item.profile)[0] ?? "—";
   if (item.kind === "source") return item.sourceKind ?? "No kind given";
   if (item.kind === "patch") return "Changes " + [...new Set(item.changes.map((c) => c.targetKind.replace("-", " ")))].join(", ");
   return "—";

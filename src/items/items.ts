@@ -170,6 +170,11 @@ export const GameSetting = z.strictObject({
 });
 export type GameSetting = z.infer<typeof GameSetting>;
 
+// A dimension of the race grid: Race, Tree, Rank … (owner, 23 Nov: configurable, "if I wanted to add a
+// 4th"). `blank`: what an empty cell means (Tree: Core). Its name is also its sheet column.
+export const RaceDimension = z.strictObject({ name: z.string(), blank: z.string().optional() });
+export type RaceDimension = z.infer<typeof RaceDimension>;
+
 // A ready-made start for a new context, by package names (resolved when used: a package not loaded
 // yet is reported missing). "armies: all" also switches on every army in the books listed.
 export const GamePreset = z.strictObject({
@@ -205,6 +210,7 @@ export const Game = z.strictObject({
   defaultComposition: z.array(z.string()).optional(), // composition sets a new context starts with
   settings: z.array(GameSetting).optional(),
   presets: z.array(GamePreset).optional(),
+  raceDimensions: z.array(RaceDimension).optional(), // absent: Race, Tree (blank Core), Rank (blank Base)
 });
 export type Game = z.infer<typeof Game>;
 
@@ -225,13 +231,14 @@ export const Package = z.strictObject({
 });
 export type Package = z.infer<typeof Package>;
 
-// One cell of a race's grid: race · tree · rank.
+// One cell of a race's grid, placed by the game's race dimensions (Race, Tree, Rank by default;
+// configurable: Settings → Configuration). `profile` holds the values as written, by
+// dimension name: { Race: Human, Tree: Professional, Rank: Veteran }; a dimension left blank takes its
+// "blank means" value (Tree: Core, Rank: Base).
 export const RaceProfile = z.strictObject({
   ...common,
   kind: z.literal("race-profile"),
-  race: z.string(),
-  tree: z.string().optional(), // blank means Core
-  rank: z.string().optional(), // blank means Base
+  profile: z.record(z.string(), z.string()),
   stats: Stats,
   rules: z.array(Term),
 });
@@ -257,9 +264,7 @@ export const UnitRow = z.strictObject({
   limits: Limits.optional(),
   rules: z.array(Term),
   statuses: z.array(Term),
-  race: z.string().optional(),
-  tree: z.string().optional(),
-  rank: z.string().optional(),
+  profile: z.record(z.string(), z.string()).optional(), // the race profile it draws on, by dimension: { Race: Human, Rank: Veteran }
   reference: Reference.optional(),
   notes: z.string().optional(),
 });

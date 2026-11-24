@@ -107,3 +107,10 @@ describe("backup", () => {
 function planUploadDraft(app: AppData) {
   return { fileNames: [], problems: [], uploaded: items, choices: {}, plan: planUpload(app.items, items) };
 }
+
+describe("items stored before race dimensions", () => {
+  it("are brought up to date: race, tree, rank become a profile", async () => {
+    const { upgradeItem } = await import("../src/items/race-dimensions");
+    expect(upgradeItem({ key: "tow.race.human.core.base", kind: "race-profile", name: "Human · Core · Base", race: "Human", stats: {}, rules: [] })).toEqual({ key: "tow.race.human.core.base", kind: "race-profile", name: "Human · Core · Base", profile: { Race: "Human" }, stats: {}, rules: [] });
+  });
+});

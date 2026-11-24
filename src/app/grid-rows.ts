@@ -4,7 +4,7 @@
 
 import type { ArmyList, CompositionRule, Equipment, Item, MagicItem, Package, Patch, RaceProfile, SettingValue, SlotKind, Source, SpecialRule, Unit } from "../items/items";
 import type { Row } from "../sheets/csv";
-import { PATCH_TABS, TABS, type TabId } from "../packages/package-sheets";
+import { columnsFor, PATCH_TABS, TABS, type TabId } from "../packages/package-sheets";
 import { writePatchRows } from "../packages/patch-tabs";
 import * as tabs from "../packages/sheet-tabs";
 
@@ -40,7 +40,7 @@ export function gridFor(pkg: Package, tab: TabId, byKey: Map<string, Item>): Gri
   for (const item of members.filter((i) => i.kind === KIND_OF_TAB[tab])) {
     rowsOf(item, tab, columns, categoryOf).forEach((row, i) => rows.push({ key: item.key, row, first: i === 0 }));
   }
-  const all = TABS.find((t) => t.id === tab)!.columns;
+  const all = columnsFor(TABS.find((t) => t.id === tab)!, rows.map((r) => r.row));
   return { columns: all.filter((c) => !HIDDEN.has(c) && rows.some((r) => (r.row[c] ?? "") !== "")), rows };
 }
 

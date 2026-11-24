@@ -44,6 +44,14 @@ export type GameSheets = {
 // Which kind of change each patch tab holds.
 export const PATCH_TABS = { "unit patches": "unit", "equipment patches": "equipment", "rule patches": "special-rule", "composition patches": "composition-rule" } as const;
 
+// A tab's columns, and after them any others its rows hold (a 4th race dimension, say), so nothing
+// the owner added is lost on the way out.
+export function columnsFor(tab: { columns: readonly string[] }, rows: Row[]): string[] {
+  const out = [...tab.columns];
+  for (const r of rows) for (const c of Object.keys(r)) if (!out.includes(c)) out.push(c);
+  return out;
+}
+
 export function tabByFile(file: string) {
   return TABS.find((t) => t.file === file);
 }

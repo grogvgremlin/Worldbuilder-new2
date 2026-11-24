@@ -4,6 +4,7 @@
 
 import type { ArmyList, CompositionRule, Equipment, Game, GamePreset, GameSetting, Item, MagicItem, Package, Patch, RaceProfile, SettingValue, SlotKind, Source, SpecialRule, Unit } from "../items/items";
 import { slug } from "../items/keys";
+import { dimensionsOf } from "../items/race-dimensions";
 import type { Row } from "../sheets/csv";
 import { PATCH_TABS, TABS, type GameSheets, type PackageSheets, type TabId } from "./package-sheets";
 import * as tabs from "./sheet-tabs";
@@ -59,7 +60,7 @@ export function importSheets(sheets: GameSheets, known: Item[] = []): ImportResu
 }
 
 function readPackageTabs(sheet: PackageSheets, pkg: Package, game: Game, problems: tabs.Problem[]): Item[] {
-  const ctx: tabs.TabContext = { game: game.shortName, packageKey: pkg.key, packageName: pkg.name, file: "", problems };
+  const ctx: tabs.TabContext = { game: game.shortName, packageKey: pkg.key, packageName: pkg.name, file: "", problems, dimensions: dimensionsOf(game) };
   const items: Item[] = [];
   const army: { list: ArmyList | null } = { list: null };
   const patches = new Map<string, Patch>(); // by name: rows sharing a name are one patch, across tabs
@@ -67,7 +68,7 @@ function readPackageTabs(sheet: PackageSheets, pkg: Package, game: Game, problem
     const typed = sheet.tabs[tab.id];
     if (!typed || typed.length === 0) continue;
     // Every column present, blank where the upload left it out.
-    const rows = typed.map((r) => Object.fromEntries(tab.columns.map((c) => [c, r[c] ?? ""])));
+    const rows = typed.map((r) => ({ ...Object.fromEntries(tab.columns.map((c) => [c, ""])), ...r })); // columns beyond the tab's own (a 4th race dimension) kept
     ctx.file = `${sheet.folder}/${tab.file}`;
     if (tab.id in PATCH_TABS) {
       readPatchRows(PATCH_TABS[tab.id as keyof typeof PATCH_TABS], rows, ctx, patches);
@@ -136,6 +137,7 @@ function readGameInfo(y: Record<string, any>): Game {
     defaultComposition: y["default composition"] === undefined ? undefined : asList(y["default composition"]),
     settings: Array.isArray(y["settings"]) ? y["settings"].map(readGameSetting) : undefined,
     presets: Array.isArray(y["presets"]) ? y["presets"].map(readPreset) : undefined,
+    raceDimensions: Array.isArray(y["race dimensions"]) ? y["race dimensions"].map((d: any) => (d["blank"] ? { name: String(d["name"]), blank: String(d["blank"]) } : { name: String(d["name"]) })) : undefined,
   });
 }
 
@@ -254,6 +256,7 @@ function writeGameInfo(game: Game, byKey: Map<string, Item>): Record<string, unk
     "default composition": game.defaultComposition?.map((k) => byKey.get(k)?.name ?? k),
     settings: game.settings,
     presets: game.presets,
+    "race dimensions": game.raceDimensions,
   });
 }
 

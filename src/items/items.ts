@@ -121,6 +121,7 @@ export const Slot = z.strictObject({
   count: Range.optional(),
   type: z.string().optional(), // upgrade, crew, steed
   cost: Cost.optional(),
+  section: z.string().optional(), // the heading it's shown under: "Command(C(slots);SB(slots))"; absent = Command
 });
 export type Slot = z.infer<typeof Slot>;
 

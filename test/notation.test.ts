@@ -101,3 +101,15 @@ describe("card words", async () => {
     expect(limitAmountText({ counts: "rules options", amount: { min: 0, max: 1 }, percent: false, perPoints: 1000, basis: "roster target" })).toBe("0–1 per 1,000 pts of the roster target");
   });
 });
+
+describe("slot sections (owner, 24 Nov)", () => {
+  it("Command(...);Other(...) groups slots under headings, and writes back the same", async () => {
+    const { readSlots, writeSlots } = await import("../src/notation/slots-and-limits");
+    const text = "Command(C(slots);SB(slots);M(0-1;upgrade;+6));Other(Crew(slots))";
+    const cell = readSlots(text, [])!;
+    expect(cell.slots.map((s) => [s.code, s.section])).toEqual([["C", "Command"], ["SB", "Command"], ["M", "Command"], ["Crew", "Other"]]);
+    expect(cell.slots[2]).toMatchObject({ count: { min: 0, max: 1 }, type: "upgrade" });
+    expect(writeSlots(cell)).toBe(text);
+    expect(writeSlots(readSlots("C(slots);SB(slots)", [])!)).toBe("C(slots);SB(slots)");
+  });
+});

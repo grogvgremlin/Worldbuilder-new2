@@ -46,6 +46,21 @@ export type Screen =
 
 export type Nav = { open: (s: Screen) => void; back: () => void; home: () => void };
 
+// A screen can stop you leaving it (a unit with a required choice not made: owner, 24 Nov).
+// The guard says why, and whether you may leave anyway after a warning.
+export type Guard = () => { message: string; mayLeave: boolean } | null;
+let leaveGuard: Guard | null = null;
+export function setLeaveGuard(guard: Guard | null) {
+  leaveGuard = guard;
+}
+function mayLeave(): boolean {
+  const stop = leaveGuard?.();
+  if (!stop) return true;
+  if (stop.mayLeave) return confirm(`${stop.message}\n\nLeave anyway?`);
+  alert(stop.message);
+  return false;
+}
+
 type Tool = "world" | "lists" | "battle" | "campaign" | "settings";
 
 const TOOLS: { id: Tool; label: string; comingNext: string }[] = [
@@ -68,8 +83,8 @@ export function App({ data }: { data: AppData }) {
   const setStack = (next: (st: Screen[]) => Screen[]) => setStacks((all) => ({ ...all, [tool]: next(all[tool]) }));
   const nav: Nav = {
     open: (s) => setStack((st) => [...st, s]),
-    back: () => setStack((st) => (st.length > 1 ? st.slice(0, -1) : st)),
-    home: () => setStack(() => (ROOTS[tool] ? [ROOTS[tool]!] : [])),
+    back: () => mayLeave() && setStack((st) => (st.length > 1 ? st.slice(0, -1) : st)),
+    home: () => mayLeave() && setStack(() => (ROOTS[tool] ? [ROOTS[tool]!] : [])),
   };
   const screen = stack[stack.length - 1];
   const backSwipe = useBackSwipe(() => nav.back());
@@ -87,7 +102,7 @@ export function App({ data }: { data: AppData }) {
         )}
         <span className="header-links">
           <button className="link" aria-label="Search" onClick={() => screen?.name !== "search" && nav.open({ name: "search" })}>Search</button>
-          <button className={"link" + (tool === "settings" ? " current" : "")} onClick={() => setTool("settings")}>
+          <button className={"link" + (tool === "settings" ? " current" : "")} onClick={() => mayLeave() && setTool("settings")}>
             Settings
           </button>
         </span>
@@ -115,7 +130,7 @@ export function App({ data }: { data: AppData }) {
 
       <nav className="tabs">
         {TOOLS.map((t) => (
-          <button key={t.id} className={tool === t.id ? "on" : ""} onClick={() => setTool(t.id)}>
+          <button key={t.id} className={tool === t.id ? "on" : ""} onClick={() => mayLeave() && setTool(t.id)}>
             {t.label}
           </button>
         ))}

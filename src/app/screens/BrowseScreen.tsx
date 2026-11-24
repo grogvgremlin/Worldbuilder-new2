@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { ArmyList, Item } from "../../items/items";
 import type { AppData } from "../app-data";
 import type { Nav } from "../App";
+import { ViewMenu } from "../filter-menu";
 import { nameOf } from "./GameScreen";
 
 export type BrowseKind = "special-rule" | "equipment" | "magic-item" | "unit" | "race-profile" | "source" | "patch";
@@ -43,12 +44,7 @@ export function BrowseScreen({ data, nav, game, kind }: { data: AppData; nav: Na
   return (
     <section>
       <h1>{BROWSE_KINDS.find((k) => k.kind === kind)!.title}</h1>
-      <div className="chips">
-        <span className="sub">Group by</span>
-        {GROUPINGS.map((g) => (
-          <button key={g.by} className={by === g.by ? "on" : ""} onClick={() => setBy(g.by)}>{g.title}</button>
-        ))}
-      </div>
+      <ViewMenu options={GROUPINGS.map((g) => ({ id: g.by, label: g.by === "status" ? g.title : `By ${g.title.toLowerCase()}` }))} value={by} onChange={(v) => setBy(v as GroupBy)} />
       <input className="filter" placeholder="Filter by name" value={filter} onChange={(e) => setFilter(e.target.value)} />
       {[...groups].sort(([a], [b]) => a.localeCompare(b)).map(([label, list]) => (
         // Each group folds; open ones stay open when you come back (owner, 23 Nov). A filter opens them all.

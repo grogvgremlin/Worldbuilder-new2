@@ -5,7 +5,7 @@
 // Battle tool. Logic: src/lists/game-view.ts.
 import { useState } from "react";
 import type { Context, Game, Roster } from "../../../items/items";
-import { armySummary, gameUnits, type GameUnit, type Ref, type SummaryCard } from "../../../lists/game-view";
+import { armyReference, gameUnits, type GameUnit, type Ref, type ReferenceSection } from "../../../lists/game-view";
 import type { RosterView } from "../../../lists/roster";
 import { writeStat } from "../../../notation/values";
 import type { AppData } from "../../app-data";
@@ -23,7 +23,6 @@ const FILTERS = [
   { id: "pages", label: "Pages" },
   { id: "description", label: "Description" },
   { id: "notes", label: "Notes" },
-  { id: "summary", label: "Army summary cards" },
   // Battle: its own group, more to come in it (owner, 24 Nov), each part switched on or off.
   { id: "battle", label: "Battle" },
   { id: "battle-notes", label: "Battle notes", parent: "battle" },
@@ -36,7 +35,7 @@ function loadFilters(): Set<string> {
     const saved = localStorage.getItem("game-view-filters");
     if (saved) return new Set(JSON.parse(saved));
   } catch {}
-  return new Set(["points", "stats", "kit", "rules", "items", "description", "summary"]);
+  return new Set(["points", "stats", "kit", "rules", "items", "description"]);
 }
 function saveFilters(f: Set<string>) {
   try {
@@ -44,9 +43,12 @@ function saveFilters(f: Set<string>) {
   } catch {}
 }
 
+let lastTab: "units" | "reference" = "units"; // kept while the app is open
+
 export function GameView({ data, nav, view, save }: { data: AppData; nav: Nav; view: RosterView; save: (r: Roster) => void }) {
   const [on, setOn] = useState<Set<string>>(loadFilters);
   const [popup, setPopup] = useState<string | null>(null);
+  const [tab, setTab] = useState<"units" | "reference">(lastTab);
   const roster = view.roster;
   const units = gameUnits(view, data.items);
   const toggle = (f: string) => {
@@ -64,6 +66,14 @@ export function GameView({ data, nav, view, save }: { data: AppData; nav: Nav; v
 
   return (
     <div className={"game-view" + (on.has("print") ? " print" : "")}>
+      <nav className="segments">
+        <button className={tab === "units" ? "on" : ""} onClick={() => setTab((lastTab = "units"))}>Units</button>
+        <button className={tab === "reference" ? "on" : ""} onClick={() => setTab((lastTab = "reference"))}>Rules reference</button>
+      </nav>
+      {tab === "reference" ? (
+        <Reference sections={armyReference(units, data.items, game)} openItem={setPopup} />
+      ) : (
+      <>
       <ShowMenu options={FILTERS} on={on} onToggle={toggle} />
       {on.has("description") && roster.description && (
         <details className="game-section" open>
@@ -94,7 +104,8 @@ export function GameView({ data, nav, view, save }: { data: AppData; nav: Nav; v
           </div>
         </details>
       ))}
-      {on.has("summary") && <Summary cards={armySummary(units, data.items, game)} openItem={setPopup} />}
+      </>
+      )}
       {popup && <ItemPopup data={data} nav={nav} itemKey={popup} onClose={() => setPopup(null)} />}
     </div>
   );
@@ -252,36 +263,31 @@ function UnitCard({ u, stats, on, openItem, onNote, onBattleNote, heading }: Car
   );
 }
 
-// The army summary: one card per kind (equipment, special rules, magic items), grouped by type, each
-// entry with the units that have it.
-function Summary({ cards, openItem }: { cards: SummaryCard[]; openItem: (key: string) => void }) {
+// The rules reference: every rule, piece of kit and magic item in the list, written out, in sections
+// (Special rules, Equipment, Magic items) and types that fold. Tap a name for its card.
+function Reference({ sections, openItem }: { sections: ReferenceSection[]; openItem: (key: string) => void }) {
+  if (sections.length === 0) return <p className="hint">Nothing in the list yet.</p>;
   return (
-    <details className="browse-group" open>
-      <summary>
-        <h2>Army summary</h2>
-      </summary>
-      <div className="game-units">
-        {cards.map((card) => (
-          <details key={card.title} className="game-unit" open>
-            <summary className="game-unit-summary">
-              <span className="title">{card.title}</span>
-            </summary>
-            {card.groups.map((g) => (
-              <div key={g.type} className="summary-group">
-                <span className="sub">{g.type}</span>
-                <ul className="plain">
-                  {g.entries.map((e) => (
-                    <li key={e.key ?? e.name}>
-                      {e.key ? <button className="link" onClick={() => openItem(e.key!)}>{e.name}</button> : <span>{e.name}</span>}
-                      <span className="sub"> · {e.units.join(", ")}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </details>
-        ))}
-      </div>
-    </details>
+    <>
+      {sections.map((section) => (
+        <details key={section.title} className="browse-group" open>
+          <summary>
+            <h2>{section.title}</h2>
+          </summary>
+          {section.groups.map((g) => (
+            <details key={g.type} className="game-section reference-group" open>
+              <summary>{g.type}</summary>
+              {g.entries.map((e) => (
+                <div key={e.key ?? e.name} className="reference-entry">
+                  {e.key ? <button className="link reference-name" onClick={() => openItem(e.key!)}>{e.name}</button> : <b>{e.name}</b>}
+                  {e.facts.length > 0 && <span className="sub"> · {e.facts.join(" · ")}</span>}
+                  {e.text && <p>{e.text}</p>}
+                </div>
+              ))}
+            </details>
+          ))}
+        </details>
+      ))}
+    </>
   );
 }

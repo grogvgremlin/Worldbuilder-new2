@@ -227,3 +227,34 @@ export function armySummary(units: GameUnit[], items: Item[], game?: Game): Summ
   ];
   return cards.filter((c) => c.groups.length > 0);
 }
+
+// --- The rules reference (owner, 24 Nov) --------------------------------------------------------------
+// The army summary read as the cards themselves, to read the rules off quickly: every special rule,
+// piece of kit and magic item in the list, grouped as the summary groups them, each with its details
+// (a rule's text; a weapon's range, S, AP and rules; an item's text), and no list of units.
+
+export type ReferenceEntry = { name: string; key?: string; facts: string[]; text?: string };
+export type ReferenceSection = { title: string; groups: { type: string; entries: ReferenceEntry[] }[] };
+
+export function armyReference(units: GameUnit[], items: Item[], game?: Game): ReferenceSection[] {
+  const byKey = new Map(items.map((i) => [i.key, i]));
+  const order = ["Special rules", "Equipment", "Magic items"];
+  return armySummary(units, items, game)
+    .sort((a, b) => order.indexOf(a.title) - order.indexOf(b.title))
+    .map((card) => ({
+      title: card.title,
+      groups: card.groups.map((g) => ({ type: g.type, entries: g.entries.map((e) => details(e.name, e.key ? byKey.get(e.key) : undefined)) })),
+    }));
+}
+
+function details(name: string, item: Item | undefined): ReferenceEntry {
+  if (!item) return { name, facts: [], text: undefined };
+  const stats = (s: Stats) => Object.entries(s).map(([k, v]) => `${k} ${typeof v === "number" ? v : v.change !== undefined ? (v.change > 0 ? `+${v.change}` : v.change) : v.text ?? (v.none ? "-" : "")}`);
+  const ruleNames = (t: Term[]) => (t.length ? [t.map((r) => r.name + (r.detail ? `(${r.detail})` : "")).join(", ")] : []);
+  if (item.kind === "special-rule") return { name, key: item.key, facts: [], text: item.text ?? "Not entered yet." };
+  if (item.kind === "equipment" || item.kind === "magic-item") {
+    const facts = [...(item.range ? [`R ${item.range}`] : []), ...stats(item.stats), ...(item.armourPiercing ? [`AP ${item.armourPiercing}`] : []), ...ruleNames(item.rules)];
+    return { name, key: item.key, facts, text: item.text };
+  }
+  return { name, key: item.key, facts: [] };
+}

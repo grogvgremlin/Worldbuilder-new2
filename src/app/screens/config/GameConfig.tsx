@@ -3,7 +3,7 @@
 // categories and troop types.
 import { useState } from "react";
 import type { Game, RaceDimension } from "../../../items/items";
-import { dimensionsOf } from "../../../items/race-dimensions";
+import { changeDimensions, dimensionsOf, type DimensionChange } from "../../../items/race-dimensions";
 import { compositionSets, gamePackages, movePreset } from "../../../context/game-config";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
@@ -80,10 +80,18 @@ export function GameConfig({ data, nav, game, onSaved }: { data: AppData; nav: N
       <Fold id={`${game.key}|app`} title="App only">
         <h3>Race dimensions</h3>
         <p className="sub">
-          The race grid's dimensions, in order. Each is a column on the Races tab (and on units); “blank means” is what an empty cell stands for. A new or
-          renamed dimension is read from the sheets on the next upload.
+          The race grid's dimensions, in order. Each is a column on the Races tab (and on units); “blank means” is what an empty cell stands for. A change
+          applies at once: a renamed dimension is renamed in every profile and unit, and profiles are keyed again.
         </p>
-        <RaceDimensions dims={dimensionsOf(game)} onSave={(raceDimensions) => save({ ...game, raceDimensions })} />
+        <RaceDimensions
+          dims={dimensionsOf(game)}
+          onSave={async (change) => {
+            const { items, problems } = changeDimensions(data.items, game, change);
+            if (problems.length) return alert(`Not changed:\n${problems.join("\n")}`);
+            await data.setItems(items);
+            onSaved();
+          }}
+        />
       </Fold>
     </div>
   );
@@ -100,15 +108,20 @@ function Fold({ id, title, children }: { id: string; title: string; children: Re
   );
 }
 
-// The race dimensions as rows: name, what blank means, order, remove; and add.
-function RaceDimensions({ dims, onSave }: { dims: RaceDimension[]; onSave: (dims: RaceDimension[]) => void }) {
-  const [rows, setRows] = useState(dims);
-  const commit = (next: RaceDimension[]) => {
-    setRows(next);
-    const clean = next.filter((d) => d.name.trim()).map((d) => (d.blank?.trim() ? { name: d.name.trim(), blank: d.blank.trim() } : { name: d.name.trim() }));
-    onSave(clean);
+// The race dimensions as rows: name, what blank means, order, remove; and add. Each row remembers the
+// name it had, so a rename can be carried through the profiles.
+type DimRow = RaceDimension & { was?: string };
+function RaceDimensions({ dims, onSave }: { dims: RaceDimension[]; onSave: (change: DimensionChange) => void }) {
+  const [rows, setRows] = useState<DimRow[]>(dims.map((d) => ({ ...d, was: d.name })));
+  const commit = (next: DimRow[]) => {
+    const kept = next.filter((d) => d.name.trim());
+    const renames: Record<string, string> = {};
+    for (const d of kept) if (d.was && d.was !== d.name.trim()) renames[d.was] = d.name.trim();
+    const clean = kept.map((d) => (d.blank?.trim() ? { name: d.name.trim(), blank: d.blank.trim() } : { name: d.name.trim() }));
+    setRows(next.map((d) => (d.name.trim() ? { ...d, was: d.name.trim() } : d)));
+    if (JSON.stringify(clean) !== JSON.stringify(dims) || Object.keys(renames).length) onSave({ dims: clean, renames });
   };
-  const set = (i: number, change: Partial<RaceDimension>) => setRows(rows.map((d, j) => (j === i ? { ...d, ...change } : d)));
+  const set = (i: number, change: Partial<DimRow>) => setRows(rows.map((d, j) => (j === i ? { ...d, ...change } : d)));
   const move = (i: number, by: number) => {
     const next = [...rows];
     [next[i], next[i + by]] = [next[i + by], next[i]];

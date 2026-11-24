@@ -61,6 +61,12 @@ export class AppData {
   }
 
   // Saves one item (a context, a roster), replacing any with the same key.
+  // Many items changed at once (a change that runs through the library, like a renamed race dimension).
+  async setItems(items: Item[]): Promise<void> {
+    this.items = items;
+    await this.store.replaceItems(this.items);
+  }
+
   async putItem(item: Item): Promise<void> {
     this.items = [...this.items.filter((i) => i.key !== item.key), item];
     await this.store.replaceItems(this.items);

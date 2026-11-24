@@ -235,3 +235,4 @@ h2 .sub { text-transform: none; letter-spacing: normal; }
 .game-unit:not([open]) .game-unit-head::after { content: " ▸"; color: var(--muted); }
 .summary-group { margin: 6px 0; }
 .summary-group ul { margin: 2px 0 0; }
+.summary-rule .row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; } .summary-rule .row input { flex: 1; min-width: 0; margin: 0; }

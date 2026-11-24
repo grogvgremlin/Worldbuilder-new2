@@ -139,6 +139,8 @@ function readGameInfo(y: Record<string, any>): Game {
     settings: Array.isArray(y["settings"]) ? y["settings"].map(readGameSetting) : undefined,
     presets: Array.isArray(y["presets"]) ? y["presets"].map(readPreset) : undefined,
     headings: y["headings"] && typeof y["headings"] === "object" ? Object.fromEntries(Object.entries(y["headings"]).map(([k, v]) => [k, String(v)])) : undefined,
+    summaries: y["summaries"] && typeof y["summaries"] === "object" ? y["summaries"] : undefined,
+    bearerTypes: y["bearer types"] === undefined ? undefined : asList(y["bearer types"]),
     raceDimensions: Array.isArray(y["race dimensions"]) ? y["race dimensions"].map((d: any) => (d["blank"] ? { name: String(d["name"]), blank: String(d["blank"]) } : { name: String(d["name"]) })) : undefined,
   });
 }
@@ -262,6 +264,8 @@ function writeGameInfo(game: Game, byKey: Map<string, Item>): Record<string, unk
     presets: game.presets,
     "race dimensions": game.raceDimensions,
     headings: game.headings,
+    summaries: game.summaries,
+    "bearer types": game.bearerTypes,
   });
 }
 

@@ -94,7 +94,7 @@ export function GameView({ data, nav, view, save }: { data: AppData; nav: Nav; v
           </div>
         </details>
       ))}
-      {on.has("summary") && <Summary cards={armySummary(units, data.items)} openItem={setPopup} />}
+      {on.has("summary") && <Summary cards={armySummary(units, data.items, game)} openItem={setPopup} />}
       {popup && <ItemPopup data={data} nav={nav} itemKey={popup} onClose={() => setPopup(null)} />}
     </div>
   );

@@ -219,6 +219,20 @@ export const Game = z.strictObject({
   // What a sheet column is called when shown (owner, 24 Nov): a column's heading is its own name
   // unless the game says otherwise, e.g. { Slots: "Command" }. Set in Library → the game → Configuration.
   headings: z.record(z.string(), z.string()).optional(),
+  // The army summary cards (Equipment, Special rules, Magic items): which label column groups each
+  // (Type by default), and what an item with a blank label falls under. See src/lists/summary-groups.ts.
+  summaries: z
+    .record(
+      z.string(),
+      z.strictObject({
+        by: z.string().optional(),
+        whenBlank: z.array(z.strictObject({ when: z.string(), group: z.string() })).optional(),
+        otherwise: z.string().optional(),
+      }),
+    )
+    .optional(),
+  // Equipment types whose stats change the bearer's line (Barding M -1); others (a weapon's S) don't.
+  bearerTypes: z.array(z.string()).optional(), // absent: armour
 });
 export type Game = z.infer<typeof Game>;
 

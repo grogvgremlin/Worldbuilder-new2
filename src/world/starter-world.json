@@ -15,6 +15,14 @@
       "direction": "one-way",
       "hierarchy": "one parent",
       "about": "Containment: a place inside a larger place, one at a time."
+    },
+    {
+      "name": "in area",
+      "reverseName": "covers",
+      "direction": "one-way",
+      "hierarchy": "several parents",
+      "about": "A place in a group: many groups at once, overlaps allowed."
     }
-  ]
+  ],
+  "group": "in area"
 }

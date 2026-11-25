@@ -9,6 +9,7 @@ import type { Item, Thing, ThingField, ThingName } from "../../../items/items";
 import { linkKindsIn, linksIn, mapsIn, removeThing, thingKindsIn, thingsIn, worldOf } from "../../../world/world";
 import { childrenOf, descendantsOf, pathOf, setParent } from "../../../world/places";
 import { iconOf, mapsShowing } from "../../../world/maps";
+import { addToGroup, groupLinkKinds, groupsIn, groupsOf, membersOf, removeFromGroup, type Membership } from "../../../world/groups";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { NewPlace } from "./WorldScreen";
@@ -58,6 +59,8 @@ export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; 
       <Fields data={data} thing={thing} editing={editing} change={change} />
       <OtherNames thing={thing} editing={editing} change={change} />
       <Contents data={data} nav={nav} thing={thing} editing={editing} save={save} />
+      <Members data={data} nav={nav} thing={thing} editing={editing} save={save} />
+      <InGroups data={data} nav={nav} thing={thing} editing={editing} save={save} />
       <OtherLinks data={data} nav={nav} thing={thing} />
       <OnMaps data={data} nav={nav} thing={thing} />
 
@@ -298,13 +301,103 @@ function Contents({ data, nav, thing, editing, save }: { data: AppData; nav: Nav
   );
 }
 
-// Every link but containment (shown above), read from this end: "in" one way, "holds" the other.
+// --- Groups (area things, world-structure §4): many at once, beside the one place it's in ----------
+
+type GroupPart = { data: AppData; nav: Nav; thing: Thing; editing: boolean; save: (items: Item[]) => Promise<void> };
+
+// Several grouping link kinds: say which one each row is; one: no need.
+function linkWord(data: AppData, world: string, m: Membership, backwards: boolean): string {
+  if (groupLinkKinds(data.items, world).length < 2) return "";
+  return `${backwards ? m.linkKind.reverseName ?? m.linkKind.name : m.linkKind.name} · `;
+}
+
+// The groups this place is in.
+function InGroups({ data, nav, thing, editing, save }: GroupPart) {
+  const world = thing.world;
+  const kinds = groupLinkKinds(data.items, world);
+  const groups = groupsOf(data.items, world, thing.key);
+  if (kinds.length === 0 || (!editing && groups.length === 0)) return null;
+  const offered = [...groupsIn(data.items, world), ...thingsIn(data.items, world).filter((t) => !groupsIn(data.items, world).some((g) => g.key === t.key))]
+    .filter((t) => t.key !== thing.key && !groups.some((g) => g.thing.key === t.key));
+  const join = async (group: string) => {
+    const result = addToGroup(data.items, world, thing.key, kinds[0].key, group);
+    if (result.problem) return alert(result.problem);
+    await save(result.items);
+  };
+  return (
+    <section>
+      <h2>Groups ({groups.length})</h2>
+      <ul className="plain">
+        {groups.map((g) => (
+          <li key={g.link.key}>
+            {linkWord(data, world, g, false)}
+            <button className="link" onClick={() => nav.open({ name: "place", key: g.thing.key })}>{g.thing.name}</button>
+            {editing && <button className="link remove-x" aria-label="Take out" onClick={() => save(removeFromGroup(data.items, world, thing.key, g.linkKind.key, g.thing.key))}>✕</button>}
+          </li>
+        ))}
+      </ul>
+      {editing && (
+        <label className="stack">
+          <select value="" onChange={(e) => e.target.value && join(e.target.value)}>
+            <option value="">Put it in a group…</option>
+            {offered.map((t) => <option key={t.key} value={t.key}>{t.name}{groupsIn(data.items, world).some((g) => g.key === t.key) ? "" : " (makes it a group)"}</option>)}
+          </select>
+        </label>
+      )}
+    </section>
+  );
+}
+
+// What's in this place as a group.
+function Members({ data, nav, thing, editing, save }: GroupPart) {
+  const world = thing.world;
+  const kinds = groupLinkKinds(data.items, world);
+  const members = membersOf(data.items, world, thing.key);
+  if (kinds.length === 0 || (!editing && members.length === 0)) return null;
+  const offered = thingsIn(data.items, world)
+    .filter((t) => t.key !== thing.key && !members.some((m) => m.thing.key === t.key))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const add = async (member: string) => {
+    const result = addToGroup(data.items, world, member, kinds[0].key, thing.key);
+    if (result.problem) return alert(result.problem);
+    await save(result.items);
+  };
+  const heading = kinds[0].reverseName ? `${kinds[0].reverseName[0].toUpperCase()}${kinds[0].reverseName.slice(1)}` : "Members";
+  return (
+    <section>
+      <h2>{heading} ({members.length})</h2>
+      {editing && members.length === 0 && <p className="sub">Add places to make this a group: they stay where they are, and can be in other groups too.</p>}
+      <ul className="list">
+        {members.map((m) => (
+          <li key={m.link.key} className="branch">
+            <button onClick={() => nav.open({ name: "place", key: m.thing.key })}>
+              <span className="title">{linkWord(data, world, m, true)}{iconOf(data.items, m.thing)} {m.thing.name}</span>
+              <span className="sub">{pathOf(data.items, world, m.thing.key).slice(0, -1).map((t) => t.name).join(" › ")}</span>
+            </button>
+            {editing && <button className="link remove-x" aria-label="Take out" onClick={() => save(removeFromGroup(data.items, world, m.thing.key, m.linkKind.key, thing.key))}>✕</button>}
+          </li>
+        ))}
+      </ul>
+      {editing && (
+        <label className="stack">
+          <select value="" onChange={(e) => e.target.value && add(e.target.value)}>
+            <option value="">Add a place to this group…</option>
+            {offered.map((t) => <option key={t.key} value={t.key}>{pathOf(data.items, world, t.key).map((p) => p.name).join(" › ")}</option>)}
+          </select>
+        </label>
+      )}
+    </section>
+  );
+}
+
+// Every link but containment and groups (shown above), read from this end: "in" one way, "holds" the other.
 function OtherLinks({ data, nav, thing }: { data: AppData; nav: Nav; thing: Thing }) {
   const world = worldOf(data.items, thing.world);
   const kinds = new Map(linkKindsIn(data.items, thing.world).map((k) => [k.key, k]));
   const names = new Map(thingsIn(data.items, thing.world).map((t) => [t.key, t.name]));
+  const grouping = new Set(groupLinkKinds(data.items, thing.world).map((k) => k.key)); // shown under Groups and Members
   const rows = linksIn(data.items, thing.world)
-    .filter((l) => l.linkKind !== world?.tree && (l.from === thing.key || l.to === thing.key))
+    .filter((l) => l.linkKind !== world?.tree && !grouping.has(l.linkKind) && (l.from === thing.key || l.to === thing.key))
     .map((l) => {
       const kind = kinds.get(l.linkKind);
       const outward = l.from === thing.key;

@@ -3,10 +3,12 @@
 // coordinates; drawn maps unreliable for scale), §5.1; spec/pillars/background-and-narrative.md §6
 // (pin icons from the thing's kind; labels from names).
 // Areas here are worked out, never stored: a place holding pinned places is drawn as a soft shape
-// around them (containment shown on the map). Drawn areas (area things, §5.1) come later.
+// around them (containment shown on the map), and so is a group round its pinned members. Groups
+// captured by a drawn shape (§5.1) come later.
 
 import type { Item, Pin, Thing, WorldMap } from "../items/items";
 import { descendantsOf, depthOf } from "./places";
+import { groupsIn, membersOf } from "./groups";
 import { newKey, thingKindsIn, thingsIn } from "./world";
 
 export function newMap(items: Item[], world: string, name: string): WorldMap {
@@ -54,6 +56,7 @@ export function iconOf(items: Item[], thing: Thing): string {
 
 export type Area = {
   thing: Thing;
+  by: "containment" | "group"; // what it shows: what a place holds, or a group's members
   depth: number; // 0 at the top of the tree; deeper areas are drawn tighter, on top
   outline: { x: number; y: number }[]; // the convex hull of the pinned points inside it
 };
@@ -66,9 +69,23 @@ export function areasOn(items: Item[], map: WorldMap): Area[] {
     const inside = descendantsOf(items, map.world, thing.key).filter((d) => pins.has(d.key));
     if (inside.length === 0) continue;
     const points = [...inside, thing].map((t) => pins.get(t.key)).filter((p): p is Pin => !!p);
-    out.push({ thing, depth: depthOf(items, map.world, thing.key), outline: convexHull(points.map((p) => ({ x: p.x, y: p.y }))) });
+    out.push({ thing, by: "containment", depth: depthOf(items, map.world, thing.key), outline: convexHull(points.map((p) => ({ x: p.x, y: p.y }))) });
   }
   return out.sort((a, b) => a.depth - b.depth || a.thing.name.localeCompare(b.thing.name));
+}
+
+// One area per group with something pinned: round its members, and what they hold, as pinned here.
+export function groupAreasOn(items: Item[], map: WorldMap): Area[] {
+  const pins = new Map(map.pins.map((p) => [p.thing, p]));
+  const out: Area[] = [];
+  for (const group of groupsIn(items, map.world)) {
+    const members = membersOf(items, map.world, group.key).map((m) => m.thing);
+    const inside = members.flatMap((m) => [m, ...descendantsOf(items, map.world, m.key)]);
+    const points = [...new Map(inside.map((t) => [t.key, pins.get(t.key)])).values()].filter((p): p is Pin => !!p);
+    if (points.length === 0) continue;
+    out.push({ thing: group, by: "group", depth: 0, outline: convexHull(points.map((p) => ({ x: p.x, y: p.y }))) });
+  }
+  return out;
 }
 
 // The smallest convex shape around the points (Andrew's monotone chain).

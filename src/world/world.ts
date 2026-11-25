@@ -75,7 +75,8 @@ function newWorldKey(items: Item[], name: string): string {
 // sample (the starter plus a handful of places and a map, to try things out on).
 
 type StarterFile = {
-  tree: string; // the name of the link kind places are grouped by
+  tree: string; // the name of the link kind places are contained by
+  group?: string; // the name of the link kind places are grouped by (several groups at once)
   thingKinds: { name: string; icon?: string; about?: string; fields: { name: string; about?: string }[] }[];
   linkKinds: { name: string; reverseName?: string; direction: LinkKind["direction"]; hierarchy: LinkKind["hierarchy"]; about?: string }[];
 };
@@ -84,6 +85,7 @@ type SampleFile = {
   name: string;
   description?: string;
   things: { name: string; kinds: string[]; in?: string; summary?: string; fields?: Record<string, string> }[];
+  groups?: { group: string; members: string[] }[];
   maps: { name: string; width: number; height: number; pins: { thing: string; x: number; y: number }[] }[];
 };
 
@@ -92,7 +94,7 @@ export function newWorld(items: Item[], name: string, start: WorldStart): Item[]
   if (start === "blank") return [world];
   const made: Item[] = [world];
   addStarter(made, world, starter as StarterFile);
-  if (start === "sample") addSample(made, world, sample as SampleFile);
+  if (start === "sample") addSample(made, world, sample as SampleFile, (starter as StarterFile).group);
   return made;
 }
 
@@ -107,7 +109,7 @@ function addStarter(made: Item[], world: Sandbox, file: StarterFile) {
   }
 }
 
-function addSample(made: Item[], world: Sandbox, file: SampleFile) {
+function addSample(made: Item[], world: Sandbox, file: SampleFile, groupKindName?: string) {
   if (file.description) world.description = file.description;
   const kindKey = (name: string) => thingKindsIn(made, world.key).find((k) => k.name === name)?.key ?? name;
   const thingKey = new Map<string, string>();
@@ -121,6 +123,11 @@ function addSample(made: Item[], world: Sandbox, file: SampleFile) {
   for (const t of file.things) {
     if (!t.in || !world.tree) continue;
     made.push(newLink(made, world.key, thingKey.get(t.name)!, world.tree, thingKey.get(t.in)!));
+  }
+  const groupKind = linkKindsIn(made, world.key).find((k) => k.name === groupKindName)?.key;
+  for (const g of file.groups ?? []) {
+    if (!groupKind) continue;
+    for (const member of g.members) made.push(newLink(made, world.key, thingKey.get(member)!, groupKind, thingKey.get(g.group)!));
   }
   for (const m of file.maps) {
     const pins = m.pins.map((p) => ({ thing: thingKey.get(p.thing)!, x: p.x, y: p.y }));

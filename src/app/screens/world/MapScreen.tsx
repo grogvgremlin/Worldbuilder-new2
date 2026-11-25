@@ -7,7 +7,7 @@
 // desktop, works on the phone).
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from "react";
 import type { Thing, WorldMap } from "../../../items/items";
-import { areasOn, iconOf, notOnMap, placePin, removePin, type Area } from "../../../world/maps";
+import { areasOn, groupAreasOn, iconOf, notOnMap, placePin, removePin, type Area } from "../../../world/maps";
 import { pathOf } from "../../../world/places";
 import { thingsIn } from "../../../world/world";
 import type { AppData } from "../../app-data";
@@ -147,7 +147,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
     setView({ k, tx: at.x - anchor.x * k, ty: at.y - anchor.y * k });
   };
 
-  const allAreas = areasOn(data.items, map);
+  const allAreas = [...areasOn(data.items, map), ...groupAreasOn(data.items, map)];
   const selectedThing = selected ? things.get(selected) : undefined;
   const placingThing = placing ? things.get(placing) : undefined;
 
@@ -175,7 +175,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
           <svg width={size.w} height={size.h} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} className={placing ? "placing" : ""}>
             <g transform={`translate(${view.tx} ${view.ty}) scale(${view.k})`}>
               <rect className="map-sheet" x={0} y={0} width={map.width} height={map.height} rx={8 / view.k} />
-              {shown.all && <Areas areas={allAreas.filter((a) => !shown.hidden.includes(a.thing.key))} k={view.k} />}
+              {shown.all && <Areas areas={allAreas.filter((a) => !shown.hidden.includes(areaId(a)))} k={view.k} />}
               {map.pins.map((p) => {
                 const thing = things.get(p.thing);
                 if (!thing) return null;
@@ -230,22 +230,67 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
 // is a fixed size on screen, wider the higher the place sits in the tree, so nested areas sit inside
 // and their names stack instead of colliding.
 function Areas({ areas, k }: { areas: Area[]; k: number }) {
-  const deepest = Math.max(0, ...areas.map((a) => a.depth));
+  const deepest = Math.max(0, ...areas.filter((a) => a.by === "containment").map((a) => a.depth));
   return (
     <g className="areas">
       {areas.map((a) => {
-        const pad = 28 + (deepest - a.depth) * 16; // px on screen
+        // Groups sit just round their members (dashed); containment is padded by depth.
+        const pad = a.by === "group" ? 20 : 28 + (deepest - a.depth) * 16; // px on screen
         const d = a.outline.map((p, n) => `${n ? "L" : "M"}${p.x} ${p.y}`).join(" ") + " Z";
         const top = a.outline.reduce((best, p) => (p.y < best.y ? p : best), a.outline[0]);
         return (
-          <g key={a.thing.key} className={`area depth-${a.depth % 4}`}>
-            <path d={d} strokeWidth={(pad * 2) / k} />
+          <g key={areaId(a)} className={a.by === "group" ? "area group" : `area depth-${a.depth % 4}`}>
+            {a.by === "group" ? (
+              <>
+                <path d={d} strokeWidth={(pad * 2) / k} className="group-fill" />
+                <path d={roundedOutline(a.outline, pad / k)} strokeWidth={1.5 / k} strokeDasharray={`${5 / k} ${4 / k}`} className="group-edge" />
+              </>
+            ) : (
+              <path d={d} strokeWidth={(pad * 2) / k} />
+            )}
             <text x={top.x} y={top.y - (pad - 11) / k} style={{ fontSize: 10.5 / k }}>{a.thing.name}</text>
           </g>
         );
       })}
     </g>
   );
+}
+
+// The edge of a group's area: its outline pushed out by the padding, corners rounded. Each corner gets
+// an arc of radius `pad` and the sides are the outline's sides moved outwards.
+function roundedOutline(points: Point[], pad: number): string {
+  if (points.length === 1) {
+    const p = points[0];
+    return `M${p.x - pad} ${p.y} a${pad} ${pad} 0 1 0 ${pad * 2} 0 a${pad} ${pad} 0 1 0 ${-pad * 2} 0`;
+  }
+  // Walk the hull clockwise-or-not: offset each side along its outward normal (away from the centre).
+  const centre = { x: points.reduce((s, p) => s + p.x, 0) / points.length, y: points.reduce((s, p) => s + p.y, 0) / points.length };
+  const sides = points.map((a, n) => {
+    const b = points[(n + 1) % points.length];
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    let nx = (b.y - a.y) / len;
+    let ny = -(b.x - a.x) / len;
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    if ((mid.x - centre.x) * nx + (mid.y - centre.y) * ny < 0) [nx, ny] = [-nx, -ny];
+    return { from: { x: a.x + nx * pad, y: a.y + ny * pad }, to: { x: b.x + nx * pad, y: b.y + ny * pad } };
+  });
+  let d = `M${sides[0].from.x} ${sides[0].from.y}`;
+  sides.forEach((side, n) => {
+    const next = sides[(n + 1) % sides.length];
+    d += ` L${side.to.x} ${side.to.y} A${pad} ${pad} 0 0 ${sweep(side, next)} ${next.from.x} ${next.from.y}`;
+  });
+  return d + " Z";
+}
+
+// Which way round a corner's arc turns, from the turn between one side and the next.
+function sweep(side: { from: Point; to: Point }, next: { from: Point; to: Point }): number {
+  const cross = (side.to.x - side.from.x) * (next.to.y - next.from.y) - (side.to.y - side.from.y) * (next.to.x - next.from.x);
+  return cross > 0 ? 1 : 0;
+}
+
+// An area's id in the Areas menu: a place can show both what it holds and its group members.
+function areaId(a: Area): string {
+  return a.by === "group" ? `group:${a.thing.key}` : a.thing.key;
 }
 
 // Which areas a map shows: all of them on or off, and single ones hidden. A view setting kept on this
@@ -278,11 +323,20 @@ function AreasMenu({ areas, shown, onChange, onClose }: { areas: Area[]; shown: 
       <div className="filter-panel areas-panel">
         <label className="choice"><input type="checkbox" checked={shown.all} onChange={() => onChange({ ...shown, all: !shown.all })} /> <b>Show areas</b></label>
         {areas.length === 0 && <p className="sub">No areas: a place shows as one once something inside it is pinned here.</p>}
-        {areas.map((a) => (
-          <label key={a.thing.key} className="choice" style={{ paddingLeft: 8 + a.depth * 16, opacity: shown.all ? 1 : 0.5 }}>
-            <input type="checkbox" disabled={!shown.all} checked={!shown.hidden.includes(a.thing.key)} onChange={() => toggle(a.thing.key)} /> {a.thing.name}
-          </label>
-        ))}
+        {(["containment", "group"] as const).map((by) => {
+          const these = areas.filter((a) => a.by === by);
+          if (these.length === 0) return null;
+          return (
+            <div key={by}>
+              <div className="sub menu-heading">{by === "group" ? "Groups" : "Places"}</div>
+              {these.map((a) => (
+                <label key={areaId(a)} className="choice" style={{ paddingLeft: 8 + a.depth * 16, opacity: shown.all ? 1 : 0.5 }}>
+                  <input type="checkbox" disabled={!shown.all} checked={!shown.hidden.includes(areaId(a))} onChange={() => toggle(areaId(a))} /> {a.thing.name}
+                </label>
+              ))}
+            </div>
+          );
+        })}
       </div>
     </>
   );

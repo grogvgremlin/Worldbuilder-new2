@@ -7,6 +7,7 @@ import type { Item, Thing } from "../../../items/items";
 import { linkKindsIn, mapsIn, newKey, thingKindsIn, thingsIn, worldOf } from "../../../world/world";
 import { childrenOf, pathOf, setParent, topPlaces, treeWarnings } from "../../../world/places";
 import { iconOf, newMap } from "../../../world/maps";
+import { addToGroup, groupLinkKinds, groupsIn, isOnlyAGroup, membersOf, newGroupLinkKind } from "../../../world/groups";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 
@@ -42,6 +43,7 @@ type Part = { data: AppData; nav: Nav; world: string; save: (items: Item[]) => P
 // --- Places: the tree, a filter, and a new place --------------------------------------------------
 
 function Places({ data, nav, world, save }: Part) {
+  const [view, setView] = useState<"tree" | "groups">("tree");
   const [text, setText] = useState("");
   const [kind, setKind] = useState<string | null>(null);
   const kinds = thingKindsIn(data.items, world);
@@ -75,12 +77,111 @@ function Places({ data, nav, world, save }: Part) {
           ))}
         </ul>
       ) : (
-        <ul className="list tree">
-          {topPlaces(data.items, world).map((t) => <Branch key={t.key} data={data} nav={nav} world={world} thing={t} depth={0} />)}
-        </ul>
+        <>
+          <nav className="segments small">
+            <button className={view === "tree" ? "on" : ""} onClick={() => setView("tree")}>Tree</button>
+            <button className={view === "groups" ? "on" : ""} onClick={() => setView("groups")}>Groups</button>
+          </nav>
+          {view === "tree" ? (
+            <ul className="list tree">
+              {topPlaces(data.items, world)
+                .filter((t) => !isOnlyAGroup(data.items, world, t.key))
+                .map((t) => <Branch key={t.key} data={data} nav={nav} world={world} thing={t} depth={0} />)}
+            </ul>
+          ) : (
+            <Groups data={data} nav={nav} world={world} save={save} />
+          )}
+        </>
       )}
-      <NewPlace data={data} world={world} save={save} onMade={(key) => nav.open({ name: "place", key })} />
+      {(filtering || view === "tree") && <NewPlace data={data} world={world} save={save} onMade={(key) => nav.open({ name: "place", key })} />}
     </>
+  );
+}
+
+// --- Groups: places in several groups at once (area things, world-structure §4) -------------------
+
+function Groups({ data, nav, world, save }: Part) {
+  const kinds = groupLinkKinds(data.items, world);
+  if (kinds.length === 0) {
+    const add = () => save([...data.items, newGroupLinkKind(data.items, world, `${world}.link-kind.in-area`)]);
+    return (
+      <div className="hint">
+        <p>This world has no link kind for groups yet: a place can sit in many groups at once (a valley, a plague zone, a town split by a border), beside the one place it's in.</p>
+        <button className="primary" onClick={add}>Add "in area"</button>
+      </div>
+    );
+  }
+  const groups = groupsIn(data.items, world);
+  return (
+    <>
+      {groups.length === 0 && <p className="hint">No groups yet. A group is a place others are "{kinds[0].name}": make one below.</p>}
+      <ul className="list tree">
+        {groups.map((g) => <GroupBranch key={g.key} data={data} nav={nav} world={world} group={g} />)}
+      </ul>
+      <NewGroup data={data} world={world} save={save} onMade={(key) => nav.open({ name: "place", key })} />
+    </>
+  );
+}
+
+function GroupBranch({ data, nav, world, group }: { data: AppData; nav: Nav; world: string; group: Thing }) {
+  const [open, setOpen] = useState(false);
+  const members = membersOf(data.items, world, group.key);
+  return (
+    <>
+      <li className="branch">
+        <button className="twisty" aria-label={open ? "Fold" : "Unfold"} onClick={() => setOpen(!open)}>{open ? "▾" : "▸"}</button>
+        <button onClick={() => nav.open({ name: "place", key: group.key })}>
+          <span className="title">{iconOf(data.items, group)} {group.name}</span>
+          <span className="sub">{[`${members.length} in it`, group.summary].filter(Boolean).join(" · ")}</span>
+        </button>
+      </li>
+      {open &&
+        members.map((m) => (
+          <li key={m.link.key} className="branch" style={{ paddingLeft: 18 }}>
+            <span className="twisty" />
+            <PlaceRow data={data} thing={m.thing} withPath onOpen={() => nav.open({ name: "place", key: m.thing.key })} />
+          </li>
+        ))}
+    </>
+  );
+}
+
+// A new group: its name, then the places in it, ticked from a list.
+function NewGroup({ data, world, save, onMade }: { data: AppData; world: string; save: (items: Item[]) => Promise<void>; onMade: (key: string) => void }) {
+  const [name, setName] = useState("");
+  const [find, setFind] = useState("");
+  const [picked, setPicked] = useState<string[]>([]);
+  const linkKind = groupLinkKinds(data.items, world)[0];
+  const kinds = thingKindsIn(data.items, world);
+  const places = thingsIn(data.items, world).filter((t) => matchesText(t, find)).sort((a, b) => a.name.localeCompare(b.name));
+  const make = async () => {
+    if (!name.trim()) return;
+    const key = newKey(data.items, world, "thing", name);
+    let items: Item[] = [...data.items, { key, kind: "thing", world, name: name.trim(), kinds: kinds.length === 1 ? [kinds[0].key] : [], fields: [] }];
+    for (const member of picked) items = addToGroup(items, world, member, linkKind.key, key).items;
+    await save(items);
+    setName("");
+    setPicked([]);
+    onMade(key);
+  };
+  const toggle = (key: string) => setPicked(picked.includes(key) ? picked.filter((k) => k !== key) : [...picked, key]);
+  return (
+    <div className="form">
+      <h2>New group</h2>
+      <input className="filter" placeholder="Name (e.g. Aver valley)" value={name} onChange={(e) => setName(e.target.value)} />
+      <input className="filter" placeholder="Find places to put in it" value={find} onChange={(e) => setFind(e.target.value)} />
+      <div className="pick-list">
+        {places.map((t) => (
+          <label key={t.key} className="choice">
+            <input type="checkbox" checked={picked.includes(t.key)} onChange={() => toggle(t.key)} /> {t.name}
+            <span className="sub"> {pathOf(data.items, world, t.key).slice(0, -1).map((p) => p.name).join(" › ")}</span>
+          </label>
+        ))}
+      </div>
+      <div className="buttons">
+        <button className="primary" disabled={!name.trim()} onClick={make}>Add group{picked.length ? ` of ${picked.length}` : ""}</button>
+      </div>
+    </div>
   );
 }
 
@@ -111,7 +212,8 @@ function Branch({ data, nav, world, thing, depth }: { data: AppData; nav: Nav; w
 }
 
 function PlaceRow({ data, thing, withPath, count, onOpen }: { data: AppData; thing: Thing; withPath?: boolean; count?: number; onOpen: () => void }) {
-  const kinds = thingKindsIn(data.items, thing.world).filter((k) => thing.kinds.includes(k.key)).map((k) => k.name);
+  const all = thingKindsIn(data.items, thing.world);
+  const kinds = all.length > 1 ? all.filter((k) => thing.kinds.includes(k.key)).map((k) => k.name) : []; // one kind says nothing
   const path = withPath ? pathOf(data.items, thing.world, thing.key).slice(0, -1).map((t) => t.name).join(" › ") : "";
   const sub = [kinds.join(", "), path, count ? `${count} inside` : "", thing.summary ?? ""].filter(Boolean).join(" · ");
   return (

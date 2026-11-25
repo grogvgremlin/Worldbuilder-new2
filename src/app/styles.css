@@ -299,3 +299,12 @@ label.stack { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8p
 .areas-panel { left: 0; right: auto; max-height: 50vh; overflow: auto; }
 .areas-panel .choice { display: flex; gap: 8px; align-items: center; padding: 5px 0; white-space: nowrap; }
 .menu-catcher { position: fixed; inset: 0; z-index: 19; }
+.area.group .group-fill { fill: #b07a1f; stroke: #b07a1f; opacity: .10; }
+.area.group .group-edge { fill: none; stroke: #b07a1f; opacity: .9; }
+.area.group text { fill: #8a5d10; }
+.menu-heading { text-transform: uppercase; font-size: .72rem; letter-spacing: .05em; margin-top: 8px; }
+.segments.small button { padding: 4px 12px; font-size: .9rem; }
+.pick-list { max-height: 40vh; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 4px 10px; margin-bottom: 8px; }
+.pick-list .choice { display: block; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.pick-list .choice:last-child { border-bottom: 0; }
+.list li.branch > .remove-x { flex: none; padding: 0 6px 6px; }

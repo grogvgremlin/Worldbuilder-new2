@@ -1,4 +1,4 @@
-// World → a place: its entry, read like a wiki page, edited in place.
+// World → a world item: its entry, read like a wiki page, edited in place.
 // Design: design/world-structure.md §1 (a thing with attributes; contents), §2 (several kinds; a
 // kind's fields offered, not exclusive; fields named per kind), §3 (links, read from both ends),
 // §4 (containment), §5 (the maps it's pinned on), §10 (a list of names).
@@ -7,7 +7,7 @@
 import { useState } from "react";
 import type { Item, Thing, ThingField, ThingName } from "../../../items/items";
 import { linkKindsIn, linksIn, mapsIn, removeThing, thingKindsIn, thingsIn, worldOf } from "../../../world/world";
-import { childrenOf, descendantsOf, pathOf, setParent } from "../../../world/places";
+import { childrenOf, descendantsOf, pathOf, setParent, treeKinds } from "../../../world/places";
 import { iconOf, mapsShowing } from "../../../world/maps";
 import { addToGroup, groupLinkKinds, groupsIn, groupsOf, membersOf, removeFromGroup, type Membership } from "../../../world/groups";
 import type { AppData } from "../../app-data";
@@ -19,7 +19,7 @@ export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; 
   const [editing, setEditing] = useState(false);
   const [, setChanged] = useState(0);
   const thing = data.items.find((i): i is Thing => i.kind === "thing" && i.key === thingKey);
-  if (!thing) return <p className="hint">This place isn't in the world any more.</p>;
+  if (!thing) return <p className="hint">This item isn't in the world any more.</p>;
   const world = thing.world;
   const save = async (items: Item[]) => (await data.setItems(items), setChanged((n) => n + 1));
   const change = (patch: Partial<Thing>) => save(data.items.map((i) => (i.key === thing.key ? ({ ...thing, ...patch } as Thing) : i)));
@@ -41,7 +41,7 @@ export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; 
       </div>
 
       <Kinds data={data} thing={thing} editing={editing} change={change} />
-      {editing && <Parent data={data} thing={thing} save={save} />}
+      <Parents data={data} thing={thing} editing={editing} save={save} />
 
       {editing ? (
         <>
@@ -102,7 +102,7 @@ export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; 
         <div className="buttons">
           <button className="danger" onClick={async () => {
             const held = childrenOf(data.items, world, thing.key).length;
-            if (!confirm(`Remove ${thing.name}?${held ? ` The ${held} place${held > 1 ? "s" : ""} inside it move to the top.` : ""}`)) return;
+            if (!confirm(`Remove ${thing.name}?${held ? ` The ${held} item${held > 1 ? "s" : ""} inside it move up to sit straight in the world.` : ""}`)) return;
             await data.setItems(removeThing(data.items, thing.key));
             nav.back();
           }}>Remove {thing.name}</button>
@@ -147,25 +147,41 @@ function Kinds({ data, thing, editing, change }: { data: AppData; thing: Thing; 
   );
 }
 
-// Where it is: any place but itself and what it holds.
-function Parent({ data, thing, save }: { data: AppData; thing: Thing; save: (items: Item[]) => Promise<void> }) {
-  const world = worldOf(data.items, thing.world);
-  if (!world?.tree) return <p className="sub">This world has no link kind grouping places (World → Kinds).</p>;
-  const current = pathOf(data.items, thing.world, thing.key).slice(-2, -1)[0]?.key ?? "";
-  const inside = new Set(descendantsOf(data.items, thing.world, thing.key).map((t) => t.key));
-  const choices = thingsIn(data.items, thing.world).filter((t) => t.key !== thing.key && !inside.has(t.key));
-  const label = (t: Thing) => pathOf(data.items, thing.world, t.key).map((p) => p.name).join(" › ");
+// Where it is, in each of the world's trees (owner, 25 Nov: by province, by terrain …): any item but
+// itself and what it holds there.
+function Parents({ data, thing, editing, save }: { data: AppData; thing: Thing; editing: boolean; save: (items: Item[]) => Promise<void> }) {
+  const trees = treeKinds(data.items, thing.world);
+  const main = worldOf(data.items, thing.world)?.tree;
+  if (trees.length === 0) return editing ? <p className="sub">This world has no tree link kind (World → Kinds).</p> : null;
+  // Read: the main tree is the trail under the name; other trees each get a line.
+  const shown = editing ? trees : trees.filter((k) => k.key !== main && pathOf(data.items, thing.world, thing.key, k.key).length > 1);
+  if (shown.length === 0) return null;
+  return (
+    <div className="parents">
+      {shown.map((k) => <TreeParent key={k.key} data={data} thing={thing} tree={k.key} label={k.name} editing={editing} save={save} />)}
+    </div>
+  );
+}
+
+function TreeParent({ data, thing, tree, label, editing, save }: { data: AppData; thing: Thing; tree: string; label: string; editing: boolean; save: (items: Item[]) => Promise<void> }) {
+  const world = thing.world;
+  const path = pathOf(data.items, world, thing.key, tree).slice(0, -1);
+  const current = path[path.length - 1]?.key ?? "";
+  if (!editing) return <div className="breadcrumb">{label} {path.map((t) => t.name).join(" › ")}</div>;
+  const inside = new Set(descendantsOf(data.items, world, thing.key, tree).map((t) => t.key));
+  const choices = thingsIn(data.items, world).filter((t) => t.key !== thing.key && !inside.has(t.key));
+  const name = (t: Thing) => pathOf(data.items, world, t.key, tree).map((p) => p.name).join(" › ");
   const move = async (to: string) => {
-    const result = setParent(data.items, thing.world, thing.key, to || null);
+    const result = setParent(data.items, world, thing.key, to || null, tree);
     if (result.problem) return alert(result.problem);
     await save(result.items);
   };
   return (
     <label className="stack">
-      <span className="sub">In</span>
+      <span className="sub">{label}</span>
       <select value={current} onChange={(e) => move(e.target.value)}>
-        <option value="">(the top)</option>
-        {choices.map((t) => ({ t, label: label(t) })).sort((a, b) => a.label.localeCompare(b.label)).map(({ t, label }) => <option key={t.key} value={t.key}>{label}</option>)}
+        <option value="">(straight in the world)</option>
+        {choices.map((t) => ({ t, name: name(t) })).sort((a, b) => a.name.localeCompare(b.name)).map(({ t, name }) => <option key={t.key} value={t.key}>{name}</option>)}
       </select>
     </label>
   );
@@ -210,7 +226,7 @@ function Fields({ data, thing, editing, change }: { data: AppData; thing: Thing;
       ))}
       {editing && (
         <div className="inline-add">
-          <input className="filter" placeholder="Another field, just for this place" value={newField} onChange={(e) => setNewField(e.target.value)} />
+          <input className="filter" placeholder="Another field, just for this item" value={newField} onChange={(e) => setNewField(e.target.value)} />
           <button disabled={!newField.trim()} onClick={() => (setValue(undefined, newField.trim(), "?"), setNewField(""))}>Add</button>
         </div>
       )}
@@ -288,7 +304,7 @@ function Contents({ data, nav, thing, editing, save }: { data: AppData; nav: Nav
       {editing && (
         <>
           <label className="stack">
-            <span className="sub">Move a place in here</span>
+            <span className="sub">Move an item in here</span>
             <select value="" onChange={(e) => e.target.value && bringIn(e.target.value)}>
               <option value="">Choose…</option>
               {movable.map((t) => <option key={t.key} value={t.key}>{t.name}</option>)}
@@ -366,7 +382,7 @@ function Members({ data, nav, thing, editing, save }: GroupPart) {
   return (
     <section>
       <h2>{heading} ({members.length})</h2>
-      {editing && members.length === 0 && <p className="sub">Add places to make this a group: they stay where they are, and can be in other groups too.</p>}
+      {editing && members.length === 0 && <p className="sub">Add items to make this a group: they stay where they are, and can be in other groups too.</p>}
       <ul className="list">
         {members.map((m) => (
           <li key={m.link.key} className="branch">
@@ -381,7 +397,7 @@ function Members({ data, nav, thing, editing, save }: GroupPart) {
       {editing && (
         <label className="stack">
           <select value="" onChange={(e) => e.target.value && add(e.target.value)}>
-            <option value="">Add a place to this group…</option>
+            <option value="">Add an item to this group…</option>
             {offered.map((t) => <option key={t.key} value={t.key}>{pathOf(data.items, world, t.key).map((p) => p.name).join(" › ")}</option>)}
           </select>
         </label>

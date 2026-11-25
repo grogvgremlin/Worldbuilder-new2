@@ -61,15 +61,16 @@ export type Area = {
   outline: { x: number; y: number }[]; // the convex hull of the pinned points inside it
 };
 
-// One area per place holding at least one pinned place (its own pin counts too).
-export function areasOn(items: Item[], map: WorldMap): Area[] {
+// One area per item holding at least one pinned item (its own pin counts too), in one tree (the
+// main one unless another is chosen).
+export function areasOn(items: Item[], map: WorldMap, tree?: string): Area[] {
   const pins = new Map(map.pins.map((p) => [p.thing, p]));
   const out: Area[] = [];
   for (const thing of thingsIn(items, map.world)) {
-    const inside = descendantsOf(items, map.world, thing.key).filter((d) => pins.has(d.key));
+    const inside = descendantsOf(items, map.world, thing.key, tree).filter((d) => pins.has(d.key));
     if (inside.length === 0) continue;
     const points = [...inside, thing].map((t) => pins.get(t.key)).filter((p): p is Pin => !!p);
-    out.push({ thing, by: "containment", depth: depthOf(items, map.world, thing.key), outline: convexHull(points.map((p) => ({ x: p.x, y: p.y }))) });
+    out.push({ thing, by: "containment", depth: depthOf(items, map.world, thing.key, tree), outline: convexHull(points.map((p) => ({ x: p.x, y: p.y }))) });
   }
   return out.sort((a, b) => a.depth - b.depth || a.thing.name.localeCompare(b.thing.name));
 }

@@ -29,7 +29,7 @@ export function WorldsScreen({ data, onOpen }: { data: AppData; onOpen: (world: 
             <SwipeRow action="Remove" onAction={() => remove(w.key, w.name)}>
               <button onClick={() => onOpen(w.key)}>
                 <span className="title">{w.name}{data.openWorld === w.key ? " ✓" : ""}</span>
-                <span className="sub">{thingsIn(data.items, w.key).length} places{w.description ? ` · ${w.description}` : ""}</span>
+                <span className="sub">{thingsIn(data.items, w.key).length} items{w.description ? ` · ${w.description}` : ""}</span>
               </button>
             </SwipeRow>
           </li>
@@ -41,7 +41,7 @@ export function WorldsScreen({ data, onOpen }: { data: AppData; onOpen: (world: 
 }
 
 const STARTS: { id: WorldStart; label: string; about: string }[] = [
-  { id: "starter", label: "Starter", about: "One kind, Place (add fields to a place as you need them), and \"in\" to put places inside places." },
+  { id: "starter", label: "Starter", about: "One kind, Place (add fields to an item as you need them); \"in\" to put items inside items, and \"in area\" for groups." },
   { id: "sample", label: "Sample", about: "The starter plus a few made-up provinces and towns on a map, to try things on." },
   { id: "blank", label: "Blank", about: "Nothing: make your own kinds first." },
 ];

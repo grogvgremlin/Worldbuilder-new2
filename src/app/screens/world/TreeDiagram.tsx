@@ -1,61 +1,45 @@
-// World → Diagram: a tree as a diagram, rearranged by dragging (owner, 25 Nov: "a rearrangeable
-// tree diagram"). Drag an item onto another to move it inside; onto the world to move it to the top.
-// Tap an item to open it. Drag the background to pan; pinch or the wheel to zoom.
-// Laid out left to right (it fits a phone held upright), worked out from the links each time:
-// nothing about the drawing is stored.
+// World → Diagram: a tree drawn as boxes, across or down, arranged by hand (owner, 25 Nov).
+// Two ways to drag a box:
+//   - Arrange: move it where you like, with its branch following or not; kept on the world;
+//   - Move inside: drop it on another box to move it inside, on the world to put it at the top.
+// Tap a box to open the item. Drag the background to pan; pinch or the wheel to zoom.
 // Design: design/world-structure.md §3 (one parent at a time, no loops: a drop that would make a loop
-// is refused), §5 ("abstract views zoom by containment"); spec/session-20-notes-3.md §0.1 (a canvas
-// as another view on the same structure).
+// is refused), §5 (abstract views laid out by containment); spec/session-20-notes-3.md §0.1 (a
+// canvas as another view on the same structure). Layout: src/world/diagram.ts.
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from "react";
-import type { Thing } from "../../../items/items";
-import { childrenOf, descendantsOf, setParent, topPlaces } from "../../../world/places";
-import { isOnlyAGroup } from "../../../world/groups";
+import { descendantsOf, setParent } from "../../../world/places";
 import { iconOf } from "../../../world/maps";
 import { worldOf } from "../../../world/world";
-import type { AppData } from "../../app-data";
+import { arrangedLayout, boxesThatMove, hasHandPlacing, moveBoxes, NODE_H, NODE_W, ROOT, tidyLayout, type Box, type Direction } from "../../../world/diagram";
 import { TreePicker, useChosenTree } from "./tree-picker";
+import { useKept } from "./remembered";
 import type { Part } from "./WorldScreen";
 
-const NODE_W = 132;
-const NODE_H = 34;
-const COLUMN = 168; // from one depth to the next
-const ROW = 44; // from one leaf to the next
 const TAP = 6;
-const ROOT = "(world)";
 
-type Box = { key: string; thing: Thing | null; x: number; y: number; parent: string | null };
+type DragMode = "arrange" | "inside";
 type View = { k: number; tx: number; ty: number };
 type Point = { x: number; y: number };
 type Gesture =
   | { kind: "pan"; start: Point; from: View; moved: boolean }
-  | { kind: "node"; key: string; start: Point; moved: boolean }
+  | { kind: "box"; key: string; start: Point; moved: boolean }
   | { kind: "pinch"; startDistance: number; startCentre: Point; from: View }
   | null;
-
-// Leaves one row apart; a parent level with the middle of its children.
-function layout(data: AppData, world: string, tree: string | undefined): Box[] {
-  const boxes: Box[] = [];
-  let row = 0;
-  const place = (thing: Thing | null, key: string, depth: number, parent: string | null, children: Thing[]): number => {
-    const ys = children.map((c) => place(c, c.key, depth + 1, key, childrenOf(data.items, world, c.key, tree)));
-    const y = ys.length ? (ys[0] + ys[ys.length - 1]) / 2 : row++ * ROW;
-    boxes.push({ key, thing, x: depth * COLUMN, y, parent });
-    return y;
-  };
-  const tops = topPlaces(data.items, world, tree).filter((t) => !isOnlyAGroup(data.items, world, t.key));
-  place(null, ROOT, 0, null, tops);
-  return boxes;
-}
+// A drag under way: which boxes move and by how much (arrange), or where it would drop (inside).
+type Drag = { key: string; moving: string[]; dx: number; dy: number; over: string | null };
 
 export function TreeDiagram({ data, nav, world, save }: Part) {
   const [tree, setTree] = useChosenTree(data, world);
+  const [direction, setDirection] = useKept<Direction>("diagram-direction", "across");
+  const [mode, setMode] = useKept<DragMode>("diagram-drag", "arrange");
+  const [withBranch, setWithBranch] = useKept("diagram-branch", true);
   const [view, setView] = useState<View | null>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
-  const [drag, setDrag] = useState<{ key: string; at: Point; over: string | null } | null>(null);
+  const [drag, setDrag] = useState<Drag | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const pointers = useRef(new Map<number, Point>());
   const gesture = useRef<Gesture>(null);
-  const boxes = layout(data, world, tree);
+  const boxes = arrangedLayout(data.items, world, tree, direction);
   const byKey = new Map(boxes.map((b) => [b.key, b]));
 
   useEffect(() => {
@@ -67,30 +51,36 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
     watcher.observe(el);
     return () => watcher.disconnect();
   }, []);
-  // The whole diagram in view, but never smaller than 60% (the names must stay readable): a big
-  // tree then starts at its top left, to be panned.
+
+  // The whole diagram in view, but never smaller than 60% so names stay readable.
   const fit = (): View | null => {
-    if (!size) return null;
-    const width = Math.max(...boxes.map((b) => b.x)) + NODE_W;
-    const top = Math.min(...boxes.map((b) => b.y)) - NODE_H / 2;
-    const height = Math.max(...boxes.map((b) => b.y)) + NODE_H / 2 - top;
+    if (!size || boxes.length === 0) return null;
+    const left = Math.min(...boxes.map((b) => b.x));
+    const top = Math.min(...boxes.map((b) => b.y));
+    const width = Math.max(...boxes.map((b) => b.x)) + NODE_W - left;
+    const height = Math.max(...boxes.map((b) => b.y)) + NODE_H - top;
     const k = clamp(Math.min((size.w - 24) / width, (size.h - 24) / height), 0.6, 1);
-    return { k, tx: 12, ty: 12 - top * k };
+    const fits = width * k <= size.w - 24 && height * k <= size.h - 24;
+    if (fits) return { k, tx: (size.w - width * k) / 2 - left * k, ty: 12 - top * k };
+    // Too big for the screen: start at the world's box (the top of the tree), to be panned from.
+    const root = boxes.find((b) => b.key === ROOT)!;
+    return direction === "down"
+      ? { k, tx: size.w / 2 - (root.x + NODE_W / 2) * k, ty: 12 - root.y * k }
+      : { k, tx: 12 - root.x * k, ty: size.h / 2 - (root.y + NODE_H / 2) * k };
   };
   useEffect(() => {
     if (size && !view) setView(fit());
   }, [size, view]);
+  useEffect(() => setView(fit()), [direction, tree]); // a new shape: start from the whole of it
 
   const local = (e: { clientX: number; clientY: number }): Point => {
     const box = wrap.current!.getBoundingClientRect();
     return { x: e.clientX - box.left, y: e.clientY - box.top };
   };
   const toDiagram = (p: Point, v: View): Point => ({ x: (p.x - v.tx) / v.k, y: (p.y - v.ty) / v.k });
+  const boxAt = (p: Point, skip: string): Box | undefined => boxes.find((b) => b.key !== skip && p.x >= b.x && p.x <= b.x + NODE_W && p.y >= b.y && p.y <= b.y + NODE_H);
 
-  // The box under a point, if any (a node's whole rectangle counts).
-  const boxAt = (p: Point): Box | undefined => boxes.find((b) => p.x >= b.x && p.x <= b.x + NODE_W && Math.abs(p.y - b.y) <= NODE_H / 2);
-
-  // Where a dragged item may go: not onto itself or anything it holds.
+  // Where a box may be moved inside: not itself or anything it holds.
   const canDrop = (dragged: string, target: string | undefined): boolean => {
     if (!target || target === dragged) return false;
     if (target === ROOT) return true;
@@ -108,7 +98,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       return;
     }
     const node = (e.target as Element).closest("[data-node]")?.getAttribute("data-node");
-    gesture.current = node && node !== ROOT ? { kind: "node", key: node, start: local(e), moved: false } : { kind: "pan", start: local(e), from: view, moved: false };
+    gesture.current = node && node !== ROOT ? { kind: "box", key: node, start: local(e), moved: false } : { kind: "pan", start: local(e), from: view, moved: false };
   };
 
   const move = (e: ReactPointerEvent) => {
@@ -126,12 +116,17 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       if (!g.moved && distance(at, g.start) < TAP) return;
       g.moved = true;
       setView({ k: g.from.k, tx: g.from.tx + at.x - g.start.x, ty: g.from.ty + at.y - g.start.y });
-    } else if (g?.kind === "node") {
+    } else if (g?.kind === "box") {
       if (!g.moved && distance(at, g.start) < TAP) return;
       g.moved = true;
-      const p = toDiagram(at, view);
-      const target = boxAt(p)?.key;
-      setDrag({ key: g.key, at: p, over: canDrop(g.key, target) ? target! : null });
+      const dx = (at.x - g.start.x) / view.k;
+      const dy = (at.y - g.start.y) / view.k;
+      if (mode === "arrange") {
+        setDrag({ key: g.key, moving: boxesThatMove(data.items, world, tree, g.key, withBranch), dx, dy, over: null });
+      } else {
+        const target = boxAt(toDiagram(at, view), g.key)?.key;
+        setDrag({ key: g.key, moving: [g.key], dx, dy, over: canDrop(g.key, target) ? target! : null });
+      }
     }
   };
 
@@ -143,14 +138,14 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       return;
     }
     gesture.current = null;
-    if (g?.kind !== "node") return;
+    if (g?.kind !== "box") return;
     if (!g.moved) return nav.open({ name: "place", key: g.key });
-    const target = drag?.over;
+    const done = drag;
     setDrag(null);
-    if (!target) return; // dropped nowhere useful: it goes back where it was
-    const parent = target === ROOT ? null : target;
-    if (parent === (byKey.get(g.key)?.parent === ROOT ? null : byKey.get(g.key)?.parent)) return;
-    const result = setParent(data.items, world, g.key, parent, tree);
+    if (!done) return;
+    if (mode === "arrange") return save(moveBoxes(data.items, world, tree, direction, done.moving, done.dx, done.dy));
+    if (!done.over) return; // dropped nowhere useful: it goes back where it was
+    const result = setParent(data.items, world, g.key, done.over === ROOT ? null : done.over, tree);
     if (result.problem) return alert(result.problem);
     await save(result.items);
   };
@@ -163,36 +158,62 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
     setView({ k, tx: at.x - anchor.x * k, ty: at.y - anchor.y * k });
   };
 
+  // Where a box is drawn: moved along with an arrange drag, or still (inside: a ghost follows).
+  const drawnAt = (b: Box): Point => (drag && mode === "arrange" && drag.moving.includes(b.key) ? { x: b.x + drag.dx, y: b.y + drag.dy } : { x: b.x, y: b.y });
+  const edge = (parent: Point, child: Point): string => {
+    if (direction === "across") {
+      const [x1, y1, x2, y2] = [parent.x + NODE_W, parent.y + NODE_H / 2, child.x, child.y + NODE_H / 2];
+      return `M${x1} ${y1} C${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`;
+    }
+    const [x1, y1, x2, y2] = [parent.x + NODE_W / 2, parent.y + NODE_H, child.x + NODE_W / 2, child.y];
+    return `M${x1} ${y1} C${x1} ${(y1 + y2) / 2}, ${x2} ${(y1 + y2) / 2}, ${x2} ${y2}`;
+  };
   const worldName = worldOf(data.items, world)?.name ?? "World";
-  const label = (b: Box) => (b.thing ? `${iconOf(data.items, b.thing)} ${b.thing.name}` : `🌍 ${worldName}`);
+  const label = (b: Box) => (b.thing ? `${iconOf(data.items, b.thing)} ${b.thing.name}` : worldName);
+  const handPlaced = hasHandPlacing(data.items, world, tree, direction);
 
   return (
     <>
-      <div className="view-row">
-        <span className="sub">Drag an item onto another to move it inside; onto the world for the top. Tap to open.</span>
+      <div className="diagram-bar">
+        <nav className="segments small">
+          <button className={direction === "across" ? "on" : ""} onClick={() => setDirection("across")}>Across</button>
+          <button className={direction === "down" ? "on" : ""} onClick={() => setDirection("down")}>Down</button>
+        </nav>
+        <nav className="segments small">
+          <button className={mode === "arrange" ? "on" : ""} onClick={() => setMode("arrange")}>Arrange</button>
+          <button className={mode === "inside" ? "on" : ""} onClick={() => setMode("inside")}>Move inside</button>
+        </nav>
+        {mode === "arrange" && (
+          <label className="choice"><input type="checkbox" checked={withBranch} onChange={() => setWithBranch(!withBranch)} /> Branch follows</label>
+        )}
+        <TreePicker data={data} world={world} tree={tree} onChoose={setTree} />
         <span className="map-tools">
-          <TreePicker data={data} world={world} tree={tree} onChoose={setTree} />
+          {handPlaced && <button className="tool" onClick={() => confirm("Back to the automatic layout for this tree, this way round?") && save(tidyLayout(data.items, world, tree, direction))}>Tidy</button>}
           <button className="tool" onClick={() => setView(fit())}>Fit</button>
         </span>
       </div>
+      <p className="sub diagram-hint">
+        {mode === "arrange" ? "Drag a box to place it" + (withBranch ? ", with everything under it." : ", on its own.") : "Drag a box onto another to move it inside; onto the world for the top."} Tap to open.
+      </p>
       <div className="map-wrap diagram-wrap" ref={wrap} onTouchStart={(e) => e.stopPropagation()} onWheel={wheel}>
         {size && view && (
           <svg width={size.w} height={size.h} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
             <g transform={`translate(${view.tx} ${view.ty}) scale(${view.k})`}>
-              {boxes.filter((b) => b.parent).map((b) => {
-                const p = byKey.get(b.parent!)!;
-                const x1 = p.x + NODE_W;
-                const x2 = b.x;
-                return <path key={`edge-${b.key}`} className="diagram-edge" d={`M${x1} ${p.y} C${(x1 + x2) / 2} ${p.y}, ${(x1 + x2) / 2} ${b.y}, ${x2} ${b.y}`} />;
-              })}
-              {boxes.map((b) => (
-                <g key={b.key} data-node={b.key} transform={`translate(${b.x} ${b.y - NODE_H / 2})`} className={["diagram-node", b.key === ROOT ? "root" : "", drag?.key === b.key ? "dragging" : "", drag?.over === b.key ? "target" : ""].join(" ")}>
-                  <rect width={NODE_W} height={NODE_H} rx={8} />
-                  <text x={10} y={NODE_H / 2 + 5}>{clip(label(b), 17)}</text>
-                </g>
+              {boxes.filter((b) => b.parent).map((b) => (
+                <path key={`edge-${b.key}`} className="diagram-edge" d={edge(drawnAt(byKey.get(b.parent!)!), drawnAt(b))} />
               ))}
-              {drag && (
-                <g className="diagram-node ghost" transform={`translate(${drag.at.x - NODE_W / 2} ${drag.at.y - NODE_H / 2})`}>
+              {boxes.map((b) => {
+                const p = drawnAt(b);
+                const classes = ["diagram-node", b.key === ROOT ? "root" : "", drag?.moving.includes(b.key) ? (mode === "arrange" ? "moving" : "dragging") : "", drag?.over === b.key ? "target" : ""];
+                return (
+                  <g key={b.key} data-node={b.key} transform={`translate(${p.x} ${p.y})`} className={classes.join(" ")}>
+                    <rect width={NODE_W} height={NODE_H} rx={8} />
+                    <text x={10} y={NODE_H / 2 + 5}>{clip(label(b), 17)}</text>
+                  </g>
+                );
+              })}
+              {drag && mode === "inside" && (
+                <g className="diagram-node ghost" transform={`translate(${byKey.get(drag.key)!.x + drag.dx} ${byKey.get(drag.key)!.y + drag.dy})`}>
                   <rect width={NODE_W} height={NODE_H} rx={8} />
                   <text x={10} y={NODE_H / 2 + 5}>{clip(label(byKey.get(drag.key)!), 17)}</text>
                 </g>

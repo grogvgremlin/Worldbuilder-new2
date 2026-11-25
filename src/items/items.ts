@@ -453,6 +453,13 @@ export const Sandbox = z.strictObject({
   // The link kind places are grouped by (the containment tree, "in"): drives paths, the place
   // tree and areas on maps. Chosen per world, never by a name in code (world-structure §4).
   tree: z.string().optional(),
+  // Where boxes were dragged in the Diagram (owner, 25 Nov: arrange by hand), per tree and per
+  // direction. A box with no position here is laid out automatically. Only how it's drawn.
+  diagrams: z.array(z.strictObject({
+    tree: z.string(), // the tree link kind
+    direction: z.enum(["across", "down"]),
+    positions: z.array(z.strictObject({ thing: z.string(), x: z.number(), y: z.number() })),
+  })).optional(),
 });
 export type Sandbox = z.infer<typeof Sandbox>;
 export const PICKUP = "pickup";

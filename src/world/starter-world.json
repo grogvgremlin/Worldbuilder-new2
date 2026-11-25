@@ -1,0 +1,14 @@
+{
+  "tree": "in",
+  "thingKinds": [
+    { "name": "Realm", "icon": "👑", "about": "A country or empire.", "fields": [{ "name": "ruler" }, { "name": "capital" }] },
+    { "name": "Province", "icon": "🗺️", "about": "A province, county or region within a realm.", "fields": [{ "name": "ruler" }, { "name": "capital" }, { "name": "terrain" }] },
+    { "name": "Settlement", "icon": "🏘️", "about": "A city, town or village.", "fields": [{ "name": "size", "about": "city, town, village, hamlet" }, { "name": "population" }, { "name": "ruler" }] },
+    { "name": "Fortress", "icon": "🏰", "about": "A castle, keep or walled stronghold.", "fields": [{ "name": "garrison" }, { "name": "held by" }] },
+    { "name": "Site", "icon": "📍", "about": "A ruin, shrine, battlefield or other spot.", "fields": [{ "name": "type" }] },
+    { "name": "Landmark", "icon": "⛰️", "about": "A hill, forest, lake or other natural feature.", "fields": [{ "name": "terrain" }] }
+  ],
+  "linkKinds": [
+    { "name": "in", "reverseName": "holds", "direction": "one-way", "hierarchy": "one parent", "about": "Containment: a place inside a larger place, one at a time." }
+  ]
+}

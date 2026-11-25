@@ -27,8 +27,9 @@ A personal app for Warhammer Fantasy armies, battles, campaigns and a shared wor
 - `src/settings/` — the game's settings and the app's own (the limit mode); the scaling shorthand.
 - `src/rules/` — patches, unit stats as differences from their race, worked-out lines.
 - `src/lists/` — rosters: units as taken, choices, costs, limits and composition (with generic filters), magic items, the game view and rules reference, summary groups.
+- `src/world/` — worlds (sandboxes with world features): making one (starter kinds, blank, sample), keys, places grouped by containment (parents, paths, the tree, loops refused), maps (pins per map, areas worked out from containment). Core, not screens: other tools read it.
 - `src/store/` — the storage seam: IndexedDB on the device, in memory for tests.
-- `src/app/` — the screens (React, kept thin): Settings (Library, Data), the game page (Contents, Configuration), Lists (set-ups, lists: build and game views), search. World, Battle and Campaign tabs are empty.
+- `src/app/` — the screens (React, kept thin): Settings (Library, Data), the game page (Contents, Configuration), Lists (set-ups, lists: build and game views), search. World (worlds, places as wiki entries, kinds, maps you pin places on). Battle and Campaign tabs are empty.
 - `test/` — tests; `test/fixtures/tow-sample/` a made-up public sample.
 
 ## Commands

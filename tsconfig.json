@@ -12,6 +12,7 @@
       "vite-plugin-pwa/client"
     ],
     "jsx": "react-jsx",
+    "resolveJsonModule": true,
     "lib": [
       "ES2022",
       "DOM",

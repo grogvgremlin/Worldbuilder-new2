@@ -449,6 +449,10 @@ export const Sandbox = z.strictObject({
   kind: z.literal("sandbox"),
   world: z.boolean(), // has world features (things, links, events, a log)
   permanent: z.boolean().optional(),
+  description: z.string().optional(),
+  // The link kind places are grouped by (the containment tree, "in"): drives paths, the place
+  // tree and areas on maps. Chosen per world, never by a name in code (world-structure §4).
+  tree: z.string().optional(),
 });
 export type Sandbox = z.infer<typeof Sandbox>;
 export const PICKUP = "pickup";
@@ -515,6 +519,115 @@ export const Roster = z.strictObject({
 });
 export type Roster = z.infer<typeof Roster>;
 
-export const Item = z.discriminatedUnion("kind", [Game, Package, RaceProfile, Unit, Equipment, MagicItem, SpecialRule, SlotKind, ArmyList, CompositionRule, Patch, Source, SettingValue, Sandbox, Context, Roster]);
+// --- World kinds ---------------------------------------------------------------------------------
+// Design: design/world-structure.md §1–5 (things, kinds, links, places, maps); data structure §6.
+// A world is a sandbox with `world: true`. Everything below belongs to one world (`world` = the
+// sandbox's key) and is world content: kinds and link kinds are the world's own, not code (§2).
+
+// A kind of thing: what a thing of this kind is expected to have. Offered, never enforced (§2).
+export const KindField = z.strictObject({
+  name: z.string(), // "population"
+  about: z.string().optional(), // a line saying what goes in it
+});
+export type KindField = z.infer<typeof KindField>;
+
+export const ThingKind = z.strictObject({
+  ...common,
+  kind: z.literal("thing-kind"),
+  world: z.string(),
+  icon: z.string().optional(), // a symbol or emoji, shown on pins and in lists
+  fields: z.array(KindField), // the fields offered on a thing of this kind
+  about: z.string().optional(),
+});
+export type ThingKind = z.infer<typeof ThingKind>;
+
+// A kind of link, declared once (§3): which way it runs, whether it makes a tree, what it expects.
+export const LinkKind = z.strictObject({
+  ...common,
+  kind: z.literal("link-kind"),
+  world: z.string(),
+  reverseName: z.string().optional(), // read from the other end: "in" → "holds"
+  direction: z.enum(["one-way", "both ways"]),
+  hierarchy: z.enum(["none", "one parent", "several parents"]), // one parent: a tree, one at a time
+  expectsFrom: z.array(z.string()).optional(), // thing-kind keys; a mismatch warns, never blocks
+  expectsTo: z.array(z.string()).optional(),
+  about: z.string().optional(),
+});
+export type LinkKind = z.infer<typeof LinkKind>;
+
+// A field filled in on a thing. `of` is the thing-kind it belongs to (fields are named per kind:
+// settlement population ≠ polity population, §2); absent = a one-off field on this thing only.
+export const ThingField = z.strictObject({
+  of: z.string().optional(), // thing-kind key
+  field: z.string(),
+  value: z.string(),
+});
+export type ThingField = z.infer<typeof ThingField>;
+
+// One of a thing's names (§10): language or culture, era, kind (official, common, epithet), source.
+export const ThingName = z.strictObject({
+  name: z.string(),
+  language: z.string().optional(),
+  era: z.string().optional(),
+  nameKind: z.string().optional(),
+  source: z.string().optional(),
+});
+export type ThingName = z.infer<typeof ThingName>;
+
+// A thing in the world (§1): a place, and later people, organisations, objects …
+export const Thing = z.strictObject({
+  ...common,
+  kind: z.literal("thing"),
+  world: z.string(),
+  kinds: z.array(z.string()), // thing-kind keys; several allowed (Nuln: settlement + polity)
+  icon: z.string().optional(), // overrides its kind's icon
+  summary: z.string().optional(), // one line, shown under the name
+  description: z.string().optional(), // the entry's text
+  fields: z.array(ThingField),
+  otherNames: z.array(ThingName).optional(),
+  tags: z.array(z.string()).optional(),
+});
+export type Thing = z.infer<typeof Thing>;
+
+// A link between two things (§3), with optional dates (start / end readable, §7) and a value.
+// A link has no name of its own (`name` is left blank): it is always shown by its ends.
+export const Link = z.strictObject({
+  ...common,
+  kind: z.literal("link"),
+  world: z.string(),
+  from: z.string(), // thing key
+  linkKind: z.string(), // link-kind key
+  to: z.string(), // thing key
+  value: z.string().optional(), // what it carries, where its kind carries one (loyalty +2)
+  start: z.string().optional(), // in-world date, as written, until calendars come
+  end: z.string().optional(),
+});
+export type Link = z.infer<typeof Link>;
+
+// A pin: a thing placed on a map, in that map's own coordinates (§5.1: pins are stored per map).
+export const Pin = z.strictObject({
+  thing: z.string(),
+  x: z.number(),
+  y: z.number(),
+  level: z.number().optional(), // drawing level (§5): surface 0, below −1 …
+});
+export type Pin = z.infer<typeof Pin>;
+
+// A map (§5): a surface to pin things on. Blank for now; a picture behind it comes with images.
+// A drawn map is an in-world artefact, unreliable for scale: lengths come from links, not pins.
+export const WorldMap = z.strictObject({
+  ...common,
+  kind: z.literal("map"),
+  world: z.string(),
+  width: z.number(), // its own coordinate space
+  height: z.number(),
+  pins: z.array(Pin),
+  description: z.string().optional(),
+});
+export type WorldMap = z.infer<typeof WorldMap>;
+
+export const WORLD_KINDS = ["thing-kind", "link-kind", "thing", "link", "map"] as const;
+
+export const Item = z.discriminatedUnion("kind", [Game, Package, RaceProfile, Unit, Equipment, MagicItem, SpecialRule, SlotKind, ArmyList, CompositionRule, Patch, Source, SettingValue, Sandbox, Context, Roster, ThingKind, LinkKind, Thing, Link, WorldMap]);
 export type Item = z.infer<typeof Item>;
 export type ItemKind = Item["kind"];

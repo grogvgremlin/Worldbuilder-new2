@@ -109,6 +109,36 @@
       "fields": {
         "size": "city"
       }
+    },
+    {
+      "name": "Zweibrücken (west bank)",
+      "kinds": [
+        "Place"
+      ],
+      "in": "Wissenland",
+      "summary": "The Wissenland half of the bridge town."
+    },
+    {
+      "name": "Zweibrücken (east bank)",
+      "kinds": [
+        "Place"
+      ],
+      "in": "Averland",
+      "summary": "The Averland half of the bridge town."
+    },
+    {
+      "name": "Zweibrücken",
+      "kinds": [
+        "Place"
+      ],
+      "summary": "A made-up bridge town on the border, its two banks in different provinces."
+    },
+    {
+      "name": "Aver valley",
+      "kinds": [
+        "Place"
+      ],
+      "summary": "The river's valley: a group that crosses the provinces."
     }
   ],
   "maps": [
@@ -151,7 +181,35 @@
           "thing": "Wurtbad",
           "x": 560,
           "y": 90
+        },
+        {
+          "thing": "Zweibrücken (west bank)",
+          "x": 430,
+          "y": 240
+        },
+        {
+          "thing": "Zweibrücken (east bank)",
+          "x": 480,
+          "y": 340
         }
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "group": "Zweibrücken",
+      "members": [
+        "Zweibrücken (west bank)",
+        "Zweibrücken (east bank)"
+      ]
+    },
+    {
+      "group": "Aver valley",
+      "members": [
+        "Nuln",
+        "Zweibrücken",
+        "Streissen",
+        "Averheim"
       ]
     }
   ]

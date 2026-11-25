@@ -48,8 +48,9 @@ describe("containment", () => {
 
   it("children and the top of the tree", () => {
     const items = sample();
-    expect(childrenOf(items, "averland-borders", key(items, "Averland")).map((t) => t.name)).toEqual(["Averheim", "Grenzstadt", "Heideck", "Kleindorf", "Streissen"]);
-    expect(topPlaces(items, "averland-borders").map((t) => t.name)).toEqual(["The Empire"]);
+    expect(childrenOf(items, "averland-borders", key(items, "Averland")).map((t) => t.name)).toEqual(["Averheim", "Grenzstadt", "Heideck", "Kleindorf", "Streissen", "Zweibrücken (east bank)"]);
+    // The tree's own top includes the sample's two groups (the screen lists those under Groups).
+    expect(topPlaces(items, "averland-borders").map((t) => t.name)).toEqual(["Aver valley", "The Empire", "Zweibrücken"]);
   });
 
   it("moving a place replaces its parent (one at a time)", () => {
@@ -118,7 +119,7 @@ describe("maps", () => {
     const areas = areasOn(items, mapOf(items));
     expect(areas.map((a) => a.thing.name)).toEqual(["The Empire", "Averland", "Stirland", "Wissenland"]);
     const averland = areas.find((a) => a.thing.name === "Averland")!.outline;
-    expect(averland).toHaveLength(4); // Averheim sits inside the other four towns
+    expect(averland).toHaveLength(5); // Averheim sits inside the others
     expect(averland).not.toContainEqual({ x: 640, y: 330 });
   });
 

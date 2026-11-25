@@ -295,3 +295,7 @@ label.stack { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8p
 .pin-card .title { font-weight: 700; font-size: 1.1rem; padding-right: 24px; } .pin-card p { margin: 6px 0; }
 .map-settings { margin-top: 12px; }
 .list li button.twisty { flex: 0 0 28px; width: 28px; background: none; border: 0; padding: 0; color: var(--muted); }
+.areas-menu { position: relative; }
+.areas-panel { left: 0; right: auto; max-height: 50vh; overflow: auto; }
+.areas-panel .choice { display: flex; gap: 8px; align-items: center; padding: 5px 0; white-space: nowrap; }
+.menu-catcher { position: fixed; inset: 0; z-index: 19; }

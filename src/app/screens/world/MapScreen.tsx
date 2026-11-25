@@ -35,7 +35,9 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
   const [selected, setSelected] = useState<string | null>(focus ?? null);
   const [placing, setPlacing] = useState<string | null>(place ?? null);
   const [adding, setAdding] = useState(false);
-  const [showAreas, setShowAreas] = useState(true);
+  const [shown, setShown] = useState<AreasShown>(() => readAreasShown(mapKey));
+  const [areasMenu, setAreasMenu] = useState(false);
+  const showArea = (next: AreasShown) => (setShown(next), saveAreasShown(mapKey, next));
   const [locked, setLocked] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   const pointers = useRef(new Map<number, Point>());
@@ -145,6 +147,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
     setView({ k, tx: at.x - anchor.x * k, ty: at.y - anchor.y * k });
   };
 
+  const allAreas = areasOn(data.items, map);
   const selectedThing = selected ? things.get(selected) : undefined;
   const placingThing = placing ? things.get(placing) : undefined;
 
@@ -154,7 +157,10 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
         <h1>{map.name}</h1>
         <span className="map-tools">
           <button className="primary" onClick={() => setAdding(true)}>+ Place</button>
-          <button className={showAreas ? "tool on" : "tool"} onClick={() => setShowAreas(!showAreas)}>Areas</button>
+          <span className="areas-menu">
+            <button className={shown.all ? "tool on" : "tool"} onClick={() => setAreasMenu(!areasMenu)}>Areas ▾</button>
+            {areasMenu && <AreasMenu areas={allAreas} shown={shown} onChange={showArea} onClose={() => setAreasMenu(false)} />}
+          </span>
           <button className={locked ? "tool on" : "tool"} onClick={() => setLocked(!locked)}>{locked ? "Locked" : "Lock"}</button>
           <button className="tool" onClick={() => size && setView(fitView(map, size))}>Fit</button>
         </span>
@@ -169,7 +175,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
           <svg width={size.w} height={size.h} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} className={placing ? "placing" : ""}>
             <g transform={`translate(${view.tx} ${view.ty}) scale(${view.k})`}>
               <rect className="map-sheet" x={0} y={0} width={map.width} height={map.height} rx={8 / view.k} />
-              {showAreas && <Areas areas={areasOn(data.items, map)} k={view.k} />}
+              {shown.all && <Areas areas={allAreas.filter((a) => !shown.hidden.includes(a.thing.key))} k={view.k} />}
               {map.pins.map((p) => {
                 const thing = things.get(p.thing);
                 if (!thing) return null;
@@ -239,6 +245,46 @@ function Areas({ areas, k }: { areas: Area[]; k: number }) {
         );
       })}
     </g>
+  );
+}
+
+// Which areas a map shows: all of them on or off, and single ones hidden. A view setting kept on this
+// device (world-structure §5: view presets are display settings, not world data).
+type AreasShown = { all: boolean; hidden: string[] };
+
+function readAreasShown(mapKey: string): AreasShown {
+  try {
+    const saved = JSON.parse(localStorage.getItem(`worldbuilder.areas.${mapKey}`) ?? "null");
+    if (saved && typeof saved.all === "boolean" && Array.isArray(saved.hidden)) return saved;
+  } catch {
+    // no storage (private window): fall back to showing every area
+  }
+  return { all: true, hidden: [] };
+}
+
+function saveAreasShown(mapKey: string, shown: AreasShown) {
+  try {
+    localStorage.setItem(`worldbuilder.areas.${mapKey}`, JSON.stringify(shown));
+  } catch {
+    // not kept: it still applies until the map is closed
+  }
+}
+
+function AreasMenu({ areas, shown, onChange, onClose }: { areas: Area[]; shown: AreasShown; onChange: (s: AreasShown) => void; onClose: () => void }) {
+  const toggle = (key: string) => onChange({ ...shown, hidden: shown.hidden.includes(key) ? shown.hidden.filter((k) => k !== key) : [...shown.hidden, key] });
+  return (
+    <>
+      <div className="menu-catcher" onClick={onClose} />
+      <div className="filter-panel areas-panel">
+        <label className="choice"><input type="checkbox" checked={shown.all} onChange={() => onChange({ ...shown, all: !shown.all })} /> <b>Show areas</b></label>
+        {areas.length === 0 && <p className="sub">No areas: a place shows as one once something inside it is pinned here.</p>}
+        {areas.map((a) => (
+          <label key={a.thing.key} className="choice" style={{ paddingLeft: 8 + a.depth * 16, opacity: shown.all ? 1 : 0.5 }}>
+            <input type="checkbox" disabled={!shown.all} checked={!shown.hidden.includes(a.thing.key)} onChange={() => toggle(a.thing.key)} /> {a.thing.name}
+          </label>
+        ))}
+      </div>
+    </>
   );
 }
 

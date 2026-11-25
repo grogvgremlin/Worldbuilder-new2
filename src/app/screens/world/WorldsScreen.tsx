@@ -41,8 +41,8 @@ export function WorldsScreen({ data, onOpen }: { data: AppData; onOpen: (world: 
 }
 
 const STARTS: { id: WorldStart; label: string; about: string }[] = [
-  { id: "starter", label: "Starter kinds", about: "Realm, province, settlement, fortress, site, landmark; and \"in\" to group places. Change them under Kinds." },
-  { id: "sample", label: "Sample", about: "The starter kinds plus a few made-up provinces and towns on a map, to try things on." },
+  { id: "starter", label: "Starter", about: "One kind, Place (add fields to a place as you need them), and \"in\" to put places inside places." },
+  { id: "sample", label: "Sample", about: "The starter plus a few made-up provinces and towns on a map, to try things on." },
   { id: "blank", label: "Blank", about: "Nothing: make your own kinds first." },
 ];
 

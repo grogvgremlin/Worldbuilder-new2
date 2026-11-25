@@ -71,8 +71,8 @@ function newWorldKey(items: Item[], name: string): string {
 }
 
 // --- Making a world ------------------------------------------------------------------------------
-// From the starter (a few kinds of place, and "in"), blank (nothing), or the sample (the starter
-// plus a handful of places and a map, to try things out on).
+// From the starter (one generic kind, "Place", and "in": owner, 25 Nov), blank (nothing), or the
+// sample (the starter plus a handful of places and a map, to try things out on).
 
 type StarterFile = {
   tree: string; // the name of the link kind places are grouped by
@@ -115,7 +115,7 @@ function addSample(made: Item[], world: Sandbox, file: SampleFile) {
     const key = newKey(made, world.key, "thing", t.name);
     thingKey.set(t.name, key);
     const kinds = t.kinds.map(kindKey);
-    const fields = Object.entries(t.fields ?? {}).map(([field, value]) => ({ of: kinds[0], field, value }));
+    const fields = Object.entries(t.fields ?? {}).map(([field, value]) => ({ field, value })); // the place's own fields
     made.push({ key, kind: "thing", world: world.key, name: t.name, kinds, summary: t.summary, fields });
   }
   for (const t of file.things) {

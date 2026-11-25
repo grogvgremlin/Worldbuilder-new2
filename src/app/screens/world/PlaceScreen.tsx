@@ -127,6 +127,7 @@ function Breadcrumb({ nav, path }: { nav: Nav; path: Thing[] }) {
 // Kinds as chips; editing, every kind of the world to switch on or off.
 function Kinds({ data, thing, editing, change }: { data: AppData; thing: Thing; editing: boolean; change: (p: Partial<Thing>) => void }) {
   const kinds = thingKindsIn(data.items, thing.world);
+  if (kinds.length <= 1) return null; // one generic kind: nothing to show or choose
   const shown = editing ? kinds : kinds.filter((k) => thing.kinds.includes(k.key));
   if (shown.length === 0) return null;
   const toggle = (key: string) => change({ kinds: thing.kinds.includes(key) ? thing.kinds.filter((k) => k !== key) : [...thing.kinds, key] });

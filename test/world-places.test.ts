@@ -19,7 +19,7 @@ describe("making a world", () => {
   it("the starter brings kinds and the containment link kind, set as the tree", () => {
     const made = newWorld([], "Mine", "starter");
     const world = worldOf(made, "mine")!;
-    expect(made.filter((i) => i.kind === "thing-kind").map((i) => i.name)).toContain("Settlement");
+    expect(made.filter((i) => i.kind === "thing-kind").map((i) => i.name)).toEqual(["Place"]); // one generic kind (owner, 25 Nov)
     expect(made.find((i) => i.key === world.tree)).toMatchObject({ kind: "link-kind", name: "in", hierarchy: "one parent" });
   });
 
@@ -84,11 +84,17 @@ describe("containment", () => {
 
   it("removing a kind turns its fields into one-offs", () => {
     const items = sample();
-    const settlement = items.find((i) => i.kind === "thing-kind" && i.name === "Settlement")!.key;
-    const after = removeThingKind(items, settlement);
+    const place = items.find((i) => i.kind === "thing-kind" && i.name === "Place")!.key;
+    const withKindField = items.map((i) => (i.key === key(items, "Averheim") ? { ...(i as Thing), fields: [{ of: place, field: "size", value: "city" }] } : i));
+    const after = removeThingKind(withKindField, place);
     const averheim = after.find((i) => i.key === key(items, "Averheim")) as Thing;
     expect(averheim.kinds).toEqual([]);
     expect(averheim.fields).toEqual([{ field: "size", value: "city" }]);
+  });
+
+  it("the sample's details are the places' own fields", () => {
+    const items = sample();
+    expect((items.find((i) => i.key === key(items, "Averheim")) as Thing).fields).toEqual([{ field: "size", value: "city" }]);
   });
 });
 

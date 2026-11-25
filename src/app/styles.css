@@ -308,3 +308,16 @@ label.stack { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8p
 .pick-list .choice { display: block; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .pick-list .choice:last-child { border-bottom: 0; }
 .list li.branch > .remove-x { flex: none; padding: 0 6px 6px; }
+.view-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.view-row .segments { margin: 0; }
+.tree-picker { display: flex; align-items: center; gap: 6px; }
+.list.tree .tree-root { font-weight: 700; padding: 4px 0 8px; }
+.diagram-wrap { background: var(--panel); }
+.diagram-edge { fill: none; stroke: var(--muted); stroke-width: 1.5; opacity: .6; }
+.diagram-node rect { fill: var(--ground); stroke: var(--line); stroke-width: 1.5; }
+.diagram-node text { font-size: 13px; font-weight: 600; fill: var(--ink); pointer-events: none; }
+.diagram-node { cursor: grab; }
+.diagram-node.root rect { fill: var(--ink); stroke: var(--ink); } .diagram-node.root text { fill: var(--ground); }
+.diagram-node.dragging { opacity: .35; }
+.diagram-node.target rect { stroke: var(--accent); stroke-width: 3; }
+.diagram-node.ghost { opacity: .85; pointer-events: none; } .diagram-node.ghost rect { stroke: var(--accent); }

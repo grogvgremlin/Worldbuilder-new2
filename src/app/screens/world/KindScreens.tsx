@@ -32,7 +32,7 @@ export function ThingKindScreen({ data, nav, kindKey }: { data: AppData; nav: Na
       </div>
       <TextBox className="filter" value={kind.about ?? ""} placeholder="What it is (one line)" onSave={(v) => change({ about: v || undefined })} />
       <h2>Fields offered</h2>
-      <p className="sub">Every {kind.name.toLowerCase()} is offered these; any place can still have fields of its own.</p>
+      <p className="sub">Every {kind.name.toLowerCase()} is offered these; any item can still have fields of its own.</p>
       {kind.fields.map((f, n) => (
         <div className="field kind-field" key={`${f.name}-${n}`}>
           <TextBox className="field-box" value={f.name} onSave={(v) => v && change({ fields: kind.fields.map((g, j) => (j === n ? { ...g, name: v } : g)) })} />
@@ -48,13 +48,13 @@ export function ThingKindScreen({ data, nav, kindKey }: { data: AppData; nav: Na
         <input className="filter" placeholder="New field (e.g. population)" value={field} onChange={(e) => setField(e.target.value)} onKeyDown={(e) => e.key === "Enter" && field.trim() && (change({ fields: [...kind.fields, { name: field.trim() }] }), setField(""))} />
         <button disabled={!field.trim()} onClick={() => (change({ fields: [...kind.fields, { name: field.trim() }] }), setField(""))}>Add</button>
       </div>
-      <h2>Places of this kind ({used.length})</h2>
+      <h2>Items of this kind ({used.length})</h2>
       <ul className="plain">
         {used.map((t) => <li key={t.key}><button className="link" onClick={() => nav.open({ name: "place", key: t.key })}>{t.name}</button></li>)}
       </ul>
       <div className="buttons">
         <button className="danger" onClick={async () => {
-          if (!confirm(`Remove the kind ${kind.name}?${used.length ? ` ${used.length} place${used.length > 1 ? "s" : ""} lose it; their fields stay as their own.` : ""}`)) return;
+          if (!confirm(`Remove the kind ${kind.name}?${used.length ? ` ${used.length} item${used.length > 1 ? "s" : ""} lose it; their fields stay as their own.` : ""}`)) return;
           await data.setItems(removeThingKind(data.items, kind.key));
           nav.back();
         }}>Remove this kind</button>
@@ -100,7 +100,9 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
           <option value="several parents">several parents, no loops</option>
         </select>
       </div>
-      {isTree && <p className="sub">This world groups its places by this link kind, so it stays one parent at a time.</p>}
+      {isTree && <p className="sub">This is the world's main tree, so it stays one parent at a time.</p>}
+      <h2>What this does here</h2>
+      <ul className="plain does">{whatItDoes(kind, isTree).map((line) => <li key={line}>{line}</li>)}</ul>
       <h2>Expects</h2>
       <p className="sub">Which kinds of thing usually sit at each end. A link that doesn't fit is warned about, never refused.</p>
       <div className="sub">From</div>
@@ -119,4 +121,24 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
       )}
     </article>
   );
+}
+
+// What a link kind's settings do in the app today, in plain words (owner, 25 Nov: "where do I see
+// the functions available"). Kept beside the settings so it changes with them.
+function whatItDoes(kind: LinkKind, isMain: boolean): string[] {
+  const lines: string[] = [];
+  if (kind.hierarchy === "one parent") {
+    lines.push("A tree: an item is in at most one at a time, so containers of this kind don't overlap.");
+    lines.push("Shown under Items → Tree and in the Diagram (choose the tree there), as a line on each item's page, and as areas on maps (Areas ▾ → Tree).");
+    if (isMain) lines.push("The main tree: the trail under an item's name and the new-item form follow it.");
+  } else if (kind.hierarchy === "several parents") {
+    lines.push("Groups: an item can be in many at once, and groups can overlap.");
+    lines.push("Shown under Items → Groups, as Groups and members on each item's page, and as dashed areas on maps.");
+  } else {
+    lines.push("A connection: it joins two items and contains nothing (a road, an alliance).");
+    lines.push("Drawing connections comes next: until then links of this kind are listed under Links on an item's page.");
+  }
+  lines.push(kind.direction === "both ways" ? "Both ways: it reads the same from either end." : `One way: from the other end it reads "${kind.reverseName ?? `${kind.name} (from)`}".`);
+  lines.push("Expects (below) only warns, and only once connections can be drawn.");
+  return lines;
 }

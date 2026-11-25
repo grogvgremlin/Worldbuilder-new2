@@ -1,11 +1,12 @@
-// World → a map: places pinned on a blank sheet. Drag the sheet to pan, pinch (or the wheel) to
-// zoom, drag a pin to move it, tap a pin for its card, "+ Place" then tap the sheet to pin one.
+// World → a map: items pinned on a blank sheet. Drag the sheet to pan, pinch (or the wheel) to
+// zoom, drag a pin to move it, tap a pin for its card, "+ Item" then tap the sheet to pin one, or
+// double-tap the sheet for a new item there (owner, 25 Nov).
 // Places holding pinned places show as soft areas around them (worked out, never stored).
 // Design: design/world-structure.md §5 (pin things to a map; pins per map in its own coordinates;
 // abstract views zoom by containment); spec/pillars/background-and-narrative.md §6 (pin icons from
 // the kind; labels from names; in-tool drawing minimal); session-20 notes 3 §0 (world leads on
 // desktop, works on the phone).
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent } from "react";
 import type { Thing, WorldMap } from "../../../items/items";
 import { areasOn, groupAreasOn, iconOf, notOnMap, placePin, removePin, type Area } from "../../../world/maps";
 import { pathOf } from "../../../world/places";
@@ -14,6 +15,7 @@ import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { NewPlace } from "./WorldScreen";
 import { TextBox } from "./text-box";
+import { TreePicker, useChosenTree } from "./tree-picker";
 
 type View = { k: number; tx: number; ty: number }; // screen = map × k + t
 type Point = { x: number; y: number };
@@ -24,6 +26,8 @@ type Gesture =
   | null;
 
 const TAP = 6; // px a finger may wander and still be a tap
+const DOUBLE_TAP_MS = 350;
+const DOUBLE_TAP_PX = 30;
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 12;
 
@@ -42,6 +46,9 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
   const wrap = useRef<HTMLDivElement>(null);
   const pointers = useRef(new Map<number, Point>());
   const gesture = useRef<Gesture>(null);
+  const lastTap = useRef<{ at: Point; time: number } | null>(null); // for a double tap
+  const [newAt, setNewAt] = useState<Point | null>(null); // a double tap here: a new item pinned at this point
+  const [tree, setTree] = useChosenTree(data, map?.world ?? "");
 
   // The sheet's size on screen, kept up to date (turning the phone, resizing the window).
   useEffect(() => {
@@ -135,7 +142,18 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
         await save(placePin(map, placing, p.x, p.y));
         setSelected(placing);
         setPlacing(null);
-      } else setSelected(null);
+      } else {
+        // A second tap close by and soon after: a new item here (owner, 25 Nov).
+        const at = local(e);
+        const before = lastTap.current;
+        if (before && Date.now() - before.time < DOUBLE_TAP_MS && distance(at, before.at) < DOUBLE_TAP_PX) {
+          lastTap.current = null;
+          setNewAt(toMap(at, view));
+        } else {
+          lastTap.current = { at, time: Date.now() };
+          setSelected(null);
+        }
+      }
     }
   };
 
@@ -147,7 +165,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
     setView({ k, tx: at.x - anchor.x * k, ty: at.y - anchor.y * k });
   };
 
-  const allAreas = [...areasOn(data.items, map), ...groupAreasOn(data.items, map)];
+  const allAreas = [...areasOn(data.items, map, tree), ...groupAreasOn(data.items, map)];
   const selectedThing = selected ? things.get(selected) : undefined;
   const placingThing = placing ? things.get(placing) : undefined;
 
@@ -156,10 +174,14 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
       <div className="map-bar">
         <h1>{map.name}</h1>
         <span className="map-tools">
-          <button className="primary" onClick={() => setAdding(true)}>+ Place</button>
+          <button className="primary" onClick={() => setAdding(true)}>+ Item</button>
           <span className="areas-menu">
             <button className={shown.all ? "tool on" : "tool"} onClick={() => setAreasMenu(!areasMenu)}>Areas ▾</button>
-            {areasMenu && <AreasMenu areas={allAreas} shown={shown} onChange={showArea} onClose={() => setAreasMenu(false)} />}
+            {areasMenu && (
+              <AreasMenu areas={allAreas} shown={shown} onChange={showArea} onClose={() => setAreasMenu(false)}>
+                <TreePicker data={data} world={map.world} tree={tree} onChoose={setTree} />
+              </AreasMenu>
+            )}
           </span>
           <button className={locked ? "tool on" : "tool"} onClick={() => setLocked(!locked)}>{locked ? "Locked" : "Lock"}</button>
           <button className="tool" onClick={() => size && setView(fitView(map, size))}>Fit</button>
@@ -201,6 +223,18 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
           onClose={() => setSelected(null)}
         />
       )}
+      {newAt && (
+        <NewHere
+          data={data}
+          world={map.world}
+          onMade={async (key) => {
+            await save(placePin(map, key, newAt.x, newAt.y));
+            setSelected(key);
+            setNewAt(null);
+          }}
+          onClose={() => setNewAt(null)}
+        />
+      )}
       {adding && <AddSheet data={data} map={map} onPick={(key) => (setAdding(false), setSelected(null), setPlacing(key))} onClose={() => setAdding(false)} />}
 
       <details className="how map-settings">
@@ -213,10 +247,10 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
           <span className="sub">Description</span>
           <TextBox multiline className="description-box" value={map.description ?? ""} placeholder="What it shows, who drew it, when" onSave={(v) => save({ ...map, description: v || undefined })} />
         </label>
-        <p className="sub">A drawn map is unreliable for scale: distances come from the links between places, not from where the pins sit. A picture behind the map comes with images.</p>
+        <p className="sub">A drawn map is unreliable for scale: distances come from the links between items, not from where the pins sit. A picture behind the map comes with images.</p>
         <div className="buttons">
           <button className="danger" onClick={async () => {
-            if (!confirm(`Remove the map ${map.name}? Its places stay in the world.`)) return;
+            if (!confirm(`Remove the map ${map.name}? Its items stay in the world.`)) return;
             await data.removeItems([map.key]);
             nav.back();
           }}>Remove this map</button>
@@ -315,20 +349,21 @@ function saveAreasShown(mapKey: string, shown: AreasShown) {
   }
 }
 
-function AreasMenu({ areas, shown, onChange, onClose }: { areas: Area[]; shown: AreasShown; onChange: (s: AreasShown) => void; onClose: () => void }) {
+function AreasMenu({ areas, shown, onChange, onClose, children }: { areas: Area[]; shown: AreasShown; onChange: (s: AreasShown) => void; onClose: () => void; children?: ReactNode }) {
   const toggle = (key: string) => onChange({ ...shown, hidden: shown.hidden.includes(key) ? shown.hidden.filter((k) => k !== key) : [...shown.hidden, key] });
   return (
     <>
       <div className="menu-catcher" onClick={onClose} />
       <div className="filter-panel areas-panel">
         <label className="choice"><input type="checkbox" checked={shown.all} onChange={() => onChange({ ...shown, all: !shown.all })} /> <b>Show areas</b></label>
-        {areas.length === 0 && <p className="sub">No areas: a place shows as one once something inside it is pinned here.</p>}
+        {children}
+        {areas.length === 0 && <p className="sub">No areas: an item shows as one once something inside it is pinned here.</p>}
         {(["containment", "group"] as const).map((by) => {
           const these = areas.filter((a) => a.by === by);
           if (these.length === 0) return null;
           return (
             <div key={by}>
-              <div className="sub menu-heading">{by === "group" ? "Groups" : "Places"}</div>
+              <div className="sub menu-heading">{by === "group" ? "Groups" : "Containers"}</div>
               {these.map((a) => (
                 <label key={areaId(a)} className="choice" style={{ paddingLeft: 8 + a.depth * 16, opacity: shown.all ? 1 : 0.5 }}>
                   <input type="checkbox" disabled={!shown.all} checked={!shown.hidden.includes(areaId(a))} onChange={() => toggle(areaId(a))} /> {a.thing.name}
@@ -359,6 +394,18 @@ function PinCard({ data, thing, onOpen, onUnpin, onClose }: { data: AppData; thi
 }
 
 // Choose a place not yet on this map, or make a new one, then tap where it goes.
+// A new item, made where the map was double-tapped: its name (and where it sits), then pinned there.
+function NewHere({ data, world, onMade, onClose }: { data: AppData; world: string; onMade: (key: string) => void; onClose: () => void }) {
+  return (
+    <div className="popup-back" onClick={onClose}>
+      <div className="popup" onClick={(e) => e.stopPropagation()}>
+        <button className="link popup-close" aria-label="Close" onClick={onClose}>✕</button>
+        <NewPlace data={data} world={world} save={(items) => data.setItems(items)} onMade={onMade} autoFocus />
+      </div>
+    </div>
+  );
+}
+
 function AddSheet({ data, map, onPick, onClose }: { data: AppData; map: WorldMap; onPick: (key: string) => void; onClose: () => void }) {
   const [text, setText] = useState("");
   const [, setChanged] = useState(0);
@@ -367,9 +414,9 @@ function AddSheet({ data, map, onPick, onClose }: { data: AppData; map: WorldMap
     <div className="popup-back" onClick={onClose}>
       <div className="popup" onClick={(e) => e.stopPropagation()}>
         <button className="link popup-close" aria-label="Close" onClick={onClose}>✕</button>
-        <h2>Pin a place</h2>
+        <h2>Pin an item</h2>
         <input className="filter" placeholder="Find" value={text} onChange={(e) => setText(e.target.value)} />
-        {off.length === 0 && <p className="sub">Every place is on this map. Make a new one below.</p>}
+        {off.length === 0 && <p className="sub">Every item is on this map. Make a new one below.</p>}
         <ul className="list">
           {off.map((t) => (
             <li key={t.key}>

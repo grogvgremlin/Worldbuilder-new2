@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Item, Thing, WorldMap } from "../src/items/items";
 import { Item as ItemSchema } from "../src/items/items";
 import { linksIn, mapsIn, newKey, newWorld, removeThing, removeThingKind, thingsIn, worldOf } from "../src/world/world";
-import { childrenOf, parentOf, pathOf, setParent, topPlaces, treeWarnings } from "../src/world/places";
+import { childrenOf, isContainer, parentOf, pathOf, setParent, topPlaces, treeKinds, treeWarnings } from "../src/world/places";
 import { areasOn, convexHull, notOnMap, placePin, removePin } from "../src/world/maps";
 
 const sample = () => newWorld([], "Averland borders", "sample");
@@ -125,5 +125,46 @@ describe("maps", () => {
 
   it("the hull keeps only the outside points", () => {
     expect(convexHull([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }, { x: 5, y: 5 }])).toHaveLength(4);
+  });
+});
+
+describe("several trees (owner, 25 Nov: by province, by terrain …)", () => {
+  const W = "averland-borders";
+  const withTerrain = () => {
+    const items = sample();
+    const terrain: Item = { key: `${W}.link-kind.in-terrain`, kind: "link-kind", world: W, name: "in terrain", direction: "one-way", hierarchy: "one parent" };
+    const hills: Item = { key: `${W}.thing.hill-country`, kind: "thing", world: W, name: "Hill country", kinds: [], fields: [] };
+    return { items: [...items, terrain, hills], tree: terrain.key, hills: hills.key };
+  };
+
+  it("an item has a parent in each tree, apart", () => {
+    const { items, tree, hills } = withTerrain();
+    const heideck = key(items, "Heideck");
+    const after = setParent(items, W, heideck, hills, tree).items;
+    expect(parentOf(after, W, heideck, tree)).toBe(hills);
+    expect(parentOf(after, W, heideck)).toBe(key(items, "Averland")); // the main tree is untouched
+    expect(pathOf(after, W, heideck, tree).map((t) => t.name)).toEqual(["Hill country", "Heideck"]);
+  });
+
+  it("the world's trees: one-parent link kinds, the main one first", () => {
+    const { items } = withTerrain();
+    expect(treeKinds(items, W).map((k) => k.name)).toEqual(["in", "in terrain"]);
+  });
+
+  it("an item holding something by any tree or group is a container; the rest are base items", () => {
+    const { items, tree, hills } = withTerrain();
+    const after = setParent(items, W, key(items, "Heideck"), hills, tree).items;
+    expect(isContainer(after, W, hills)).toBe(true); // by terrain
+    expect(isContainer(after, W, key(items, "Averland"))).toBe(true); // by province
+    expect(isContainer(after, W, key(items, "Zweibrücken"))).toBe(true); // a group
+    expect(isContainer(after, W, key(items, "Heideck"))).toBe(false);
+  });
+
+  it("map areas follow the tree chosen", () => {
+    const { items, tree, hills } = withTerrain();
+    let after = setParent(items, W, key(items, "Heideck"), hills, tree).items;
+    after = setParent(after, W, key(items, "Kleindorf"), hills, tree).items;
+    const map = mapsIn(after, W)[0];
+    expect(areasOn(after, map, tree).map((a) => a.thing.name)).toEqual(["Hill country"]);
   });
 });

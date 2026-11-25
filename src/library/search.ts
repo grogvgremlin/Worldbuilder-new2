@@ -2,6 +2,7 @@
 // Best first: a name that starts with what's typed, then a name containing it, then an alias, a type
 // or the key. Pure.
 
+import { isWorldItem } from "../world/world";
 import type { Context, Item, Roster } from "../items/items";
 import { viewRoster } from "../lists/roster";
 import { gameUnits } from "../lists/game-view";
@@ -41,7 +42,7 @@ export function search(items: Item[], text: string, most = 30): Found[] {
   if (q.length === 0) return [];
   const ranked: { found: Found; rank: number }[] = [];
   for (const item of items) {
-    if (item.kind === "sandbox") continue;
+    if (item.kind === "sandbox" || isWorldItem(item)) continue; // worlds are searched in World
     const name = item.name.toLowerCase();
     const alias = aliasesOf(item).find((a) => a.toLowerCase().includes(q));
     const type = typesOf(item).find((t) => t.toLowerCase().includes(q));

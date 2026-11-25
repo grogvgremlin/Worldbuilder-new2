@@ -24,6 +24,12 @@ import { RosterItemsScreen } from "./screens/lists/RosterItemsScreen";
 import { useBackSwipe } from "./swipe";
 import { PresetScreen } from "./screens/config/PresetScreen";
 import { SettingScreen } from "./screens/config/SettingScreen";
+import { WorldsScreen } from "./screens/world/WorldsScreen";
+import { WorldScreen } from "./screens/world/WorldScreen";
+import { PlaceScreen } from "./screens/world/PlaceScreen";
+import { MapScreen } from "./screens/world/MapScreen";
+import { LinkKindScreen, ThingKindScreen } from "./screens/world/KindScreens";
+import { worldOf } from "../world/world";
 
 export type Screen =
   | { name: "library" }
@@ -41,7 +47,13 @@ export type Screen =
   | { name: "pickup"; key: string }
   | { name: "roster"; key: string }
   | { name: "roster-unit"; roster: string; unit: string }
-  | { name: "roster-items"; roster: string; unit: string; where: string; allowance: string };
+  | { name: "roster-items"; roster: string; unit: string; where: string; allowance: string }
+  | { name: "world-root" } // the open world's page, or your worlds when none is open
+  | { name: "worlds" }
+  | { name: "place"; key: string }
+  | { name: "map"; key: string; focus?: string; place?: string }
+  | { name: "thing-kind"; key: string }
+  | { name: "link-kind"; key: string };
 
 export type Nav = { open: (s: Screen) => void; back: () => void; home: () => void };
 
@@ -63,17 +75,17 @@ function mayLeave(): boolean {
 type Tool = "world" | "lists" | "battle" | "campaign" | "settings";
 
 const TOOLS: { id: Tool; label: string; comingNext: string }[] = [
-  { id: "world", label: "World", comingNext: "Worlds come after Lists." },
+  { id: "world", label: "World", comingNext: "" },
   { id: "lists", label: "Lists", comingNext: "" },
   { id: "battle", label: "Battle", comingNext: "Battles come later." },
   { id: "campaign", label: "Campaign", comingNext: "Campaigns come later." },
 ];
 
-const ROOTS: Record<Tool, Screen | null> = { world: null, lists: { name: "lists" }, battle: null, campaign: null, settings: { name: "library" } };
+const ROOTS: Record<Tool, Screen | null> = { world: { name: "world-root" }, lists: { name: "lists" }, battle: null, campaign: null, settings: { name: "library" } };
 
 export function App({ data }: { data: AppData }) {
   const [tool, setTool] = useState<Tool>(data.items.some((i) => i.kind === "game") ? "lists" : "settings");
-  const [stacks, setStacks] = useState<Record<Tool, Screen[]>>({ world: [], lists: [{ name: "lists" }], battle: [], campaign: [], settings: [{ name: "library" }] });
+  const [stacks, setStacks] = useState<Record<Tool, Screen[]>>({ world: [{ name: "world-root" }], lists: [{ name: "lists" }], battle: [], campaign: [], settings: [{ name: "library" }] });
   const [draft, setDraft] = useState<Draft | null>(null);
   const [, setVersion] = useState(0);
   const refresh = () => setVersion((v) => v + 1);
@@ -87,6 +99,14 @@ export function App({ data }: { data: AppData }) {
   };
   const screen = stack[stack.length - 1];
   const backSwipe = useBackSwipe(() => nav.back());
+  // Opening a world (from the switcher or the list) starts the World tab afresh on it.
+  const openWorld = async (key: string) => {
+    await data.setOpenWorld(key);
+    setStacks((all) => ({ ...all, world: [{ name: "world-root" }] }));
+    setTool("world");
+  };
+  const showSwitcher = tool === "world" || tool === "campaign";
+  const openWorldName = data.openWorld ? worldOf(data.items, data.openWorld)?.name : undefined;
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [screen, tool]);
@@ -96,10 +116,15 @@ export function App({ data }: { data: AppData }) {
       <header className="top">
         {stack.length > 1 ? (
           <button className="link back" onClick={nav.back}>‹ Back</button>
+        ) : showSwitcher ? (
+          <button className="link world-chip" onClick={() => setStacks((all) => ({ ...all, [tool]: [...all[tool], { name: "worlds" }] }))}>
+            {openWorldName ?? "Choose a world"} ▾
+          </button>
         ) : (
           <span className="brand">Worldbuilder</span>
         )}
         <span className="header-links">
+
           <button className="link" aria-label="Search" onClick={() => screen?.name !== "search" && nav.open({ name: "search", start: scopeOf(screen, data) })}>Search</button>
           <button className={"link" + (tool === "settings" ? " current" : "")} onClick={() => mayLeave() && setTool("settings")}>
             Settings
@@ -121,7 +146,7 @@ export function App({ data }: { data: AppData }) {
                 <button className={screen.name === "data" ? "on" : ""} onClick={() => setStack(() => [{ name: "data" }])}>Data</button>
               </nav>
             )}
-            {render(screen, data, nav, draft, setDraft, refresh)}
+            {render(screen, data, nav, draft, setDraft, refresh, openWorld)}
           </>
         )}
       </main>
@@ -137,8 +162,20 @@ export function App({ data }: { data: AppData }) {
   );
 }
 
-function render(screen: Screen, data: AppData, nav: Nav, draft: Draft | null, setDraft: (d: Draft | null) => void, refresh: () => void) {
+function render(screen: Screen, data: AppData, nav: Nav, draft: Draft | null, setDraft: (d: Draft | null) => void, refresh: () => void, openWorld: (key: string) => void) {
   switch (screen.name) {
+    case "world-root":
+      return data.openWorld && worldOf(data.items, data.openWorld) ? <WorldScreen key={data.openWorld} data={data} nav={nav} worldKey={data.openWorld} /> : <WorldsScreen data={data} onOpen={openWorld} />;
+    case "worlds":
+      return <WorldsScreen data={data} onOpen={openWorld} />;
+    case "place":
+      return <PlaceScreen key={screen.key} data={data} nav={nav} thingKey={screen.key} />;
+    case "map":
+      return <MapScreen key={`${screen.key}|${screen.focus}|${screen.place}`} data={data} nav={nav} mapKey={screen.key} focus={screen.focus} place={screen.place} />;
+    case "thing-kind":
+      return <ThingKindScreen key={screen.key} data={data} nav={nav} kindKey={screen.key} />;
+    case "link-kind":
+      return <LinkKindScreen key={screen.key} data={data} nav={nav} kindKey={screen.key} />;
     case "library":
       return <LibraryScreen data={data} nav={nav} onDraft={(d) => (setDraft(d), nav.open({ name: "draft" }))} />;
     case "game":

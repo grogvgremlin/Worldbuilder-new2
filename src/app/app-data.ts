@@ -7,6 +7,7 @@ import { unitsToDifferences } from "../rules/race-deltas";
 import type { Item } from "../items/items";
 import { moveItem, planUpload, removeGame, removePackages, type ClashChoice, type UploadPlan } from "../library/library";
 import { pickupSandbox } from "../context/context";
+import { isWorldItem } from "../world/world";
 import { readFullYaml } from "../packages/full-yaml";
 import { readUploads, type UploadFile } from "../library/upload";
 import type { Problem } from "../packages/formats";
@@ -17,6 +18,8 @@ export type Draft = { fileNames: string[]; problems: Problem[]; uploaded: Item[]
 
 export class AppData {
   items: Item[] = [];
+  openWorld: string | null = null; // the world open in World (and later Campaign): the header's switcher
+
 
   constructor(private store: Store) {}
 
@@ -28,6 +31,12 @@ export class AppData {
       this.items = [...this.items, pickupSandbox()];
       await this.store.replaceItems(this.items);
     }
+    this.openWorld = (await this.store.getSetting("openWorld")) ?? null;
+  }
+
+  async setOpenWorld(key: string | null): Promise<void> {
+    this.openWorld = key;
+    await this.store.setSetting("openWorld", key ?? "");
   }
 
   async readDraft(files: UploadFile[]): Promise<Draft> {
@@ -97,9 +106,9 @@ export class AppData {
     return [];
   }
 
-  // Removes the library (games, books, packages) but keeps pick-up contexts and lists.
+  // Removes the library (games, books, packages) but keeps pick-up contexts, lists and worlds.
   async wipeLibrary(): Promise<void> {
-    this.items = this.items.filter((i) => i.kind === "context" || i.kind === "roster" || i.kind === "sandbox");
+    this.items = this.items.filter((i) => i.kind === "context" || i.kind === "roster" || i.kind === "sandbox" || isWorldItem(i));
     await this.store.replaceItems(this.items);
   }
 

@@ -2,17 +2,114 @@
   "name": "Averland borders",
   "description": "A made-up sample to try the World tool on: a few provinces and towns, and one map.",
   "things": [
-    { "name": "The Empire", "kinds": ["Realm"], "summary": "The greatest realm of men." },
-    { "name": "Averland", "kinds": ["Province"], "in": "The Empire", "summary": "Rolling grassland and cattle country.", "fields": { "capital": "Averheim" } },
-    { "name": "Wissenland", "kinds": ["Province"], "in": "The Empire", "fields": { "capital": "Nuln" } },
-    { "name": "Stirland", "kinds": ["Province"], "in": "The Empire" },
-    { "name": "Averheim", "kinds": ["Settlement"], "in": "Averland", "summary": "Seat of the Elector of Averland.", "fields": { "size": "city" } },
-    { "name": "Grenzstadt", "kinds": ["Settlement"], "in": "Averland", "fields": { "size": "town" } },
-    { "name": "Streissen", "kinds": ["Settlement"], "in": "Averland", "fields": { "size": "town" } },
-    { "name": "Heideck", "kinds": ["Settlement"], "in": "Averland", "fields": { "size": "town" } },
-    { "name": "Kleindorf", "kinds": ["Settlement"], "in": "Averland", "summary": "A village on the river.", "fields": { "size": "village" } },
-    { "name": "Nuln", "kinds": ["Settlement"], "in": "Wissenland", "summary": "City of guns and the Imperial Gunnery School.", "fields": { "size": "city" } },
-    { "name": "Wurtbad", "kinds": ["Settlement"], "in": "Stirland", "fields": { "size": "city" } }
+    {
+      "name": "The Empire",
+      "kinds": [
+        "Place"
+      ],
+      "summary": "The greatest realm of men."
+    },
+    {
+      "name": "Averland",
+      "kinds": [
+        "Place"
+      ],
+      "in": "The Empire",
+      "summary": "Rolling grassland and cattle country.",
+      "fields": {
+        "capital": "Averheim"
+      }
+    },
+    {
+      "name": "Wissenland",
+      "kinds": [
+        "Place"
+      ],
+      "in": "The Empire",
+      "fields": {
+        "capital": "Nuln"
+      }
+    },
+    {
+      "name": "Stirland",
+      "kinds": [
+        "Place"
+      ],
+      "in": "The Empire"
+    },
+    {
+      "name": "Averheim",
+      "kinds": [
+        "Place"
+      ],
+      "in": "Averland",
+      "summary": "Seat of the Elector of Averland.",
+      "fields": {
+        "size": "city"
+      }
+    },
+    {
+      "name": "Grenzstadt",
+      "kinds": [
+        "Place"
+      ],
+      "in": "Averland",
+      "fields": {
+        "size": "town"
+      }
+    },
+    {
+      "name": "Streissen",
+      "kinds": [
+        "Place"
+      ],
+      "in": "Averland",
+      "fields": {
+        "size": "town"
+      }
+    },
+    {
+      "name": "Heideck",
+      "kinds": [
+        "Place"
+      ],
+      "in": "Averland",
+      "fields": {
+        "size": "town"
+      }
+    },
+    {
+      "name": "Kleindorf",
+      "kinds": [
+        "Place"
+      ],
+      "in": "Averland",
+      "summary": "A village on the river.",
+      "fields": {
+        "size": "village"
+      }
+    },
+    {
+      "name": "Nuln",
+      "kinds": [
+        "Place"
+      ],
+      "in": "Wissenland",
+      "summary": "City of guns and the Imperial Gunnery School.",
+      "fields": {
+        "size": "city"
+      }
+    },
+    {
+      "name": "Wurtbad",
+      "kinds": [
+        "Place"
+      ],
+      "in": "Stirland",
+      "fields": {
+        "size": "city"
+      }
+    }
   ],
   "maps": [
     {
@@ -20,13 +117,41 @@
       "width": 1000,
       "height": 700,
       "pins": [
-        { "thing": "Averheim", "x": 640, "y": 330 },
-        { "thing": "Grenzstadt", "x": 790, "y": 470 },
-        { "thing": "Streissen", "x": 560, "y": 450 },
-        { "thing": "Heideck", "x": 720, "y": 220 },
-        { "thing": "Kleindorf", "x": 600, "y": 230 },
-        { "thing": "Nuln", "x": 300, "y": 300 },
-        { "thing": "Wurtbad", "x": 560, "y": 90 }
+        {
+          "thing": "Averheim",
+          "x": 640,
+          "y": 330
+        },
+        {
+          "thing": "Grenzstadt",
+          "x": 790,
+          "y": 470
+        },
+        {
+          "thing": "Streissen",
+          "x": 560,
+          "y": 450
+        },
+        {
+          "thing": "Heideck",
+          "x": 720,
+          "y": 220
+        },
+        {
+          "thing": "Kleindorf",
+          "x": 600,
+          "y": 230
+        },
+        {
+          "thing": "Nuln",
+          "x": 300,
+          "y": 300
+        },
+        {
+          "thing": "Wurtbad",
+          "x": 560,
+          "y": 90
+        }
       ]
     }
   ]

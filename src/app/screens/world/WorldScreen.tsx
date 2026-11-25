@@ -55,7 +55,7 @@ function Places({ data, nav, world, save }: Part) {
   return (
     <>
       <input className="filter" placeholder="Find a place (name, other names, summary)" value={text} onChange={(e) => setText(e.target.value)} />
-      {kinds.length > 0 && (
+      {kinds.length > 1 && (
         <div className="chips">
           {kinds.map((k) => (
             <button key={k.key} className={kind === k.key ? "on" : ""} onClick={() => setKind(kind === k.key ? null : k.key)}>
@@ -126,7 +126,9 @@ function PlaceRow({ data, thing, withPath, count, onOpen }: { data: AppData; thi
 export function NewPlace({ data, world, save, onMade, inside }: { data: AppData; world: string; save: (items: Item[]) => Promise<void>; onMade: (key: string) => void; inside?: string }) {
   const kinds = thingKindsIn(data.items, world);
   const [name, setName] = useState("");
-  const [kind, setKind] = useState(inside ? usualKindInside(data.items, world, inside) : "");
+  // With one kind (the starter's generic Place), every new place has it; with several, the kind most
+  // of its new siblings have.
+  const [kind, setKind] = useState(kinds.length === 1 ? kinds[0].key : inside ? usualKindInside(data.items, world, inside) : "");
   const [parent, setParentKey] = useState(inside ?? "");
   const places = thingsIn(data.items, world).sort((a, b) => a.name.localeCompare(b.name));
   const make = async () => {
@@ -144,6 +146,7 @@ export function NewPlace({ data, world, save, onMade, inside }: { data: AppData;
       <h2>{inside ? "Add a place inside" : "New place"}</h2>
       <input className="filter" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && make()} />
       <div className="row-fields">
+        {kinds.length > 1 && (
         <label className="stack">
           <span className="sub">Kind</span>
           <select value={kind} onChange={(e) => setKind(e.target.value)}>
@@ -151,6 +154,7 @@ export function NewPlace({ data, world, save, onMade, inside }: { data: AppData;
             {kinds.map((k) => <option key={k.key} value={k.key}>{k.icon} {k.name}</option>)}
           </select>
         </label>
+        )}
         {!inside && (
           <label className="stack">
             <span className="sub">In</span>

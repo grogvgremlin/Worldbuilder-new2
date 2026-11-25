@@ -13,3 +13,26 @@ export function useRemembered<T>(key: string, start: T): [T, (value: T) => void]
   };
   return [value, set];
 }
+
+// The same, kept on this device across visits (the diagram's direction and drag mode): a view
+// setting, never stored with the world. Falls back to memory where the device keeps nothing.
+export function useKept<T>(key: string, start: T): [T, (value: T) => void] {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const saved = localStorage.getItem(`worldbuilder.view.${key}`);
+      if (saved !== null) return JSON.parse(saved) as T;
+    } catch {
+      // nothing kept: start afresh
+    }
+    return start;
+  });
+  const set = (next: T) => {
+    try {
+      localStorage.setItem(`worldbuilder.view.${key}`, JSON.stringify(next));
+    } catch {
+      // not kept: applies until the app closes
+    }
+    setValue(next);
+  };
+  return [value, set];
+}

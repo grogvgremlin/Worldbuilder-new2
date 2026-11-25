@@ -321,3 +321,9 @@ label.stack { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8p
 .diagram-node.dragging { opacity: .35; }
 .diagram-node.target rect { stroke: var(--accent); stroke-width: 3; }
 .diagram-node.ghost { opacity: .85; pointer-events: none; } .diagram-node.ghost rect { stroke: var(--accent); }
+.swipe-hint { margin: 0 0 6px; font-size: .8rem; } @media (hover: hover) and (pointer: fine) { .swipe-hint { display: none; } }
+.diagram-bar { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; margin-bottom: 4px; }
+.diagram-bar .segments { margin: 0; }
+.diagram-bar .choice { display: flex; gap: 6px; align-items: center; font-size: .9rem; }
+.diagram-hint { margin: 2px 0 8px; }
+.diagram-node.moving rect { stroke: var(--accent); }

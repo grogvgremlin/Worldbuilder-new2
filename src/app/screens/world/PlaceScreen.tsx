@@ -14,6 +14,7 @@ import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { NewPlace } from "./WorldScreen";
 import { TextBox } from "./text-box";
+import { SwipeRow } from "../../swipe";
 
 export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; thingKey: string }) {
   const [editing, setEditing] = useState(false);
@@ -289,15 +290,18 @@ function Contents({ data, nav, thing, editing, save }: { data: AppData; nav: Nav
   return (
     <section>
       <h2>{reverse ? `${reverse[0].toUpperCase()}${reverse.slice(1)}` : "Contains"} ({children.length})</h2>
+      {children.length > 0 && <p className="sub swipe-hint">Swipe one left to take it out: it then sits straight in the world.</p>}
       <ul className="list">
         {children.map((c) => (
           <li key={c.key}>
-            <button onClick={() => nav.open({ name: "place", key: c.key })}>
-              <span className="title">{iconOf(data.items, c)} {c.name}</span>
-              {(c.summary || childrenOf(data.items, world, c.key).length > 0) && (
-                <span className="sub">{[c.summary, childrenOf(data.items, world, c.key).length ? `${childrenOf(data.items, world, c.key).length} inside` : ""].filter(Boolean).join(" · ")}</span>
-              )}
-            </button>
+            <SwipeRow action="Take out" onAction={async () => await save(setParent(data.items, world, c.key, null).items)}>
+              <button onClick={() => nav.open({ name: "place", key: c.key })}>
+                <span className="title">{iconOf(data.items, c)} {c.name}</span>
+                {(c.summary || childrenOf(data.items, world, c.key).length > 0) && (
+                  <span className="sub">{[c.summary, childrenOf(data.items, world, c.key).length ? `${childrenOf(data.items, world, c.key).length} inside` : ""].filter(Boolean).join(" · ")}</span>
+                )}
+              </button>
+            </SwipeRow>
           </li>
         ))}
       </ul>
@@ -343,12 +347,15 @@ function InGroups({ data, nav, thing, editing, save }: GroupPart) {
   return (
     <section>
       <h2>Groups ({groups.length})</h2>
-      <ul className="plain">
+      <ul className="list">
         {groups.map((g) => (
           <li key={g.link.key}>
-            {linkWord(data, world, g, false)}
-            <button className="link" onClick={() => nav.open({ name: "place", key: g.thing.key })}>{g.thing.name}</button>
-            {editing && <button className="link remove-x" aria-label="Take out" onClick={() => save(removeFromGroup(data.items, world, thing.key, g.linkKind.key, g.thing.key))}>✕</button>}
+            <SwipeRow action="Leave" onAction={() => save(removeFromGroup(data.items, world, thing.key, g.linkKind.key, g.thing.key))}>
+              <button onClick={() => nav.open({ name: "place", key: g.thing.key })}>
+                <span className="title">{linkWord(data, world, g, false)}{iconOf(data.items, g.thing)} {g.thing.name}</span>
+                {g.thing.summary && <span className="sub">{g.thing.summary}</span>}
+              </button>
+            </SwipeRow>
           </li>
         ))}
       </ul>
@@ -385,12 +392,13 @@ function Members({ data, nav, thing, editing, save }: GroupPart) {
       {editing && members.length === 0 && <p className="sub">Add items to make this a group: they stay where they are, and can be in other groups too.</p>}
       <ul className="list">
         {members.map((m) => (
-          <li key={m.link.key} className="branch">
-            <button onClick={() => nav.open({ name: "place", key: m.thing.key })}>
-              <span className="title">{linkWord(data, world, m, true)}{iconOf(data.items, m.thing)} {m.thing.name}</span>
-              <span className="sub">{pathOf(data.items, world, m.thing.key).slice(0, -1).map((t) => t.name).join(" › ")}</span>
-            </button>
-            {editing && <button className="link remove-x" aria-label="Take out" onClick={() => save(removeFromGroup(data.items, world, m.thing.key, m.linkKind.key, thing.key))}>✕</button>}
+          <li key={m.link.key}>
+            <SwipeRow action="Take out" onAction={() => save(removeFromGroup(data.items, world, m.thing.key, m.linkKind.key, thing.key))}>
+              <button onClick={() => nav.open({ name: "place", key: m.thing.key })}>
+                <span className="title">{linkWord(data, world, m, true)}{iconOf(data.items, m.thing)} {m.thing.name}</span>
+                <span className="sub">{pathOf(data.items, world, m.thing.key).slice(0, -1).map((t) => t.name).join(" › ")}</span>
+              </button>
+            </SwipeRow>
           </li>
         ))}
       </ul>

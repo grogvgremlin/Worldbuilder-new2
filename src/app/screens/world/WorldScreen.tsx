@@ -105,7 +105,7 @@ function Items({ data, nav, world, save }: Part) {
           </div>
           {view === "tree" ? (
             <ul className="list tree">
-              <li className="tree-root">🌍 {worldName}</li>
+              <li className="tree-root">{worldName}</li>
               {topPlaces(data.items, world, tree)
                 .filter((t) => !isOnlyAGroup(data.items, world, t.key))
                 .map((t) => <Branch key={t.key} data={data} nav={nav} world={world} tree={tree} thing={t} depth={1} />)}

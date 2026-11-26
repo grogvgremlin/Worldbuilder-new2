@@ -8,14 +8,14 @@
 
 import type { Item, Link, LinkKind, Thing } from "../items/items";
 import { linkKindsIn, linksIn, newLink, thingsIn, worldOf } from "./world";
-import { fitsTree, misfit } from "./kinds";
+import { fitsTree, inOrder, refusal } from "./kinds";
 
-// The world's trees: its link kinds declared "one parent", the main one first.
+// The world's trees: its link kinds declared "one parent", in the world's order, else the main one first.
 export function treeKinds(items: Item[], world: string): LinkKind[] {
-  const main = worldOf(items, world)?.tree;
-  return linkKindsIn(items, world)
-    .filter((k) => k.hierarchy === "one parent")
-    .sort((a, b) => (a.key === main ? -1 : b.key === main ? 1 : a.name.localeCompare(b.name)));
+  const w = worldOf(items, world);
+  const trees = linkKindsIn(items, world).filter((k) => k.hierarchy === "one parent");
+  if (w?.kindOrder?.length) return inOrder(items, world, trees); // the owner's order (World → Kinds)
+  return trees.sort((a, b) => (a.key === w?.tree ? -1 : b.key === w?.tree ? 1 : a.name.localeCompare(b.name)));
 }
 
 function treeOrMain(items: Item[], world: string, tree?: string): string | undefined {
@@ -97,7 +97,7 @@ export function setParent(items: Item[], world: string, thing: string, parent: s
   if (!kind) return { items, problem: "this world has no tree link kind (World → Kinds)" };
   if (parent === thing) return { items, problem: "an item can't be inside itself" };
   if (parent && descendantsOf(items, world, thing, kind).some((d) => d.key === parent)) return { items, problem: "that item is inside this one already" };
-  const wrong = parent ? misfit(items, world, kind, "from", thing) ?? misfit(items, world, kind, "to", parent) : null;
+  const wrong = parent ? refusal(items, world, kind, "from", thing) ?? refusal(items, world, kind, "to", parent) : null;
   if (wrong) return { items, problem: wrong };
   const kept = items.filter((i) => !(i.kind === "link" && i.world === world && i.linkKind === kind && i.from === thing));
   if (!parent) return { items: kept };

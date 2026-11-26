@@ -323,13 +323,13 @@ function Areas({ areas, k, selected, treeStyle }: { areas: Area[]; k: number; se
           <g key={areaId(a)} className={(a.by === "group" ? "area group" : treeStyle(a.tree) > 0 ? `area other tree-${treeStyle(a.tree) % 3}` : `area depth-${a.depth % 4}`) + (selected.includes(a.thing.key) ? " selected" : "")}>
             {a.by === "group" || treeStyle(a.tree) > 0 ? (
               <>
-                <path d={d} strokeWidth={(pad * 2) / k} className="group-fill" />
-                <path d={roundedOutline(a.outline, pad / k)} strokeWidth={1.5 / k} strokeDasharray={`${5 / k} ${4 / k}`} className="group-edge" />
+                <path d={d} strokeWidth={(pad * 2) / k} className="group-fill" style={a.thing.colour ? { fill: a.thing.colour, stroke: a.thing.colour } : undefined} />
+                <path d={roundedOutline(a.outline, pad / k)} strokeWidth={1.5 / k} strokeDasharray={`${5 / k} ${4 / k}`} className="group-edge" style={a.thing.colour ? { stroke: a.thing.colour } : undefined} />
               </>
             ) : (
-              <path d={d} strokeWidth={(pad * 2) / k} />
+              <path d={d} strokeWidth={(pad * 2) / k} style={a.thing.colour ? { fill: a.thing.colour, stroke: a.thing.colour } : undefined} />
             )}
-            <text x={top.x} y={top.y - (pad - 11) / k} style={{ fontSize: 10.5 / k }}>{a.thing.name}</text>
+            <text x={top.x} y={top.y - (pad - 11) / k} style={{ fontSize: 10.5 / k, ...(a.thing.colour ? { fill: a.thing.colour } : {}) }}>{a.thing.name}</text>
             {/* A badge to tap, to select the area (owner, 26 Nov); double-tap opens it. */}
             <g data-area={a.thing.key} className="area-badge" transform={`translate(${top.x + (labelWidth(a.thing.name) / 2 + 12) / k} ${top.y - (pad - 7) / k}) scale(${1 / k})`}>
               <circle r={9} />

@@ -30,6 +30,7 @@ import { PlaceScreen } from "./screens/world/PlaceScreen";
 import { MapScreen } from "./screens/world/MapScreen";
 import { LinkKindScreen, ThingKindScreen } from "./screens/world/KindScreens";
 import { worldOf } from "../world/world";
+import { Trail } from "./screens/world/Trail";
 
 export type Screen =
   | { name: "library" }
@@ -55,7 +56,7 @@ export type Screen =
   | { name: "thing-kind"; key: string }
   | { name: "link-kind"; key: string };
 
-export type Nav = { open: (s: Screen) => void; back: () => void; home: () => void };
+export type Nav = { open: (s: Screen) => void; back: () => void; home: () => void; popTo: (index: number) => void };
 
 // A screen can stop you leaving it (a unit with a required choice not made: owner, 24 Nov).
 // The guard says why, and whether you may leave anyway after a warning.
@@ -96,6 +97,7 @@ export function App({ data }: { data: AppData }) {
     open: (s) => setStack((st) => [...st, s]),
     back: () => mayLeave() && setStack((st) => (st.length > 1 ? st.slice(0, -1) : st)),
     home: () => mayLeave() && setStack(() => (ROOTS[tool] ? [ROOTS[tool]!] : [])),
+    popTo: (index) => mayLeave() && setStack((st) => st.slice(0, index + 1)), // back to a screen on the way here
   };
   const screen = stack[stack.length - 1];
   const backSwipe = useBackSwipe(() => nav.back());
@@ -146,6 +148,7 @@ export function App({ data }: { data: AppData }) {
                 <button className={screen.name === "data" ? "on" : ""} onClick={() => setStack(() => [{ name: "data" }])}>Data</button>
               </nav>
             )}
+            {tool === "world" && <Trail data={data} stack={stack} popTo={nav.popTo} />}
             {render(screen, data, nav, draft, setDraft, refresh, openWorld)}
           </>
         )}

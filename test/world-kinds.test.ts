@@ -3,7 +3,9 @@
 import { describe, expect, it } from "vitest";
 import type { Item, ThingKind } from "../src/items/items";
 import { newWorld, thingKindsIn } from "../src/world/world";
-import { fieldsOffered, fitsExpected, flavoursOf, hasKind, kindLine, kindTree, setFlavourOf } from "../src/world/kinds";
+import { fieldsOffered, fitsExpected, fitsTree, flavoursOf, hasKind, kindLine, kindTree, misfit, setFlavourOf } from "../src/world/kinds";
+import { setParent, topPlaces } from "../src/world/places";
+import { addToGroup } from "../src/world/groups";
 
 const W = "mine";
 function withFlavours() {
@@ -50,5 +52,41 @@ describe("flavours of kind", () => {
     const { items, place } = withFlavours();
     expect(kindTree(items, W).map((k) => `${"-".repeat(k.depth)}${k.kind.name}`)).toEqual(["Person", "Place", "-City", "--Free city"]);
     expect(flavoursOf(items, W, place).map((k) => k.name).sort()).toEqual(["City", "Free city"]);
+  });
+});
+
+describe("what a tree or group takes (owner, 26 Nov: places can't hold people)", () => {
+  const setUp = () => {
+    const made = withFlavours();
+    const tree = made.items.find((i) => i.kind === "link-kind" && i.name === "in")!.key;
+    const town: Item = { key: `${W}.thing.town`, kind: "thing", world: W, name: "Town", kinds: [made.city], fields: [] };
+    const hills: Item = { key: `${W}.thing.hills`, kind: "thing", world: W, name: "Hills", kinds: [made.place], fields: [] };
+    const bob: Item = { key: `${W}.thing.bob`, kind: "thing", world: W, name: "Bob", kinds: [made.person], fields: [] };
+    return { ...made, tree, items: [...made.items, town, hills, bob] };
+  };
+
+  it("the starter's in takes places at both ends", () => {
+    const { items, tree, place } = setUp();
+    expect(items.find((i) => i.key === tree)).toMatchObject({ expectsFrom: [place], expectsTo: [place] });
+  });
+
+  it("a person can't go in a place, nor a place in a person; a city (a flavour of Place) can", () => {
+    const { items } = setUp();
+    expect(setParent(items, W, `${W}.thing.bob`, `${W}.thing.hills`).problem).toMatch(/takes Place inside; Bob isn't one/);
+    expect(setParent(items, W, `${W}.thing.hills`, `${W}.thing.bob`).problem).toMatch(/as the container; Bob isn't one/);
+    expect(setParent(items, W, `${W}.thing.town`, `${W}.thing.hills`).problem).toBeUndefined();
+  });
+
+  it("a tree leaves out what doesn't belong in it", () => {
+    const { items, tree } = setUp();
+    expect(fitsTree(items, W, tree, `${W}.thing.bob`)).toBe(false);
+    expect(topPlaces(items, W).map((t) => t.name)).toEqual(["Hills", "Town"]);
+  });
+
+  it("groups follow their link kind's Expects too", () => {
+    const { items } = setUp();
+    const group = items.find((i) => i.kind === "link-kind" && i.name === "in area")!.key;
+    expect(addToGroup(items, W, `${W}.thing.bob`, group, `${W}.thing.hills`).problem).toMatch(/Bob isn't one/);
+    expect(misfit(items, W, group, "from", `${W}.thing.town`)).toBeNull();
   });
 });

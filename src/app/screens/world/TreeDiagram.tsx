@@ -4,22 +4,23 @@
 // Two ways to drag (everything selected moves together if the box dragged is selected):
 //   - Arrange: move boxes where you like, each branch following or not; kept on the world;
 //   - Move inside: drop on another box to move inside, on the world to put them at the top.
+// A container's round button folds its branch away (and shows how many are hidden).
 // Undo and Redo step back through the moves. Drag the background to pan; pinch or wheel to zoom.
 // Design: design/world-structure.md §3 (one parent at a time, no loops: a drop that would make a loop
 // is refused), §5 (abstract views laid out by containment); spec/session-20-notes-3.md §0.1 (a
 // canvas as another view on the same structure). Layout: src/world/diagram.ts.
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from "react";
 import { descendantsOf, setParent } from "../../../world/places";
+import { misfit } from "../../../world/kinds";
 import { iconOf } from "../../../world/maps";
 import { worldOf } from "../../../world/world";
 import { arrangedLayout, boxesThatMove, hasHandPlacing, moveBoxes, NODE_H, NODE_W, ROOT, tidyLayout, type Box, type Direction } from "../../../world/diagram";
 import { TreePicker, useChosenTree } from "./tree-picker";
-import { useKept } from "./remembered";
+import { useKept, useRemembered } from "./remembered";
 import { NewPlace, type Part } from "./WorldScreen";
 import { useUndo } from "./undo";
+import { DOUBLE_TAP_MS, swallowNextClick, tapSlop } from "./gestures";
 
-const TAP = 6;
-const DOUBLE_TAP_MS = 350;
 
 type DragMode = "arrange" | "inside";
 type View = { k: number; tx: number; ty: number };
@@ -27,6 +28,7 @@ type Point = { x: number; y: number };
 type Gesture =
   | { kind: "pan"; start: Point; from: View; moved: boolean }
   | { kind: "box"; key: string; start: Point; moved: boolean }
+  | { kind: "fold"; key: string; start: Point; from: View; moved: boolean }
   | { kind: "pinch"; startDistance: number; startCentre: Point; from: View }
   | null;
 // A drag under way: which boxes move and by how much (arrange), or where it would drop (inside).
@@ -47,7 +49,10 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const wrap = useRef<HTMLDivElement>(null);
   const pointers = useRef(new Map<number, Point>());
   const gesture = useRef<Gesture>(null);
-  const boxes = arrangedLayout(data.items, world, tree, direction);
+  const [foldedList, setFoldedList] = useRemembered<string[]>(`${world}|folded|${tree}`, []);
+  const folded = new Set(foldedList);
+  const toggleFold = (key: string) => setFoldedList(folded.has(key) ? foldedList.filter((k) => k !== key) : [...foldedList, key]);
+  const boxes = arrangedLayout(data.items, world, tree, direction, folded);
   const byKey = new Map(boxes.map((b) => [b.key, b]));
 
   useEffect(() => {
@@ -92,6 +97,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const canDrop = (dragged: string, target: string | undefined): boolean => {
     if (!target || target === dragged) return false;
     if (target === ROOT) return true;
+    if (tree && misfit(data.items, world, tree, "to", target)) return false; // e.g. a Person holds nothing
     return !descendantsOf(data.items, world, dragged, tree).some((d) => d.key === target);
   };
 
@@ -103,6 +109,11 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       const [a, b] = [...pointers.current.values()];
       gesture.current = { kind: "pinch", startDistance: distance(a, b), startCentre: middle(a, b), from: view };
       setDrag(null);
+      return;
+    }
+    const fold = (e.target as Element).closest("[data-fold]")?.getAttribute("data-fold");
+    if (fold) {
+      gesture.current = { kind: "fold", key: fold, start: local(e), from: view, moved: false };
       return;
     }
     const node = (e.target as Element).closest("[data-node]")?.getAttribute("data-node");
@@ -120,12 +131,12 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       const anchor = toDiagram(g.startCentre, g.from);
       const centre = middle(a, b);
       setView({ k, tx: centre.x - anchor.x * k, ty: centre.y - anchor.y * k });
-    } else if (g?.kind === "pan") {
-      if (!g.moved && distance(at, g.start) < TAP) return;
+    } else if (g?.kind === "pan" || g?.kind === "fold") {
+      if (!g.moved && distance(at, g.start) < tapSlop(e.pointerType)) return;
       g.moved = true;
       setView({ k: g.from.k, tx: g.from.tx + at.x - g.start.x, ty: g.from.ty + at.y - g.start.y });
     } else if (g?.kind === "box") {
-      if (!g.moved && distance(at, g.start) < TAP) return;
+      if (!g.moved && distance(at, g.start) < tapSlop(e.pointerType)) return;
       g.moved = true;
       const dx = (at.x - g.start.x) / view.k;
       const dy = (at.y - g.start.y) / view.k;
@@ -150,16 +161,21 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
     }
     gesture.current = null;
     if (g?.kind === "pan" && !g.moved && view) return tapSpace(toDiagram(local(e), view));
+    if (g?.kind === "fold" && !g.moved) return toggleFold(g.key);
     if (g?.kind !== "box") return;
     if (!g.moved) return tapBox(g.key);
     const done = drag;
     setDrag(null);
     if (!done) return;
-    if (mode === "arrange") return undo.apply(moveBoxes(data.items, world, tree, direction, done.moving, done.dx, done.dy));
+    if (mode === "arrange") {
+      await undo.apply(moveBoxes(data.items, world, tree, direction, done.moving, done.dx, done.dy));
+      return setSelected([]); // a move is done: start afresh (owner, 26 Nov)
+    }
     if (!done.over) return; // dropped nowhere useful: they go back where they were
     let items = data.items;
     for (const key of done.moving) items = setParent(items, world, key, done.over === ROOT ? null : done.over, tree).items;
     await undo.apply(items);
+    setSelected([]);
   };
 
   // One tap selects or unselects; a second on the same box soon after opens it.
@@ -168,6 +184,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
     if (before && before.key === key && Date.now() - before.time < DOUBLE_TAP_MS) {
       lastTap.current = null;
       setSelected(before.before); // the first tap of a double tap doesn't count as a select
+      swallowNextClick();
       return nav.open({ name: "place", key });
     }
     lastTap.current = { key, time: Date.now(), before: selected };
@@ -180,6 +197,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
     if (before && before.key === "" && Date.now() - before.time < DOUBLE_TAP_MS) {
       lastTap.current = null;
       setSelected(before.before);
+      swallowNextClick();
       return setNewAt(at);
     }
     lastTap.current = { key: "", time: Date.now(), before: selected };
@@ -252,7 +270,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
         )}{" "}
         {mode === "arrange" ? (withBranch ? "Branches follow." : "Boxes move on their own.") : "Drop onto a box to move inside; onto the world for the top."}
       </p>
-      <div className="map-wrap diagram-wrap" ref={wrap} onTouchStart={(e) => e.stopPropagation()} onWheel={wheel}>
+      <div className="map-wrap diagram-wrap" ref={wrap} onTouchStart={(e) => e.stopPropagation()} onTouchEnd={(e) => e.preventDefault()} onWheel={wheel}>
         {size && view && (
           <svg width={size.w} height={size.h} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
             <g transform={`translate(${view.tx} ${view.ty}) scale(${view.k})`}>
@@ -266,6 +284,13 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
                   <g key={b.key} data-node={b.key} transform={`translate(${p.x} ${p.y})`} className={classes.join(" ")}>
                     <rect width={NODE_W} height={NODE_H} rx={8} />
                     <text x={10} y={NODE_H / 2 + 5}>{clip(label(b), 17)}</text>
+                    {b.holds > 0 && b.key !== ROOT && (
+                      // Fold or unfold what it holds; folded, how many are hidden.
+                      <g data-fold={b.key} className={b.hidden ? "fold-toggle folded" : "fold-toggle"} transform={direction === "across" ? `translate(${NODE_W} ${NODE_H / 2})` : `translate(${NODE_W / 2} ${NODE_H})`}>
+                        <circle r={b.hidden ? 12 : 9} />
+                        <text y={4}>{b.hidden ? `+${b.hidden}` : "–"}</text>
+                      </g>
+                    )}
                   </g>
                 );
               })}

@@ -58,6 +58,7 @@ export function iconOf(items: Item[], thing: Thing): string {
 export type Area = {
   thing: Thing;
   by: "containment" | "group"; // what it shows: what a place holds, or a group's members
+  tree?: string; // for containment: which tree (owner, 26 Nov: several trees on one map)
   depth: number; // 0 at the top of the tree; deeper areas are drawn tighter, on top
   outline: { x: number; y: number }[]; // the convex hull of the pinned points inside it
 };
@@ -71,7 +72,7 @@ export function areasOn(items: Item[], map: WorldMap, tree?: string): Area[] {
     const inside = descendantsOf(items, map.world, thing.key, tree).filter((d) => pins.has(d.key));
     if (inside.length === 0) continue;
     const points = [...inside, thing].map((t) => pins.get(t.key)).filter((p): p is Pin => !!p);
-    out.push({ thing, by: "containment", depth: depthOf(items, map.world, thing.key, tree), outline: convexHull(points.map((p) => ({ x: p.x, y: p.y }))) });
+    out.push({ thing, by: "containment", tree, depth: depthOf(items, map.world, thing.key, tree), outline: convexHull(points.map((p) => ({ x: p.x, y: p.y }))) });
   }
   return out.sort((a, b) => a.depth - b.depth || a.thing.name.localeCompare(b.thing.name));
 }

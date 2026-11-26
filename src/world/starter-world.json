@@ -14,14 +14,26 @@
       "reverseName": "holds",
       "direction": "one-way",
       "hierarchy": "one parent",
-      "about": "Containment: a place inside a larger place, one at a time."
+      "about": "Containment: a place inside a larger place, one at a time.",
+      "expectsFrom": [
+        "Place"
+      ],
+      "expectsTo": [
+        "Place"
+      ]
     },
     {
       "name": "in area",
       "reverseName": "covers",
       "direction": "one-way",
       "hierarchy": "several parents",
-      "about": "A place in a group: many groups at once, overlaps allowed."
+      "about": "A place in a group: many groups at once, overlaps allowed.",
+      "expectsFrom": [
+        "Place"
+      ],
+      "expectsTo": [
+        "Place"
+      ]
     }
   ],
   "group": "in area"

@@ -386,3 +386,5 @@ label.stack { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8p
 .links .link-word { color: var(--muted); }
 .place-title .stack { margin: 4px 0 0; }
 .item-fold .form h2 { display: none; } .item-fold .form .buttons { margin-top: 4px; }
+.shape-row { margin: 2px 0 6px; }
+.kind-row { align-items: center; margin-top: 0; }

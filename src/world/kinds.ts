@@ -5,7 +5,7 @@
 // blocks; link kinds declare what they expect at each end). Flavours are the owner's addition: see
 // the build log, 26 Nov, "Questions for design".
 
-import type { Item, KindField, LinkKind, Thing, ThingKind } from "../items/items";
+import type { Item, KindField, Link, LinkKind, Thing, ThingKind } from "../items/items";
 import { linkKindsIn, newKey, thingKindsIn, worldOf } from "./world";
 
 // A kind and the kinds it's a flavour of, from itself up: Free city, City, Place.
@@ -139,16 +139,27 @@ export function fitsTree(items: Item[], world: string, tree: string | undefined,
   return misfit(items, world, tree, "from", thing) === null || misfit(items, world, tree, "to", thing) === null;
 }
 
-// Links that don't fit their link kind (kept under a warn-only link kind, or from before a rule
-// changed): flagged, never removed.
-export function linkMisfits(items: Item[], world: string): string[] {
-  const out: string[] = [];
+// Links that don't fit their link kind: kept under a warn-only link kind, or made before a rule changed
+// (owner, 26 Nov: "both cases should at least warn"). Flagged, never removed: the owner decides.
+export type Misfit = { link: Link; why: string };
+
+export function misfitLinks(items: Item[], world: string): Misfit[] {
+  const out: Misfit[] = [];
   for (const l of items) {
     if (l.kind !== "link" || l.world !== world) continue;
     const why = misfit(items, world, l.linkKind, "from", l.from) ?? misfit(items, world, l.linkKind, "to", l.to);
-    if (why) out.push(why);
+    if (why) out.push({ link: l, why });
   }
   return out;
+}
+
+export function linkMisfits(items: Item[], world: string): string[] {
+  return misfitLinks(items, world).map((m) => m.why);
+}
+
+// The items at either end of a link that doesn't fit, to mark them in lists and on the Diagram.
+export function itemsWithMisfits(items: Item[], world: string): Set<string> {
+  return new Set(misfitLinks(items, world).flatMap((m) => [m.link.from, m.link.to]));
 }
 
 // --- Order -----------------------------------------------------------------------------------------

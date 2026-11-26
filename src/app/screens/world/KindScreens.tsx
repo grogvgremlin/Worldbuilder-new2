@@ -5,15 +5,18 @@
 import { useState } from "react";
 import type { Item, LinkKind, ThingKind } from "../../../items/items";
 import { linksIn, removeThingKind, thingKindsIn, thingsIn, worldOf } from "../../../world/world";
-import { cloneLinkKind, fieldsOffered, flavoursOf, hasKind, kindTree, removeLinkKind, setEndsDiffer, setFlavourOf } from "../../../world/kinds";
+import { cloneLinkKind, fieldsOffered, flavoursOf, hasKind, kindTree, misfitLinks, removeLinkKind, setEndsDiffer, setFlavourOf } from "../../../world/kinds";
+import { MisfitList } from "./WorldScreen";
 import type { AppData } from "../../app-data";
 import { firstTree } from "../../../world/places";
 import type { Nav } from "../../App";
 import { TextBox } from "./text-box";
+import { useFoldAll } from "./fold-all";
 
 export function ThingKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav; kindKey: string }) {
   const [, setChanged] = useState(0);
   const [field, setField] = useState("");
+  const folds = useFoldAll();
   const kind = data.items.find((i): i is ThingKind => i.kind === "thing-kind" && i.key === kindKey);
   if (!kind) return <p className="hint">This kind isn't in the world any more.</p>;
   const save = async (items: Item[]) => (await data.setItems(items), setChanged((n) => n + 1));
@@ -77,12 +80,12 @@ export function ThingKindScreen({ data, nav, kindKey }: { data: AppData; nav: Na
         <input className="filter" placeholder="New field (e.g. population)" value={field} onChange={(e) => setField(e.target.value)} onKeyDown={(e) => e.key === "Enter" && field.trim() && (change({ fields: [...kind.fields, { name: field.trim() }] }), setField(""))} />
         <button disabled={!field.trim()} onClick={() => (change({ fields: [...kind.fields, { name: field.trim() }] }), setField(""))}>Add</button>
       </div>
-      <h2>Items of this kind ({used.length})</h2>
+      <h2>Items of this kind ({used.length}) {folds.controls}</h2>
       {/* Split: this kind itself, then each flavour (any depth), each folding (owner, 26 Nov). */}
       {[{ key: kind.key, name: `${kind.name} itself`, list: used.filter((t) => t.kinds.includes(kind.key)) }, ...allFlavours.map((f) => ({ key: f.key, name: f.name, list: used.filter((t) => t.kinds.includes(f.key) && !t.kinds.includes(kind.key)) }))]
         .filter((g) => g.list.length > 0 || g.key === kind.key)
         .map((g) => (
-          <details key={g.key} className="fold" open={g.key === kind.key}>
+          <details key={`${g.key}|${folds.epoch}`} className="fold" open={folds.openFor(g.key === kind.key)}>
             <summary>{g.name} ({g.list.length})</summary>
             <ul className="plain">
               {g.list.map((t) => <li key={t.key}><button className="link" onClick={() => nav.open({ name: "place", key: t.key })}>{t.name}</button></li>)}
@@ -184,6 +187,8 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
         </>
       )}
       <p className="sub">{count} link{count === 1 ? "" : "s"} of this kind.</p>
+      {/* Links that no longer fit, after a change to what it takes: flagged, strict or warn. */}
+      <MisfitList data={data} nav={nav} misfits={misfitLinks(data.items, kind.world).filter((m) => m.link.linkKind === kind.key)} save={async (items) => (await data.setItems(items), setChanged((n) => n + 1))} />
       <div className="buttons">
         <button onClick={async () => {
           const name = prompt("Name for the copy (its settings, not its links):", `${kind.name} (copy)`);

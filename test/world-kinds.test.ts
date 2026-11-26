@@ -186,3 +186,19 @@ describe("one list for both ends, or a list per end (owner, 26 Nov)", () => {
     expect(endRule(same, "to").take).toEqual(["a"]);
   });
 });
+
+describe("links that stop fitting after a rule changes (owner, 26 Nov)", () => {
+  it("are flagged, strict or warn, and never removed", async () => {
+    const { misfitLinks, itemsWithMisfits } = await import("../src/world/kinds");
+    const made = withFlavours();
+    const tree = made.items.find((i) => i.kind === "link-kind" && i.name === "in")!.key;
+    const a: Item = { key: `${W}.thing.a`, kind: "thing", world: W, name: "A", kinds: [made.place], fields: [] };
+    const b: Item = { key: `${W}.thing.b`, kind: "thing", world: W, name: "B", kinds: [made.place], fields: [] };
+    const linked = setParent([...made.items, a, b], W, a.key, b.key).items;
+    expect(misfitLinks(linked, W)).toEqual([]);
+    const tightened = linked.map((i) => (i.key === tree ? { ...(i as LinkKind), scope: [made.city] } : i));
+    expect(misfitLinks(tightened, W).map((m) => m.why)).toEqual([`"in" takes City inside; A doesn't fit`]);
+    expect([...itemsWithMisfits(tightened, W)].sort()).toEqual([a.key, b.key]);
+    expect(tightened.filter((i) => i.kind === "link")).toHaveLength(1); // kept
+  });
+});

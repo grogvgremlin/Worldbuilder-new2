@@ -401,3 +401,8 @@ main:has(.map-screen), main:has(.diagram-wrap) { max-width: none; }
 .area.lit .group-edge { stroke-width: 3; }
 .area.lit text { font-weight: 800; }
 @media (min-width: 900px) { .selection-bar { height: 76px; } }
+.problems-line { color: var(--warn); margin: 4px 0 8px; }
+.misfit-row { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.diagram-node.misfit rect { stroke: var(--warn); stroke-width: 2.5; stroke-dasharray: 5 3; }
+.fold-all { font-size: .85rem; font-weight: normal; text-transform: none; letter-spacing: 0; margin-left: 6px; } .card > .fold-all { display: block; margin: 0 0 4px; }
+.list li .misfit-row button { display: inline; width: auto; padding: 0; border: 0; background: none; margin: 0; font-weight: 600; }

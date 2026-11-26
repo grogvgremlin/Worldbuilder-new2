@@ -11,7 +11,7 @@
 // canvas as another view on the same structure). Layout: src/world/diagram.ts.
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from "react";
 import { descendantsOf, hideHere, looseIn, setParent } from "../../../world/places";
-import { refusal } from "../../../world/kinds";
+import { itemsWithMisfits, refusal } from "../../../world/kinds";
 import { iconOf } from "../../../world/maps";
 import { worldOf } from "../../../world/world";
 import { arrangedLayout, boxesThatMove, hasHandPlacing, moveBoxes, NODE_H, NODE_W, ROOT, tidyLayout, type Box, type Direction } from "../../../world/diagram";
@@ -45,6 +45,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [grouping, setGrouping] = useState(false);
+  const flagged = itemsWithMisfits(data.items, world); // in a link that doesn't fit (owner, 26 Nov)
   const looseKeys = new Set(looseIn(data.items, world, tree).map((t) => t.key));
   const looseSelected = selected.filter((k) => looseKeys.has(k));
   const [newAt, setNewAt] = useState<Point | null>(null); // a double tap on empty space: a new item here
@@ -300,7 +301,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
               ))}
               {boxes.map((b) => {
                 const p = drawnAt(b);
-                const classes = ["diagram-node", b.key === ROOT ? "root" : "", selected.includes(b.key) ? "selected" : "", drag?.moving.includes(b.key) ? (mode === "arrange" ? "moving" : "dragging") : "", drag?.over === b.key ? "target" : ""];
+                const classes = ["diagram-node", b.key === ROOT ? "root" : "", flagged.has(b.key) ? "misfit" : "", selected.includes(b.key) ? "selected" : "", drag?.moving.includes(b.key) ? (mode === "arrange" ? "moving" : "dragging") : "", drag?.over === b.key ? "target" : ""];
                 return (
                   <g key={b.key} data-node={b.key} transform={`translate(${p.x} ${p.y})`} className={classes.join(" ")}>
                     <rect width={NODE_W} height={NODE_H} rx={8} />

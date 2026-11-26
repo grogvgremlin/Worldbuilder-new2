@@ -4,7 +4,7 @@ import type { Item, Thing, WorldMap } from "../src/items/items";
 import { Item as ItemSchema } from "../src/items/items";
 import { linksIn, mapsIn, newKey, newWorld, removeThing, removeThingKind, thingsIn, worldOf } from "../src/world/world";
 import { childrenOf, isContainer, looseItems, parentOf, pathOf, setParent, topPlaces, treeKinds, treeWarnings } from "../src/world/places";
-import { areasOn, convexHull, notOnMap, placePin, removePin } from "../src/world/maps";
+import { areasOn, convexHull, notOnMap, placePin, removePin, sheetOf } from "../src/world/maps";
 
 const sample = () => newWorld([], "Averland borders", "sample");
 const key = (items: Item[], name: string) => (items.find((i) => i.kind === "thing" && i.name === name) as Thing).key;
@@ -102,13 +102,14 @@ describe("containment", () => {
 describe("maps", () => {
   const mapOf = (items: Item[]) => mapsIn(items, "averland-borders")[0];
 
-  it("pins, moves and unpins, kept inside the map", () => {
+  it("pins, moves and unpins, anywhere: the sheet grows to hold them", () => {
     const items = sample();
     let map: WorldMap = mapOf(items);
     const wissenland = key(items, "Wissenland");
     expect(notOnMap(items, map).map((t) => t.name)).toContain("Wissenland");
-    map = placePin(map, wissenland, 250.4, 9999);
-    expect(map.pins.find((p) => p.thing === wissenland)).toEqual({ thing: wissenland, x: 250, y: 700 });
+    map = placePin(map, wissenland, 250.4, 1200);
+    expect(map.pins.find((p) => p.thing === wissenland)).toEqual({ thing: wissenland, x: 250, y: 1200 }); // the sheet grows
+    expect(sheetOf(map).height).toBe(1280);
     map = placePin(map, wissenland, 10, 10);
     expect(map.pins.filter((p) => p.thing === wissenland)).toHaveLength(1);
     expect(removePin(map, wissenland).pins.some((p) => p.thing === wissenland)).toBe(false);

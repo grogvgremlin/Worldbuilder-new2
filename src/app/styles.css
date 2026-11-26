@@ -388,3 +388,16 @@ label.stack { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8p
 .item-fold .form h2 { display: none; } .item-fold .form .buttons { margin-top: 4px; }
 .shape-row { margin: 2px 0 6px; }
 .kind-row { align-items: center; margin-top: 0; }
+/* Maps and the Diagram use the whole width on a laptop (owner, 26 Nov). */
+main:has(.map-screen), main:has(.diagram-wrap) { max-width: none; }
+.map-layout { display: grid; grid-template-columns: 1fr; gap: 10px; }
+@media (min-width: 900px) { .map-layout { grid-template-columns: 1fr 240px; } .map-layout .area-list { max-height: calc(100dvh - 200px); overflow: auto; } }
+.area-list { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 10px; }
+.area-list ul { margin: 2px 0 6px; padding: 0; list-style: none; }
+.area-row { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; background: none; border: 0; padding: 5px 4px; border-radius: 6px; cursor: pointer; }
+.area-row.lit { background: var(--ground); outline: 2px solid var(--link); }
+.area-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+.area.lit path { opacity: .38; }
+.area.lit .group-edge { stroke-width: 3; }
+.area.lit text { font-weight: 800; }
+@media (min-width: 900px) { .selection-bar { height: 76px; } }

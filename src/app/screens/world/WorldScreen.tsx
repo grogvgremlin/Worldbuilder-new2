@@ -7,15 +7,15 @@ import { useState, type ReactNode } from "react";
 import type { Item, Thing } from "../../../items/items";
 import { linkKindsIn, linksIn, mapsIn, newKey, removeThing, removeThingKind, thingKindsIn, thingsIn, worldOf } from "../../../world/world";
 import { SwipeRow } from "../../swipe";
-import { childrenOf, isContainer, pathOf, setParent, topPlaces, treeWarnings } from "../../../world/places";
+import { childrenOf, isContainer, looseItems, pathOf, setParent, topPlaces, treeKinds, treeWarnings } from "../../../world/places";
 import { iconOf, newMap } from "../../../world/maps";
 import { addToGroup, groupLinkKinds, groupsIn, isOnlyAGroup, membersOf, newGroupLinkKind } from "../../../world/groups";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { useRemembered } from "./remembered";
 import { TreeDiagram } from "./TreeDiagram";
-import { TreePicker, useChosenTree } from "./tree-picker";
-import { hasKind, inOrder, kindTree, moveInOrder, refusal, removeLinkKind, setFlavourOf } from "../../../world/kinds";
+import { ALL, TreePicker, useChosenTree } from "./tree-picker";
+import { hasKind, inOrder, kindTree, linkMisfits, moveInOrder, refusal, removeLinkKind, setFlavourOf } from "../../../world/kinds";
 
 type Tab = "items" | "diagram" | "maps" | "kinds";
 const TABS: { id: Tab; label: string }[] = [
@@ -56,76 +56,132 @@ export type Part = { data: AppData; nav: Nav; world: string; save: (items: Item[
 type Shape = "all" | "containers" | "base";
 
 function Items({ data, nav, world, save }: Part) {
-  const [view, setView] = useRemembered<"tree" | "groups">(`${world}|items-view`, "tree");
+  const [view, setView] = useRemembered<"tree" | "groups" | "loose">(`${world}|items-view`, "tree");
   const [tree, setTree] = useChosenTree(data, world);
+  const [byKind, setByKind] = useRemembered(`${world}|by-kind`, false); // the tree picker's "All"
   const [shape, setShape] = useRemembered<Shape>(`${world}|shape`, "all");
   const [text, setText] = useState("");
   const [kind, setKind] = useState<string | null>(null);
-  const kinds = thingKindsIn(data.items, world);
-  const warnings = treeWarnings(data.items, world, tree);
-  const filtering = text.trim() !== "" || kind !== null || shape !== "all";
+  const kinds = kindTree(data.items, world);
+  const warnings = [...treeWarnings(data.items, world, tree), ...linkMisfits(data.items, world)];
+  const searching = text.trim() !== "" || kind !== null;
   const matches = thingsIn(data.items, world)
     .filter((t) => (kind ? hasKind(data.items, world, t.kinds, kind) : true)) // a kind's flavours count
     .filter((t) => shape === "all" || (shape === "containers") === isContainer(data.items, world, t.key))
     .filter((t) => matchesText(t, text))
     .sort((a, b) => a.name.localeCompare(b.name));
   const worldName = worldOf(data.items, world)?.name ?? "";
+  const row = (t: Thing) => (
+    <li key={t.key}>
+      <SwipeRow action="Remove" onAction={() => removeItem(data, save, t)}>
+        <PlaceRow data={data} thing={t} withPath onOpen={() => nav.open({ name: "place", key: t.key })} />
+      </SwipeRow>
+    </li>
+  );
 
   return (
     <>
-      <Fold title={view === "groups" && !filtering ? "+ New group" : "+ New item"}>
-        {view === "groups" && !filtering ? (
+      <Fold title={view === "groups" && !searching ? "+ New group" : "+ New item"}>
+        {view === "groups" && !searching ? (
           <NewGroup data={data} world={world} save={save} onMade={(key) => nav.open({ name: "place", key })} />
         ) : (
           <NewPlace data={data} world={world} save={save} onMade={(key) => nav.open({ name: "place", key })} />
         )}
       </Fold>
       <input className="filter" placeholder="Find an item (name, other names, summary, tags)" value={text} onChange={(e) => setText(e.target.value)} />
-      <div className="chips">
-        {(["all", "containers", "base"] as Shape[]).map((s) => (
-          <button key={s} className={shape === s ? "on" : ""} onClick={() => setShape(s)}>{s === "all" ? "All" : s === "containers" ? "Containers" : "Base items"}</button>
+      {/* Two rows (owner, 26 Nov): which items (one always chosen), then kinds to narrow by. */}
+      <nav className="segments small shape-row">
+        {(["all", "containers", "base"] as Shape[]).map((sh) => (
+          <button key={sh} className={shape === sh ? "on" : ""} onClick={() => setShape(sh)}>{sh === "all" ? "All" : sh === "containers" ? "Containers" : "Base items"}</button>
         ))}
-        {kinds.length > 1 &&
-          kinds.map((k) => (
+      </nav>
+      {kinds.length > 1 && (
+        <div className="chips kind-row">
+          <span className="sub">Kind:</span>
+          {kinds.map(({ kind: k, depth }) => (
             <button key={k.key} className={kind === k.key ? "on" : ""} onClick={() => setKind(kind === k.key ? null : k.key)}>
-              {k.icon} {k.name}
+              {depth > 0 ? "↳ " : ""}{k.icon} {k.name}
             </button>
           ))}
-      </div>
-      {shape !== "all" && <p className="sub">{shape === "containers" ? "Containers hold something, in a tree or as a group." : "Base items hold nothing."}</p>}
+        </div>
+      )}
       {warnings.length > 0 && <ul className="plain problems">{warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
       {thingsIn(data.items, world).length === 0 && <p className="hint">No items yet. Add one with + New item above, or double-tap a map or the diagram.</p>}
-      {filtering ? (
-        <ul className="list">
-          {matches.map((t) => (
-            <li key={t.key}>
-              <SwipeRow action="Remove" onAction={() => removeItem(data, save, t)}>
-                <PlaceRow data={data} thing={t} withPath onOpen={() => nav.open({ name: "place", key: t.key })} />
-              </SwipeRow>
-            </li>
-          ))}
-        </ul>
+      {searching ? (
+        <ul className="list">{matches.map(row)}</ul>
+      ) : shape === "containers" ? (
+        <Containers data={data} world={world} row={row} />
+      ) : shape === "base" ? (
+        <>
+          <p className="sub">Base items hold nothing.</p>
+          <ul className="list">{matches.map(row)}</ul>
+        </>
       ) : (
         <>
           <div className="view-row">
             <nav className="segments small">
               <button className={view === "tree" ? "on" : ""} onClick={() => setView("tree")}>Tree</button>
               <button className={view === "groups" ? "on" : ""} onClick={() => setView("groups")}>Groups</button>
+              <button className={view === "loose" ? "on" : ""} onClick={() => setView("loose")}>Loose ({looseItems(data.items, world).length})</button>
             </nav>
-            {view === "tree" && <TreePicker data={data} world={world} tree={tree} onChoose={setTree} />}
+            {view === "tree" && <TreePicker data={data} world={world} tree={byKind ? ALL : tree} onChoose={(k) => (k === ALL ? setByKind(true) : (setByKind(false), setTree(k)))} withAll />}
           </div>
-          {view === "tree" ? (
+          {view === "tree" && byKind && <ByKind data={data} world={world} row={row} />}
+          {view === "tree" && !byKind && (
             <ul className="list tree">
               <li className="tree-root">{worldName}</li>
               {topPlaces(data.items, world, tree)
                 .filter((t) => !isOnlyAGroup(data.items, world, t.key))
                 .map((t) => <Branch key={t.key} data={data} nav={nav} world={world} tree={tree} thing={t} depth={1} save={save} />)}
             </ul>
-          ) : (
-            <Groups data={data} nav={nav} world={world} save={save} />
+          )}
+          {view === "groups" && <Groups data={data} nav={nav} world={world} save={save} />}
+          {view === "loose" && (
+            <>
+              <p className="sub">In no tree and no group: neither inside anything nor holding anything.</p>
+              <ul className="list">{looseItems(data.items, world).map(row)}</ul>
+            </>
           )}
         </>
       )}
+    </>
+  );
+}
+
+// Containers split (owner, 26 Nov): those holding something in each tree, by tree, then groups.
+function Containers({ data, world, row }: { data: AppData; world: string; row: (t: Thing) => ReactNode }) {
+  const sections = [
+    ...treeKinds(data.items, world).map((k) => ({ id: k.key, title: `In the tree "${k.name}"`, list: thingsIn(data.items, world).filter((t) => childrenOf(data.items, world, t.key, k.key).length > 0) })),
+    { id: "groups", title: "Groups", list: groupsIn(data.items, world) },
+  ];
+  return (
+    <>
+      <p className="sub">Containers hold something: in a tree (one at a time), or as a group (many at once).</p>
+      {sections.map((sec) => (
+        <details key={sec.id} className="fold" open>
+          <summary>{sec.title} ({sec.list.length})</summary>
+          <ul className="list">{[...sec.list].sort((a, b) => a.name.localeCompare(b.name)).map(row)}</ul>
+        </details>
+      ))}
+    </>
+  );
+}
+
+// Every item, by kind and flavour (the tree picker's "All", owner, 26 Nov).
+function ByKind({ data, world, row }: { data: AppData; world: string; row: (t: Thing) => ReactNode }) {
+  const things = thingsIn(data.items, world);
+  const sections = [
+    ...kindTree(data.items, world).map(({ kind, depth }) => ({ id: kind.key, title: `${"↳ ".repeat(depth ? 1 : 0)}${kind.icon ?? ""} ${kind.name}`, depth, list: things.filter((t) => t.kinds.includes(kind.key)) })),
+    { id: "none", title: "No kind", depth: 0, list: things.filter((t) => t.kinds.length === 0) },
+  ].filter((sec) => sec.list.length > 0);
+  return (
+    <>
+      {sections.map((sec) => (
+        <details key={sec.id} className="fold" open style={{ marginLeft: sec.depth * 14 }}>
+          <summary>{sec.title} ({sec.list.length})</summary>
+          <ul className="list">{[...sec.list].sort((a, b) => a.name.localeCompare(b.name)).map(row)}</ul>
+        </details>
+      ))}
     </>
   );
 }

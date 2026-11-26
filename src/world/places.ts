@@ -131,3 +131,12 @@ export function treeWarnings(items: Item[], world: string, tree?: string): strin
 function byName(things: Thing[]): Thing[] {
   return [...things].sort((a, b) => a.name.localeCompare(b.name));
 }
+
+// Items in no tree and no group: neither inside anything nor holding anything, by any hierarchical
+// link kind (owner, 26 Nov: "a list of items which are not under any tree … base items floating
+// loose").
+export function looseItems(items: Item[], world: string): Thing[] {
+  const hierarchical = new Set(linkKindsIn(items, world).filter((k) => k.hierarchy !== "none").map((k) => k.key));
+  const linked = new Set(linksIn(items, world).filter((l) => hierarchical.has(l.linkKind)).flatMap((l) => [l.from, l.to]));
+  return byName(thingsIn(items, world).filter((t) => !linked.has(t.key)));
+}

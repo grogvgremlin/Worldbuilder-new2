@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Item, Thing, WorldMap } from "../src/items/items";
 import { Item as ItemSchema } from "../src/items/items";
 import { linksIn, mapsIn, newKey, newWorld, removeThing, removeThingKind, thingsIn, worldOf } from "../src/world/world";
-import { childrenOf, isContainer, parentOf, pathOf, setParent, topPlaces, treeKinds, treeWarnings } from "../src/world/places";
+import { childrenOf, isContainer, looseItems, parentOf, pathOf, setParent, topPlaces, treeKinds, treeWarnings } from "../src/world/places";
 import { areasOn, convexHull, notOnMap, placePin, removePin } from "../src/world/maps";
 
 const sample = () => newWorld([], "Averland borders", "sample");
@@ -166,5 +166,14 @@ describe("several trees (owner, 25 Nov: by province, by terrain …)", () => {
     after = setParent(after, W, key(items, "Kleindorf"), hills, tree).items;
     const map = mapsIn(after, W)[0];
     expect(areasOn(after, map, tree).map((a) => a.thing.name)).toEqual(["Hill country"]);
+  });
+});
+
+describe("loose items (owner, 26 Nov)", () => {
+  it("an item in no tree and no group is loose; one that holds something isn't", () => {
+    const items = sample();
+    const W = "averland-borders";
+    const drifter: Item = { key: `${W}.thing.drifter`, kind: "thing", world: W, name: "Drifter", kinds: [], fields: [] };
+    expect(looseItems([...items, drifter], W).map((t) => t.name)).toEqual(["Drifter"]);
   });
 });

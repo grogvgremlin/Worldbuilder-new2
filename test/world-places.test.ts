@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Item, Thing, WorldMap } from "../src/items/items";
 import { Item as ItemSchema } from "../src/items/items";
 import { linksIn, mapsIn, newKey, newWorld, removeThing, removeThingKind, thingsIn, worldOf } from "../src/world/world";
-import { childrenOf, firstTree, hideHere, isContainer, looseIn, looseItems, parentOf, pathOf, setParent, topPlaces, treeKinds, treeWarnings } from "../src/world/places";
+import { childrenOf, firstTree, hiddenIn, hideHere, isContainer, looseIn, looseItems, parentOf, pathOf, setParent, topPlaces, treeKinds, treeWarnings } from "../src/world/places";
 import { areasOn, convexHull, notOnMap, placePin, removePin, sheetOf } from "../src/world/maps";
 
 const sample = () => newWorld([], "Averland borders", "sample");
@@ -194,5 +194,19 @@ describe("loose items in a tree, shown or hidden (owner, 26 Nov)", () => {
     expect(topPlaces(hideHere(hidden, tree, drifter.key, false), W).map((t) => t.name)).toContain("Drifter");
     const all = withDrifter.map((i) => (i.key === tree ? { ...i, loose: "hide" as const } : i));
     expect(topPlaces(all, W).map((t) => t.name)).toEqual(["The Empire"]); // the empire holds things: still shown
+  });
+});
+
+describe("why an item is hidden from a tree (owner, 26 Nov)", () => {
+  it("by hand, or because the tree hides loose items; never once it's linked there", () => {
+    const W = "averland-borders";
+    const items = sample();
+    const place = items.find((i) => i.kind === "thing-kind")!.key;
+    const drifter: Item = { key: `${W}.thing.drifter`, kind: "thing", world: W, name: "Drifter", kinds: [place], fields: [] };
+    const tree = treeKinds(items, W)[0].key;
+    let all = hideHere([...items, drifter], tree, drifter.key, true);
+    expect(hiddenIn(all, W, tree, drifter.key)).toBe("by hand");
+    all = setParent(all, W, drifter.key, key(all, "Averland")).items;
+    expect(hiddenIn(all, W, tree, drifter.key)).toBeNull();
   });
 });

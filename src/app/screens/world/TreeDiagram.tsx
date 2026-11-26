@@ -19,6 +19,7 @@ import { TreePicker, useChosenTree } from "./tree-picker";
 import { useKept, useRemembered } from "./remembered";
 import { NewPlace, type Part } from "./WorldScreen";
 import { useUndo } from "./undo";
+import { GroupPopup } from "./GroupPopup";
 import { DOUBLE_TAP_MS, swallowNextClick, tapSlop } from "./gestures";
 
 
@@ -43,6 +44,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
+  const [grouping, setGrouping] = useState(false);
   const [newAt, setNewAt] = useState<Point | null>(null); // a double tap on empty space: a new item here
   const lastTap = useRef<{ key: string; time: number; before: string[] } | null>(null);
   const undo = useUndo("diagram", world, () => data.items, save);
@@ -263,7 +265,13 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       <p className="sub diagram-hint">
         {selected.length > 0 ? (
           <>
-            <b>{selected.length} selected</b> (drag one to move them all) · <button className="link" onClick={() => setSelected([])}>Clear</button>
+            <b>{selected.length} selected</b> (drag one to move them all) ·{" "}
+            {selected.length > 1 && (
+              <>
+                <button className="link" onClick={() => setGrouping(true)}>Group / move into…</button> ·{" "}
+              </>
+            )}
+            <button className="link" onClick={() => setSelected([])}>Clear</button>
           </>
         ) : (
           <>Tap to select, double-tap to open, double-tap empty space for a new item.</>
@@ -304,6 +312,19 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
           </svg>
         )}
       </div>
+      {grouping && (
+        <GroupPopup
+          data={data}
+          world={world}
+          selected={selected}
+          tree={tree}
+          apply={async (items) => {
+            await undo.apply(items);
+            setSelected([]);
+          }}
+          onClose={() => setGrouping(false)}
+        />
+      )}
       {newAt && (
         <div className="popup-back" onClick={() => setNewAt(null)}>
           <div className="popup" onClick={(e) => e.stopPropagation()}>

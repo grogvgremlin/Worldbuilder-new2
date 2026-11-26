@@ -10,7 +10,7 @@
 // desktop, works on the phone).
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent } from "react";
 import type { Thing, WorldMap } from "../../../items/items";
-import { areasOn, groupAreasOn, iconOf, notOnMap, placePin, removePin, type Area } from "../../../world/maps";
+import { areasOn, groupAreasOn, iconOf, sheetOf, notOnMap, placePin, removePin, type Area } from "../../../world/maps";
 import { pathOf } from "../../../world/places";
 import { thingsIn } from "../../../world/world";
 import type { AppData } from "../../app-data";
@@ -19,6 +19,7 @@ import { NewPlace } from "./WorldScreen";
 import { TextBox } from "./text-box";
 import { treeKinds } from "../../../world/places";
 import { useUndo } from "./undo";
+import { GroupPopup } from "./GroupPopup";
 import { DOUBLE_TAP_MS, DOUBLE_TAP_PX, swallowNextClick, tapSlop } from "./gestures";
 import { descendantsOf } from "../../../world/places";
 import { membersOf } from "../../../world/groups";
@@ -28,7 +29,7 @@ type Point = { x: number; y: number };
 type Gesture =
   | { kind: "pan"; start: Point; from: View; moved: boolean }
   | { kind: "pin"; thing: string; start: Point; moved: boolean; moving: string[]; from: Map<string, Point> }
-  | { kind: "area"; thing: string; start: Point; from: View; moved: boolean }
+  | { kind: "area"; thing: string; start: Point; from: View; moved: boolean; moving: Map<string, Point> }
   | { kind: "pinch"; startDistance: number; startCentre: Point; from: View }
   | null;
 
@@ -44,6 +45,9 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
   const [placing, setPlacing] = useState<string | null>(place ?? null);
   const [adding, setAdding] = useState(false);
   const [shown, setShown] = useState<AreasShown>(() => readAreasShown(mapKey));
+  const [lit, setLit] = useState<string | null>(null); // an area picked out (tap on the map or in the list)
+  const [hover, setHover] = useState<string | null>(null); // with a mouse: the area under the pointer
+  const [grouping, setGrouping] = useState(false);
   const [areasMenu, setAreasMenu] = useState(false);
   const showArea = (next: AreasShown) => (setShown(next), saveAreasShown(mapKey, next));
   const [locked, setLocked] = useState(false);
@@ -108,13 +112,22 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
       const from = new Map((map?.pins ?? []).filter((p) => moving.includes(p.thing)).map((p) => [p.thing, { x: p.x, y: p.y }]));
       gesture.current = { kind: "pin", thing: pin, start: local(e), moved: false, moving, from };
     } else if (area && !placing) {
-      gesture.current = { kind: "area", thing: area, start: local(e), from: view, moved: false };
+      // Dragging an area's badge moves everything pinned inside it (owner, 26 Nov).
+      const inside = new Set(insideArea(area));
+      const moving = new Map((map?.pins ?? []).filter((p) => inside.has(p.thing)).map((p) => [p.thing, { x: p.x, y: p.y }]));
+      gesture.current = { kind: "area", thing: area, start: local(e), from: view, moved: false, moving };
     } else {
       gesture.current = { kind: "pan", start: local(e), from: view, moved: false };
     }
   };
 
   const move = (e: ReactPointerEvent) => {
+    // A mouse moving with no button down picks out the area under it (owner, 26 Nov: "hovering").
+    if (e.pointerType === "mouse" && !pointers.current.has(e.pointerId) && view) {
+      const id = areaAt(toMap(local(e), view));
+      if (id !== hover) setHover(id);
+      return;
+    }
     if (!pointers.current.has(e.pointerId) || !view) return;
     pointers.current.set(e.pointerId, local(e));
     const g = gesture.current;
@@ -125,10 +138,25 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
       const anchor = toMap(g.startCentre, g.from);
       const centre = middle(a, b);
       setView({ k, tx: centre.x - anchor.x * k, ty: centre.y - anchor.y * k });
-    } else if (g?.kind === "pan" || g?.kind === "area") {
+    } else if (g?.kind === "pan") {
       if (!g.moved && distance(at, g.start) < tapSlop(e.pointerType)) return;
       g.moved = true;
       setView({ k: g.from.k, tx: g.from.tx + at.x - g.start.x, ty: g.from.ty + at.y - g.start.y });
+    } else if (g?.kind === "area") {
+      if (!g.moved && distance(at, g.start) < tapSlop(e.pointerType)) return;
+      if (locked) {
+        gesture.current = { kind: "pan", start: g.start, from: view, moved: true };
+        return;
+      }
+      g.moved = true;
+      const dx = (at.x - g.start.x) / view.k;
+      const dy = (at.y - g.start.y) / view.k;
+      setMap((m) => {
+        if (!m) return m;
+        let next = m;
+        for (const [thing, p] of g.moving) next = placePin(next, thing, p.x + dx, p.y + dy);
+        return next;
+      });
     } else if (g?.kind === "pin") {
       if (!g.moved && distance(at, g.start) < tapSlop(e.pointerType)) return;
       if (locked) {
@@ -160,8 +188,9 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
     if (g?.kind === "pin") {
       if (g.moved) await save(map);
       else tap(g.thing, local(e));
-    } else if (g?.kind === "area" && !g.moved) {
-      tap(g.thing, local(e));
+    } else if (g?.kind === "area") {
+      if (g.moved) await save(map);
+      else tap(g.thing.slice(g.thing.indexOf(":") + 1), local(e));
     } else if (g?.kind === "pan" && !g.moved) {
       if (placing) {
         const p = toMap(local(e), view);
@@ -185,6 +214,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
       return;
     }
     lastTap.current = { key, at, time: Date.now(), before: selected };
+    if (!key && view) setLit(areaAt(toMap(at, view))); // an empty tap picks out the area there (or none)
     if (!key) setSelected([]);
     else setSelected(selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key]);
   };
@@ -201,6 +231,35 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
   const trees = treeKinds(data.items, map.world);
   const treesShown = (shown.trees ?? [trees[0]?.key]).filter((k) => trees.some((t) => t.key === k));
   const allAreas = [...treesShown.flatMap((t) => areasOn(data.items, map, t)), ...groupAreasOn(data.items, map)];
+  // Every area the map could show (all trees, groups), and which are drawn now; a picked-out area is
+  // drawn even when filtered out, until another is picked (owner, 26 Nov).
+  const everyArea = [...trees.flatMap((t) => areasOn(data.items, map, t.key)), ...groupAreasOn(data.items, map)];
+  const drawn = shown.all ? allAreas.filter((a) => !shown.hidden.includes(areaId(a))) : [];
+  const picked = hover ?? lit;
+  const pickedArea = everyArea.find((a) => areaId(a) === picked);
+  const toDraw = pickedArea && !drawn.some((a) => areaId(a) === picked) ? [...drawn, pickedArea] : drawn;
+  const sheet = sheetOf(map);
+
+  // What an area holds, for dragging it: the item itself and, for a tree, everything inside it there;
+  // for a group, its members and what they hold.
+  const insideArea = (id: string): string[] => {
+    const area = everyArea.find((a) => areaId(a) === id);
+    if (!area) return [];
+    const key = area.thing.key;
+    const inside =
+      area.by === "group"
+        ? membersOf(data.items, map.world, key).flatMap((m) => [m.thing.key, ...descendantsOf(data.items, map.world, m.thing.key).map((t) => t.key)])
+        : descendantsOf(data.items, map.world, key, area.tree).map((t) => t.key);
+    return [key, ...inside];
+  };
+
+  // The area drawn at a point on the sheet, the smallest if several (for a tap or the mouse).
+  const areaAt = (p: Point): string | null => {
+    const reach = 24 / (view?.k ?? 1);
+    const hits = drawn.filter((a) => distanceToShape(p, a.outline) <= reach);
+    hits.sort((a, b) => shapeSize(a.outline) - shapeSize(b.outline));
+    return hits[0] ? areaId(hits[0]) : null;
+  };
   const treeStyle = (tree?: string) => Math.max(0, treesShown.indexOf(tree ?? "")); // 0: the first tree shown, drawn filled
 
   const placingThing = placing ? things.get(placing) : undefined;
@@ -243,15 +302,17 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
             setSelected([]);
           }}
           onSelect={setSelected}
+          onGroup={() => setGrouping(true)}
           onClose={() => setSelected([])}
         />
       )}
+      <div className="map-layout">
       <div className="map-wrap" ref={wrap} onTouchStart={(e) => e.stopPropagation()} onTouchEnd={(e) => e.preventDefault()} onWheel={wheel}>
         {size && view && (
-          <svg width={size.w} height={size.h} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} className={placing ? "placing" : ""}>
+          <svg width={size.w} height={size.h} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onPointerLeave={() => setHover(null)} className={placing ? "placing" : ""}>
             <g transform={`translate(${view.tx} ${view.ty}) scale(${view.k})`}>
-              <rect className="map-sheet" x={0} y={0} width={map.width} height={map.height} rx={8 / view.k} />
-              {shown.all && <Areas areas={allAreas.filter((a) => !shown.hidden.includes(areaId(a)))} k={view.k} selected={selected} treeStyle={treeStyle} />}
+              <rect className="map-sheet" x={sheet.x} y={sheet.y} width={sheet.width} height={sheet.height} rx={8 / view.k} />
+              <Areas areas={toDraw} k={view.k} selected={selected} treeStyle={treeStyle} lit={picked} />
               {map.pins.map((p) => {
                 const thing = things.get(p.thing);
                 if (!thing) return null;
@@ -267,6 +328,21 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
           </svg>
         )}
       </div>
+      <AreaList everyArea={everyArea} drawn={drawn} picked={picked} onPick={(id) => setLit(lit === id ? null : id)} onHover={setHover} trees={trees.map((t) => ({ key: t.key, name: t.name }))} />
+      </div>
+      {grouping && (
+        <GroupPopup
+          data={data}
+          world={map.world}
+          selected={selected}
+          tree={treesShown[0]}
+          apply={async (items) => {
+            await undo.apply(items);
+            setSelected([]);
+          }}
+          onClose={() => setGrouping(false)}
+        />
+      )}
 
       {newAt && (
         <NewHere
@@ -310,7 +386,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
 // and their names stack instead of colliding.
 // The first tree shown is drawn as filled shapes; others as dotted outlines in their own colour, so
 // where trees cross can be seen on one map.
-function Areas({ areas, k, selected, treeStyle }: { areas: Area[]; k: number; selected: string[]; treeStyle: (tree?: string) => number }) {
+function Areas({ areas, k, selected, treeStyle, lit }: { areas: Area[]; k: number; selected: string[]; treeStyle: (tree?: string) => number; lit: string | null }) {
   const deepest = Math.max(0, ...areas.filter((a) => a.by === "containment").map((a) => a.depth));
   return (
     <g className="areas">
@@ -320,7 +396,7 @@ function Areas({ areas, k, selected, treeStyle }: { areas: Area[]; k: number; se
         const d = a.outline.map((p, n) => `${n ? "L" : "M"}${p.x} ${p.y}`).join(" ") + " Z";
         const top = a.outline.reduce((best, p) => (p.y < best.y ? p : best), a.outline[0]);
         return (
-          <g key={areaId(a)} className={(a.by === "group" ? "area group" : treeStyle(a.tree) > 0 ? `area other tree-${treeStyle(a.tree) % 3}` : `area depth-${a.depth % 4}`) + (selected.includes(a.thing.key) ? " selected" : "")}>
+          <g key={areaId(a)} className={(a.by === "group" ? "area group" : treeStyle(a.tree) > 0 ? `area other tree-${treeStyle(a.tree) % 3}` : `area depth-${a.depth % 4}`) + (selected.includes(a.thing.key) ? " selected" : "") + (lit === areaId(a) ? " lit" : "")}>
             {a.by === "group" || treeStyle(a.tree) > 0 ? (
               <>
                 <path d={d} strokeWidth={(pad * 2) / k} className="group-fill" style={a.thing.colour ? { fill: a.thing.colour, stroke: a.thing.colour } : undefined} />
@@ -331,7 +407,7 @@ function Areas({ areas, k, selected, treeStyle }: { areas: Area[]; k: number; se
             )}
             <text x={top.x} y={top.y - (pad - 11) / k} style={{ fontSize: 10.5 / k, ...(a.thing.colour ? { fill: a.thing.colour } : {}) }}>{a.thing.name}</text>
             {/* A badge to tap, to select the area (owner, 26 Nov); double-tap opens it. */}
-            <g data-area={a.thing.key} className="area-badge" transform={`translate(${top.x + (labelWidth(a.thing.name) / 2 + 12) / k} ${top.y - (pad - 7) / k}) scale(${1 / k})`}>
+            <g data-area={areaId(a)} className="area-badge" transform={`translate(${top.x + (labelWidth(a.thing.name) / 2 + 12) / k} ${top.y - (pad - 7) / k}) scale(${1 / k})`}>
               <circle r={9} />
               <text y={4}>{a.by === "group" ? "◌" : "◉"}</text>
             </g>
@@ -445,9 +521,45 @@ function AreasMenu({ areas, shown, onChange, onClose, trees, treesShown }: { are
   );
 }
 
+// The areas in the open beside (or under) the map (owner, 26 Nov): those drawn, and those filtered
+// out. Tapping one picks it out on the map (a filtered-out one is drawn while picked); with a mouse,
+// pointing at one does the same. An area picked on the map is picked out here too.
+function AreaList({ everyArea, drawn, picked, onPick, onHover, trees }: { everyArea: Area[]; drawn: Area[]; picked: string | null; onPick: (id: string) => void; onHover: (id: string | null) => void; trees: { key: string; name: string }[] }) {
+  const isDrawn = new Set(drawn.map(areaId));
+  const titleOf = (a: Area) => (a.by === "group" ? "Groups" : trees.find((t) => t.key === a.tree)?.name ?? "Tree");
+  const row = (a: Area) => (
+    <li key={areaId(a)}>
+      <button
+        className={"area-row" + (picked === areaId(a) ? " lit" : "")}
+        onClick={() => onPick(areaId(a))}
+        onPointerEnter={(e) => e.pointerType === "mouse" && onHover(areaId(a))}
+        onPointerLeave={(e) => e.pointerType === "mouse" && onHover(null)}
+      >
+        <span className="area-dot" style={a.thing.colour ? { background: a.thing.colour } : undefined} />
+        <span style={{ paddingLeft: a.depth * 10 }}>{a.thing.name}</span>
+        <span className="sub"> {titleOf(a)}</span>
+      </button>
+    </li>
+  );
+  const hidden = everyArea.filter((a) => !isDrawn.has(areaId(a)));
+  if (everyArea.length === 0) return null;
+  return (
+    <aside className="area-list">
+      <div className="sub menu-heading">On the map ({drawn.length})</div>
+      <ul className="plain">{drawn.map(row)}</ul>
+      {hidden.length > 0 && (
+        <details>
+          <summary className="sub menu-heading">Filtered out ({hidden.length})</summary>
+          <ul className="plain">{hidden.map(row)}</ul>
+        </details>
+      )}
+    </aside>
+  );
+}
+
 // What's selected: one item's card (Open; take it off the map; select what's inside it), or a count
 // for a bulk move (owner, 26 Nov: "I want to be able to do bulk moves").
-function SelectionCard({ data, map, selected, onOpen, onUnpin, onSelect, onClose }: { data: AppData; map: WorldMap; selected: Thing[]; onOpen: (key: string) => void; onUnpin: (keys: string[]) => void; onSelect: (keys: string[]) => void; onClose: () => void }) {
+function SelectionCard({ data, map, selected, onOpen, onUnpin, onSelect, onGroup, onClose }: { data: AppData; map: WorldMap; selected: Thing[]; onOpen: (key: string) => void; onUnpin: (keys: string[]) => void; onSelect: (keys: string[]) => void; onGroup: () => void; onClose: () => void }) {
   const pinned = selected.filter((t) => map.pins.some((p) => p.thing === t.key));
   // Inside the selection: what each holds (any depth, main tree) and its group members, pinned here.
   const inside = [...new Set(selected.flatMap((t) => [...descendantsOf(data.items, map.world, t.key), ...membersOf(data.items, map.world, t.key).map((m) => m.thing)]).map((t) => t.key))]
@@ -467,6 +579,7 @@ function SelectionCard({ data, map, selected, onOpen, onUnpin, onSelect, onClose
       )}
       <div className="selection-buttons">
         {one && <button className="primary" onClick={() => onOpen(one.key)}>Open</button>}
+        {selected.length > 1 && <button className="primary" onClick={onGroup}>Group / move into…</button>}
         {inside.length > 0 && <button onClick={() => onSelect([...selected.map((t) => t.key), ...inside])}>Select what's inside ({inside.length})</button>}
         {pinned.length > 0 && <button onClick={() => onUnpin(pinned.map((t) => t.key))}>Take {pinned.length > 1 ? `${pinned.length} ` : ""}off this map</button>}
       </div>
@@ -516,9 +629,52 @@ function AddSheet({ data, map, onPick, onClose }: { data: AppData; map: WorldMap
 
 // --- Geometry for the view -------------------------------------------------------------------------
 
+// How far a point is from a shape: 0 inside it, else the distance to its nearest edge or point.
+function distanceToShape(p: Point, outline: Point[]): number {
+  if (outline.length >= 3 && insidePolygon(p, outline)) return 0;
+  if (outline.length === 1) return distance(p, outline[0]);
+  let best = Infinity;
+  outline.forEach((a, n) => {
+    const b = outline[(n + 1) % outline.length];
+    best = Math.min(best, distanceToSegment(p, a, b));
+  });
+  return best;
+}
+
+function insidePolygon(p: Point, poly: Point[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i];
+    const b = poly[j];
+    if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+function distanceToSegment(p: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const length = dx * dx + dy * dy;
+  const t = length === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / length));
+  return distance(p, { x: a.x + t * dx, y: a.y + t * dy });
+}
+
+// A shape's size, to prefer the smaller of two areas under a point (a town's over its province's).
+function shapeSize(outline: Point[]): number {
+  if (outline.length < 3) return outline.length;
+  let twice = 0;
+  outline.forEach((a, n) => {
+    const b = outline[(n + 1) % outline.length];
+    twice += a.x * b.y - b.x * a.y;
+  });
+  return Math.abs(twice) / 2 + 3;
+}
+
+// The whole sheet in view (grown to its pins).
 function fitView(map: WorldMap, size: { w: number; h: number }): View {
-  const k = Math.min(size.w / map.width, size.h / map.height) * 0.94;
-  return { k, tx: (size.w - map.width * k) / 2, ty: (size.h - map.height * k) / 2 };
+  const sheet = sheetOf(map);
+  const k = Math.min(size.w / sheet.width, size.h / sheet.height) * 0.94;
+  return { k, tx: (size.w - sheet.width * k) / 2 - sheet.x * k, ty: (size.h - sheet.height * k) / 2 - sheet.y * k };
 }
 
 function centreOn(p: Point, k: number, size: { w: number; h: number }): View {

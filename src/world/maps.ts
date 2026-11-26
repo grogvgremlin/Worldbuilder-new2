@@ -20,11 +20,21 @@ export function pinOf(map: WorldMap, thing: string): Pin | undefined {
   return map.pins.find((p) => p.thing === thing);
 }
 
-// Pins a thing at a point, or moves its pin there. Points are kept inside the map.
+// Pins a thing at a point, or moves its pin there. Anywhere: the sheet grows to hold it (owner,
+// 26 Nov: "the map is limited to the white box … that's going to get very crowded").
 export function placePin(map: WorldMap, thing: string, x: number, y: number): WorldMap {
-  const at = { x: clamp(Math.round(x), 0, map.width), y: clamp(Math.round(y), 0, map.height) };
+  const at = { x: Math.round(x), y: Math.round(y) };
   const pins = pinOf(map, thing) ? map.pins.map((p) => (p.thing === thing ? { ...p, ...at } : p)) : [...map.pins, { thing, ...at }];
   return { ...map, pins };
+}
+
+// The sheet as drawn: the map's own size, grown to take every pin with a margin round it.
+export function sheetOf(map: WorldMap, margin = 80): { x: number; y: number; width: number; height: number } {
+  const xs = [0, map.width, ...map.pins.flatMap((p) => [p.x - margin, p.x + margin])];
+  const ys = [0, map.height, ...map.pins.flatMap((p) => [p.y - margin, p.y + margin])];
+  const x = Math.min(...xs);
+  const y = Math.min(...ys);
+  return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
 }
 
 export function removePin(map: WorldMap, thing: string): WorldMap {
@@ -110,6 +120,3 @@ export function convexHull(points: { x: number; y: number }[]): { x: number; y: 
 }
 type Pt = { x: number; y: number };
 
-function clamp(n: number, low: number, high: number): number {
-  return Math.min(high, Math.max(low, n));
-}

@@ -13,9 +13,10 @@ import { addToGroup, groupLinkKinds, groupsIn, isOnlyAGroup, membersOf, newGroup
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { useRemembered } from "./remembered";
+import { useFoldAll } from "./fold-all";
 import { TreeDiagram } from "./TreeDiagram";
 import { ALL, TreePicker, useChosenTree } from "./tree-picker";
-import { hasKind, inOrder, kindTree, linkMisfits, moveInOrder, refusal, removeLinkKind, setFlavourOf } from "../../../world/kinds";
+import { hasKind, inOrder, itemsWithMisfits, kindTree, misfitLinks, moveInOrder, refusal, removeLinkKind, setFlavourOf, type Misfit } from "../../../world/kinds";
 
 type Tab = "items" | "diagram" | "maps" | "kinds";
 const TABS: { id: Tab; label: string }[] = [
@@ -56,14 +57,15 @@ export type Part = { data: AppData; nav: Nav; world: string; save: (items: Item[
 type Shape = "all" | "containers" | "base";
 
 function Items({ data, nav, world, save }: Part) {
-  const [view, setView] = useRemembered<"tree" | "groups" | "loose">(`${world}|items-view`, "tree");
+  const [view, setView] = useRemembered<"tree" | "groups" | "loose" | "misfits">(`${world}|items-view`, "tree");
   const [tree, setTree] = useChosenTree(data, world);
   const [byKind, setByKind] = useRemembered(`${world}|by-kind`, false); // the tree picker's "All"
   const [shape, setShape] = useRemembered<Shape>(`${world}|shape`, "all");
   const [text, setText] = useState("");
   const [kind, setKind] = useState<string | null>(null);
   const kinds = kindTree(data.items, world);
-  const warnings = [...treeWarnings(data.items, world, tree), ...linkMisfits(data.items, world)];
+  const warnings = treeWarnings(data.items, world, tree);
+  const misfits = misfitLinks(data.items, world);
   const searching = text.trim() !== "" || kind !== null;
   const matches = thingsIn(data.items, world)
     .filter((t) => (kind ? hasKind(data.items, world, t.kinds, kind) : true)) // a kind's flavours count
@@ -106,6 +108,9 @@ function Items({ data, nav, world, save }: Part) {
         </div>
       )}
       {warnings.length > 0 && <ul className="plain problems">{warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
+      {misfits.length > 0 && view !== "misfits" && (
+        <p className="problems-line">⚠ {misfits.length} link{misfits.length === 1 ? " doesn't" : "s don't"} fit what its link kind takes · <button className="link" onClick={() => (setShape("all"), setText(""), setKind(null), setView("misfits"))}>Show</button></p>
+      )}
       {thingsIn(data.items, world).length === 0 && <p className="hint">No items yet. Add one with + New item above, or double-tap a map or the diagram.</p>}
       {searching ? (
         <ul className="list">{matches.map(row)}</ul>
@@ -123,6 +128,7 @@ function Items({ data, nav, world, save }: Part) {
               <button className={view === "tree" ? "on" : ""} onClick={() => setView("tree")}>Tree</button>
               <button className={view === "groups" ? "on" : ""} onClick={() => setView("groups")}>Groups</button>
               <button className={view === "loose" ? "on" : ""} onClick={() => setView("loose")}>Loose ({looseItems(data.items, world).length})</button>
+              {misfits.length > 0 && <button className={view === "misfits" ? "on" : ""} onClick={() => setView("misfits")}>⚠ Doesn't fit ({misfits.length})</button>}
             </nav>
             {view === "tree" && <TreePicker data={data} world={world} tree={byKind ? ALL : tree} onChoose={(k) => (k === ALL ? setByKind(true) : (setByKind(false), setTree(k)))} withAll />}
           </div>
@@ -137,6 +143,7 @@ function Items({ data, nav, world, save }: Part) {
             </ul>
           )}
           {view === "groups" && <Groups data={data} nav={nav} world={world} save={save} />}
+          {view === "misfits" && <MisfitList data={data} nav={nav} misfits={misfits} save={save} />}
           {view === "loose" && (
             <>
               <p className="sub">In no tree and no group: neither inside anything nor holding anything.</p>
@@ -145,6 +152,34 @@ function Items({ data, nav, world, save }: Part) {
           )}
         </>
       )}
+    </>
+  );
+}
+
+// Links that don't fit what their link kind takes (owner, 26 Nov: kept, but always flagged, strict or
+// warn): each with why, its two ends to open, and swipe to remove the link.
+export function MisfitList({ data, nav, misfits, save }: { data: AppData; nav: Nav; misfits: Misfit[]; save: (items: Item[]) => Promise<void> }) {
+  const nameOf = (key: string) => data.items.find((i) => i.key === key)?.name ?? key;
+  if (misfits.length === 0) return <p className="sub">Every link fits what its link kind takes.</p>;
+  return (
+    <>
+      <p className="sub">Made before a rule changed, or under a link kind that only warns. Change the rule (the link kind's page), move the items, or swipe a link away.</p>
+      <ul className="list">
+        {misfits.map((m) => (
+          <li key={m.link.key}>
+            <SwipeRow action="Remove link" onAction={() => save(data.items.filter((i) => i.key !== m.link.key))}>
+              <div className="misfit-row">
+                <span>
+                  <button className="link" onClick={() => nav.open({ name: "place", key: m.link.from })}>{nameOf(m.link.from)}</button>{" "}
+                  <button className="link sub" onClick={() => nav.open({ name: "link-kind", key: m.link.linkKind })}>{nameOf(m.link.linkKind)}</button>{" "}
+                  <button className="link" onClick={() => nav.open({ name: "place", key: m.link.to })}>{nameOf(m.link.to)}</button>
+                </span>
+                <span className="sub warn">{m.why}</span>
+              </div>
+            </SwipeRow>
+          </li>
+        ))}
+      </ul>
     </>
   );
 }
@@ -165,15 +200,16 @@ export function HiddenNote({ data, nav, world, tree }: { data: AppData; nav: Nav
 
 // Containers split (owner, 26 Nov): those holding something in each tree, by tree, then groups.
 function Containers({ data, world, row }: { data: AppData; world: string; row: (t: Thing) => ReactNode }) {
+  const folds = useFoldAll();
   const sections = [
     ...treeKinds(data.items, world).map((k) => ({ id: k.key, title: `In the tree "${k.name}"`, list: thingsIn(data.items, world).filter((t) => childrenOf(data.items, world, t.key, k.key).length > 0) })),
     { id: "groups", title: "Groups", list: groupsIn(data.items, world) },
   ];
   return (
     <>
-      <p className="sub">Containers hold something: in a tree (one at a time), or as a group (many at once).</p>
+      <p className="sub">Containers hold something: in a tree (one at a time), or as a group (many at once). {folds.controls}</p>
       {sections.map((sec) => (
-        <details key={sec.id} className="fold" open>
+        <details key={`${sec.id}|${folds.epoch}`} className="fold" open={folds.openFor(true)}>
           <summary>{sec.title} ({sec.list.length})</summary>
           <ul className="list">{[...sec.list].sort((a, b) => a.name.localeCompare(b.name)).map(row)}</ul>
         </details>
@@ -184,6 +220,7 @@ function Containers({ data, world, row }: { data: AppData; world: string; row: (
 
 // Every item, by kind and flavour (the tree picker's "All", owner, 26 Nov).
 function ByKind({ data, world, row }: { data: AppData; world: string; row: (t: Thing) => ReactNode }) {
+  const folds = useFoldAll();
   const things = thingsIn(data.items, world);
   const sections = [
     ...kindTree(data.items, world).map(({ kind, depth }) => ({ id: kind.key, title: `${"↳ ".repeat(depth ? 1 : 0)}${kind.icon ?? ""} ${kind.name}`, depth, list: things.filter((t) => t.kinds.includes(kind.key)) })),
@@ -191,8 +228,9 @@ function ByKind({ data, world, row }: { data: AppData; world: string; row: (t: T
   ].filter((sec) => sec.list.length > 0);
   return (
     <>
+      <p className="sub">{folds.controls}</p>
       {sections.map((sec) => (
-        <details key={sec.id} className="fold" open style={{ marginLeft: sec.depth * 14 }}>
+        <details key={`${sec.id}|${folds.epoch}`} className="fold" open={folds.openFor(true)} style={{ marginLeft: sec.depth * 14 }}>
           <summary>{sec.title} ({sec.list.length})</summary>
           <ul className="list">{[...sec.list].sort((a, b) => a.name.localeCompare(b.name)).map(row)}</ul>
         </details>
@@ -339,9 +377,10 @@ function PlaceRow({ data, thing, withPath, count, onOpen }: { data: AppData; thi
   const kinds = all.length > 1 ? all.filter((k) => thing.kinds.includes(k.key)).map((k) => k.name) : []; // one kind says nothing
   const path = withPath ? pathOf(data.items, thing.world, thing.key).slice(0, -1).map((t) => t.name).join(" › ") : "";
   const sub = [kinds.join(", "), path, count ? `${count} inside` : "", thing.summary ?? ""].filter(Boolean).join(" · ");
+  const flagged = itemsWithMisfits(data.items, thing.world).has(thing.key); // in a link that doesn't fit
   return (
     <button onClick={onOpen}>
-      <span className="title">{iconOf(data.items, thing)} {thing.name}</span>
+      <span className="title">{flagged && <span className="warn" title="In a link that doesn't fit">⚠ </span>}{iconOf(data.items, thing)} {thing.name}</span>
       {sub && <span className="sub">{sub}</span>}
     </button>
   );

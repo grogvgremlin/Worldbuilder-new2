@@ -16,11 +16,12 @@ import { NewPlace } from "./WorldScreen";
 import { TextBox } from "./text-box";
 import { SwipeRow } from "../../swipe";
 import { useChosenTree } from "./tree-picker";
-import { useRemembered } from "./remembered";
+import { recalled, rememberAll, useRemembered } from "./remembered";
 import { fitsTree, kindLine, kindTree, refusal } from "../../../world/kinds";
 
 export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; thingKey: string }) {
   const [editing, setEditing] = useState(false);
+  const [epoch, setEpoch] = useState(0); // bumped by Fold all / Open all: the sections redraw
   const [, setChanged] = useState(0);
   const thing = data.items.find((i): i is Thing => i.kind === "thing" && i.key === thingKey);
   const [viewed] = useChosenTree(data, thing?.world ?? "");
@@ -36,7 +37,7 @@ export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; 
   const trailLabel = trailTree && trailTree !== main ? linkKindsIn(data.items, world).find((k) => k.key === trailTree)?.name : undefined;
 
   return (
-    <article className="card place">
+    <article className="card place" key={epoch}>
       <div className="place-head">
         {editing ? (
           <TextBox className="icon-box" value={thing.icon ?? ""} placeholder={iconOf(data.items, thing)} onSave={(v) => change({ icon: v || undefined })} />
@@ -50,6 +51,10 @@ export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; 
         </div>
         <button className="link edit-toggle" onClick={() => setEditing(!editing)}>{editing ? "Done" : "Edit"}</button>
       </div>
+      <span className="fold-all">
+        <button className="link" onClick={() => (rememberAll("item-fold|", false), setEpoch((n) => n + 1))}>Fold all</button> ·{" "}
+        <button className="link" onClick={() => (rememberAll("item-fold|", true), setEpoch((n) => n + 1))}>Open all</button>
+      </span>
 
       <Kinds data={data} thing={thing} editing={editing} change={change} />
       {editing && (
@@ -138,7 +143,7 @@ export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; 
 // A section that folds (owner, 26 Nov mock-up: the arrows); remembered while the app is open.
 // `big` is one of the two groups (Wiki entry; Where it sits). `show` false: not drawn at all.
 function Fold({ id, title, big, show = true, children }: { id: string; title: string; big?: boolean; show?: boolean; children: ReactNode }) {
-  const [open, setOpen] = useRemembered(`item-fold|${id}`, true);
+  const [open, setOpen] = useRemembered(`item-fold|${id}`, recalled(`item-fold|${id}`, "item-fold|", true));
   if (!show) return null;
   return (
     <details className={big ? "item-fold big" : "item-fold"} open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
@@ -324,23 +329,36 @@ function OtherNames({ thing, editing, change }: { thing: Thing; editing: boolean
 
 // What it holds: open one; add a new place inside; or put an existing place in here.
 function Contents({ data, nav, thing, editing, save }: { data: AppData; nav: Nav; thing: Thing; editing: boolean; save: (items: Item[]) => Promise<void> }) {
+  // What it holds in each tree, in the world's order (owner, 26 Nov: a fortress put in Hill country
+  // by "in (terrain)" shows under Hill country).
+  const trees = treeKinds(data.items, thing.world);
+  const several = trees.length > 1;
+  return (
+    <>
+      {trees.map((k) => <HoldsIn key={k.key} data={data} nav={nav} thing={thing} editing={editing} save={save} tree={k.key} treeName={several ? k.name : undefined} />)}
+    </>
+  );
+}
+
+function HoldsIn({ data, nav, thing, editing, save, tree, treeName }: { data: AppData; nav: Nav; thing: Thing; editing: boolean; save: (items: Item[]) => Promise<void>; tree: string; treeName?: string }) {
   const world = thing.world;
-  const children = childrenOf(data.items, world, thing.key);
-  const above = new Set(pathOf(data.items, world, thing.key).map((t) => t.key));
-  const tree = firstTree(data.items, world) ?? "";
+  const children = childrenOf(data.items, world, thing.key, tree);
+  const above = new Set(pathOf(data.items, world, thing.key, tree).map((t) => t.key));
   const canHold = !refusal(data.items, world, tree, "to", thing.key); // a Person holds nothing by "in"
+  if ((!editing || !canHold) && children.length === 0) return null;
   const movable = thingsIn(data.items, world)
     .filter((t) => !above.has(t.key) && !children.some((c) => c.key === t.key) && !refusal(data.items, world, tree, "from", t.key))
     .sort((a, b) => a.name.localeCompare(b.name));
-  if ((!editing || !canHold) && children.length === 0) return null;
   const bringIn = async (key: string) => {
-    const result = setParent(data.items, world, key, thing.key);
+    const result = setParent(data.items, world, key, thing.key, tree);
     if (result.problem) return alert(result.problem);
     await save(result.items);
   };
   const reverse = linkKindsIn(data.items, world).find((k) => k.key === tree)?.reverseName;
+  const word = reverse ? `${reverse[0].toUpperCase()}${reverse.slice(1)}` : "Contains";
+  const isFirst = tree === firstTree(data.items, world);
   return (
-    <Fold id="holds" title={`${reverse ? `${reverse[0].toUpperCase()}${reverse.slice(1)}` : "Contains"} (${children.length})`}>
+    <Fold id={`holds|${tree}`} title={`${word}${treeName ? ` (${treeName})` : ""} (${children.length})`}>
       {editing && canHold && (
         <>
           <label className="stack">
@@ -349,20 +367,22 @@ function Contents({ data, nav, thing, editing, save }: { data: AppData; nav: Nav
               {movable.map((t) => <option key={t.key} value={t.key}>{t.name}</option>)}
             </select>
           </label>
-          <Fold id="add-inside" title="Add an item inside">
-            <NewPlace data={data} world={world} save={save} inside={thing.key} onMade={() => undefined} />
-          </Fold>
+          {isFirst && (
+            <Fold id="add-inside" title="Add an item inside">
+              <NewPlace data={data} world={world} save={save} inside={thing.key} onMade={() => undefined} />
+            </Fold>
+          )}
         </>
       )}
-      {children.length > 0 && <p className="sub swipe-hint">Swipe one left to take it out: it then sits straight in the world.</p>}
+      {children.length > 0 && <p className="sub swipe-hint">Swipe one left to take it out of here.</p>}
       <ul className="list">
         {children.map((c) => (
           <li key={c.key}>
-            <SwipeRow action="Take out" onAction={async () => await save(setParent(data.items, world, c.key, null).items)}>
+            <SwipeRow action="Take out" onAction={async () => await save(setParent(data.items, world, c.key, null, tree).items)}>
               <button onClick={() => nav.open({ name: "place", key: c.key })}>
                 <span className="title">{iconOf(data.items, c)} {c.name}</span>
-                {(c.summary || childrenOf(data.items, world, c.key).length > 0) && (
-                  <span className="sub">{[c.summary, childrenOf(data.items, world, c.key).length ? `${childrenOf(data.items, world, c.key).length} inside` : ""].filter(Boolean).join(" · ")}</span>
+                {(c.summary || childrenOf(data.items, world, c.key, tree).length > 0) && (
+                  <span className="sub">{[c.summary, childrenOf(data.items, world, c.key, tree).length ? `${childrenOf(data.items, world, c.key, tree).length} inside` : ""].filter(Boolean).join(" · ")}</span>
                 )}
               </button>
             </SwipeRow>

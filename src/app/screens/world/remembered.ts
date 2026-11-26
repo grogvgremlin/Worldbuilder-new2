@@ -41,3 +41,17 @@ export function useKept<T>(key: string, start: T): [T, (value: T) => void] {
 export function remember<T>(key: string, value: T): void {
   memory.set(key, value);
 }
+
+// Sets every remembered view starting with a prefix, and the value for ones not seen yet (the item
+// card's "Fold all / Open all": owner, 26 Nov).
+export function rememberAll(prefix: string, value: unknown): void {
+  for (const key of memory.keys()) if (key.startsWith(prefix)) memory.set(key, value);
+  memory.set(`${prefix}*`, value);
+}
+
+// A remembered value, else the prefix's value set by rememberAll, else the start.
+export function recalled<T>(key: string, prefix: string, start: T): T {
+  if (memory.has(key)) return memory.get(key) as T;
+  if (memory.has(`${prefix}*`)) return memory.get(`${prefix}*`) as T;
+  return start;
+}

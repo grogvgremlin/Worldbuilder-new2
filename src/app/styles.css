@@ -327,3 +327,31 @@ label.stack { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8p
 .diagram-bar .choice { display: flex; gap: 6px; align-items: center; font-size: .9rem; }
 .diagram-hint { margin: 2px 0 8px; }
 .diagram-node.moving rect { stroke: var(--accent); }
+.kind-field.inherited { opacity: .7; }
+.fold { margin: 0 0 10px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 12px; }
+.fold > summary { color: var(--accent); font-weight: 600; cursor: pointer; }
+.fold[open] > summary { margin-bottom: 4px; }
+.fold .form h2 { display: none; }
+.diagram-node.selected rect { stroke: var(--link); stroke-width: 3; fill: var(--panel); }
+.tool:disabled { opacity: .4; }
+.area-badge { cursor: pointer; }
+.area-badge circle { fill: var(--panel); stroke: var(--muted); stroke-width: 1.2; }
+.area-badge text { font-size: 11px; text-anchor: middle; fill: var(--muted); pointer-events: none; text-transform: none; letter-spacing: 0; }
+.area.selected path { opacity: .32; }
+.area.selected .area-badge circle { stroke: var(--link); stroke-width: 2.5; }
+.area.group.selected .group-edge { stroke-width: 3; }
+.selection-bar { position: relative; background: var(--panel); border: 1px solid var(--link); border-radius: var(--radius); padding: 6px 36px 6px 12px; margin-bottom: 8px; }
+.selection-bar .title { font-weight: 700; }
+.selection-bar .popup-close { top: 4px; }
+.selection-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.selection-buttons button { padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--ground); font-size: .9rem; }
+.selection-buttons button.primary { background: var(--accent); }
+.selection-bar { min-height: 64px; box-sizing: border-box; }
+.selection-bar.empty { border-color: var(--line); display: flex; align-items: center; font-size: .85rem; padding-right: 12px; }
+.selection-bar { height: 92px; min-height: 0; overflow: hidden; }
+.selection-bar .title, .selection-bar > .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.selection-buttons { flex-wrap: nowrap; overflow-x: auto; }
+.selection-buttons button { white-space: nowrap; flex: none; }
+.map-screen .map-tools { gap: 4px; }
+.map-screen .map-tools button { padding: 6px 10px; }
+.diagram-hint { height: 2.8em; overflow: hidden; }

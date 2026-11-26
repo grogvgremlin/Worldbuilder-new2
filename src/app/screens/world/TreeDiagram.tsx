@@ -1,8 +1,10 @@
-// World → Diagram: a tree drawn as boxes, across or down, arranged by hand (owner, 25 Nov).
-// Two ways to drag a box:
-//   - Arrange: move it where you like, with its branch following or not; kept on the world;
-//   - Move inside: drop it on another box to move it inside, on the world to put it at the top.
-// Tap a box to open the item. Drag the background to pan; pinch or the wheel to zoom.
+// World → Diagram: a tree drawn as boxes, across or down, arranged by hand (owner, 25–26 Nov).
+// Tap a box to select it (tap more for a bulk move); double-tap it to open the item; double-tap
+// empty space for a new item there (inside the one selected box, if one is).
+// Two ways to drag (everything selected moves together if the box dragged is selected):
+//   - Arrange: move boxes where you like, each branch following or not; kept on the world;
+//   - Move inside: drop on another box to move inside, on the world to put them at the top.
+// Undo and Redo step back through the moves. Drag the background to pan; pinch or wheel to zoom.
 // Design: design/world-structure.md §3 (one parent at a time, no loops: a drop that would make a loop
 // is refused), §5 (abstract views laid out by containment); spec/session-20-notes-3.md §0.1 (a
 // canvas as another view on the same structure). Layout: src/world/diagram.ts.
@@ -13,9 +15,11 @@ import { worldOf } from "../../../world/world";
 import { arrangedLayout, boxesThatMove, hasHandPlacing, moveBoxes, NODE_H, NODE_W, ROOT, tidyLayout, type Box, type Direction } from "../../../world/diagram";
 import { TreePicker, useChosenTree } from "./tree-picker";
 import { useKept } from "./remembered";
-import type { Part } from "./WorldScreen";
+import { NewPlace, type Part } from "./WorldScreen";
+import { useUndo } from "./undo";
 
 const TAP = 6;
+const DOUBLE_TAP_MS = 350;
 
 type DragMode = "arrange" | "inside";
 type View = { k: number; tx: number; ty: number };
@@ -36,6 +40,10 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const [view, setView] = useState<View | null>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [newAt, setNewAt] = useState<Point | null>(null); // a double tap on empty space: a new item here
+  const lastTap = useRef<{ key: string; time: number; before: string[] } | null>(null);
+  const undo = useUndo("diagram", world, () => data.items, save);
   const wrap = useRef<HTMLDivElement>(null);
   const pointers = useRef(new Map<number, Point>());
   const gesture = useRef<Gesture>(null);
@@ -121,11 +129,14 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       g.moved = true;
       const dx = (at.x - g.start.x) / view.k;
       const dy = (at.y - g.start.y) / view.k;
+      const dragged = selected.includes(g.key) ? selected : [g.key]; // a selected box brings the rest of the selection
       if (mode === "arrange") {
-        setDrag({ key: g.key, moving: boxesThatMove(data.items, world, tree, g.key, withBranch), dx, dy, over: null });
+        const moving = [...new Set(dragged.flatMap((k) => boxesThatMove(data.items, world, tree, k, withBranch)))];
+        setDrag({ key: g.key, moving, dx, dy, over: null });
       } else {
         const target = boxAt(toDiagram(at, view), g.key)?.key;
-        setDrag({ key: g.key, moving: [g.key], dx, dy, over: canDrop(g.key, target) ? target! : null });
+        const fits = dragged.every((k) => canDrop(k, target)) && !dragged.includes(target ?? "");
+        setDrag({ key: g.key, moving: dragged, dx, dy, over: fits ? target! : null });
       }
     }
   };
@@ -138,16 +149,53 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       return;
     }
     gesture.current = null;
+    if (g?.kind === "pan" && !g.moved && view) return tapSpace(toDiagram(local(e), view));
     if (g?.kind !== "box") return;
-    if (!g.moved) return nav.open({ name: "place", key: g.key });
+    if (!g.moved) return tapBox(g.key);
     const done = drag;
     setDrag(null);
     if (!done) return;
-    if (mode === "arrange") return save(moveBoxes(data.items, world, tree, direction, done.moving, done.dx, done.dy));
-    if (!done.over) return; // dropped nowhere useful: it goes back where it was
-    const result = setParent(data.items, world, g.key, done.over === ROOT ? null : done.over, tree);
-    if (result.problem) return alert(result.problem);
-    await save(result.items);
+    if (mode === "arrange") return undo.apply(moveBoxes(data.items, world, tree, direction, done.moving, done.dx, done.dy));
+    if (!done.over) return; // dropped nowhere useful: they go back where they were
+    let items = data.items;
+    for (const key of done.moving) items = setParent(items, world, key, done.over === ROOT ? null : done.over, tree).items;
+    await undo.apply(items);
+  };
+
+  // One tap selects or unselects; a second on the same box soon after opens it.
+  const tapBox = (key: string) => {
+    const before = lastTap.current;
+    if (before && before.key === key && Date.now() - before.time < DOUBLE_TAP_MS) {
+      lastTap.current = null;
+      setSelected(before.before); // the first tap of a double tap doesn't count as a select
+      return nav.open({ name: "place", key });
+    }
+    lastTap.current = { key, time: Date.now(), before: selected };
+    setSelected(selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key]);
+  };
+
+  // One tap on empty space clears the selection; a double tap makes a new item there.
+  const tapSpace = (at: Point) => {
+    const before = lastTap.current;
+    if (before && before.key === "" && Date.now() - before.time < DOUBLE_TAP_MS) {
+      lastTap.current = null;
+      setSelected(before.before);
+      return setNewAt(at);
+    }
+    lastTap.current = { key: "", time: Date.now(), before: selected };
+    setSelected([]);
+  };
+
+  // A new item from a double tap: inside the one selected box (in this tree), placed where tapped.
+  const madeHere = async (key: string) => {
+    let items = data.items;
+    const inside = selected.length === 1 ? selected[0] : null;
+    if (inside) items = setParent(items, world, key, inside, tree).items;
+    const box = arrangedLayout(items, world, tree, direction).find((b) => b.key === key);
+    if (box && newAt) items = moveBoxes(items, world, tree, direction, [key], newAt.x - NODE_W / 2 - box.x, newAt.y - NODE_H / 2 - box.y);
+    await save(items);
+    setNewAt(null);
+    setSelected([key]);
   };
 
   const wheel = (e: WheelEvent) => {
@@ -188,12 +236,21 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
         )}
         <TreePicker data={data} world={world} tree={tree} onChoose={setTree} />
         <span className="map-tools">
-          {handPlaced && <button className="tool" onClick={() => confirm("Back to the automatic layout for this tree, this way round?") && save(tidyLayout(data.items, world, tree, direction))}>Tidy</button>}
+          <button className="tool" disabled={!undo.canUndo} onClick={undo.undo} aria-label="Undo">↶ Undo</button>
+          <button className="tool" disabled={!undo.canRedo} onClick={undo.redo} aria-label="Redo">↷ Redo</button>
+          {handPlaced && <button className="tool" onClick={() => confirm("Back to the automatic layout for this tree, this way round?") && undo.apply(tidyLayout(data.items, world, tree, direction))}>Tidy</button>}
           <button className="tool" onClick={() => setView(fit())}>Fit</button>
         </span>
       </div>
       <p className="sub diagram-hint">
-        {mode === "arrange" ? "Drag a box to place it" + (withBranch ? ", with everything under it." : ", on its own.") : "Drag a box onto another to move it inside; onto the world for the top."} Tap to open.
+        {selected.length > 0 ? (
+          <>
+            <b>{selected.length} selected</b> (drag one to move them all) · <button className="link" onClick={() => setSelected([])}>Clear</button>
+          </>
+        ) : (
+          <>Tap to select, double-tap to open, double-tap empty space for a new item.</>
+        )}{" "}
+        {mode === "arrange" ? (withBranch ? "Branches follow." : "Boxes move on their own.") : "Drop onto a box to move inside; onto the world for the top."}
       </p>
       <div className="map-wrap diagram-wrap" ref={wrap} onTouchStart={(e) => e.stopPropagation()} onWheel={wheel}>
         {size && view && (
@@ -204,7 +261,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
               ))}
               {boxes.map((b) => {
                 const p = drawnAt(b);
-                const classes = ["diagram-node", b.key === ROOT ? "root" : "", drag?.moving.includes(b.key) ? (mode === "arrange" ? "moving" : "dragging") : "", drag?.over === b.key ? "target" : ""];
+                const classes = ["diagram-node", b.key === ROOT ? "root" : "", selected.includes(b.key) ? "selected" : "", drag?.moving.includes(b.key) ? (mode === "arrange" ? "moving" : "dragging") : "", drag?.over === b.key ? "target" : ""];
                 return (
                   <g key={b.key} data-node={b.key} transform={`translate(${p.x} ${p.y})`} className={classes.join(" ")}>
                     <rect width={NODE_W} height={NODE_H} rx={8} />
@@ -222,6 +279,15 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
           </svg>
         )}
       </div>
+      {newAt && (
+        <div className="popup-back" onClick={() => setNewAt(null)}>
+          <div className="popup" onClick={(e) => e.stopPropagation()}>
+            <button className="link popup-close" aria-label="Close" onClick={() => setNewAt(null)}>✕</button>
+            {selected.length === 1 && <p className="sub">Inside {byKey.get(selected[0])?.thing?.name}.</p>}
+            <NewPlace data={data} world={world} save={(items) => data.setItems(items)} onMade={madeHere} autoFocus noPlacePicker={selected.length === 1} />
+          </div>
+        </div>
+      )}
     </>
   );
 }

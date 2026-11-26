@@ -9,7 +9,8 @@
 import type { Item, Pin, Thing, WorldMap } from "../items/items";
 import { descendantsOf, depthOf } from "./places";
 import { groupsIn, membersOf } from "./groups";
-import { newKey, thingKindsIn, thingsIn } from "./world";
+import { newKey, thingsIn } from "./world";
+import { kindLine } from "./kinds";
 
 export function newMap(items: Item[], world: string, name: string): WorldMap {
   return { key: newKey(items, world, "map", name), kind: "map", world, name: name.trim() || "Map", width: 1000, height: 700, pins: [] };
@@ -41,12 +42,12 @@ export function mapsShowing(items: Item[], thing: string): WorldMap[] {
   return items.filter((i): i is WorldMap => i.kind === "map" && i.pins.some((p) => p.thing === thing));
 }
 
-// The icon a thing shows: its own, else its first kind's that has one.
+// The icon a thing shows: its own, else its first kind's that has one, looking up through the kinds
+// it's a flavour of (a City with no icon of its own shows Place's).
 export function iconOf(items: Item[], thing: Thing): string {
   if (thing.icon) return thing.icon;
-  const kinds = thingKindsIn(items, thing.world);
   for (const k of thing.kinds) {
-    const icon = kinds.find((kind) => kind.key === k)?.icon;
+    const icon = kindLine(items, thing.world, k).find((kind) => kind.icon)?.icon;
     if (icon) return icon;
   }
   return "•";

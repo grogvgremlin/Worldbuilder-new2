@@ -1,6 +1,8 @@
 // World → a map: items pinned on a blank sheet. Drag the sheet to pan, pinch (or the wheel) to
-// zoom, drag a pin to move it, tap a pin for its card, "+ Item" then tap the sheet to pin one, or
-// double-tap the sheet for a new item there (owner, 25 Nov).
+// zoom. Tap a pin, or an area's badge, to select it (tap more for a bulk move); double-tap to open
+// it; double-tap empty space for a new item pinned there. Drag a pin to move it (a selected pin
+// brings the other selected pins). "+ Item" then tap the sheet to pin one. Undo and redo step
+// back through changes to the pins (owner, 25–26 Nov).
 // Places holding pinned places show as soft areas around them (worked out, never stored).
 // Design: design/world-structure.md §5 (pin things to a map; pins per map in its own coordinates;
 // abstract views zoom by containment); spec/pillars/background-and-narrative.md §6 (pin icons from
@@ -16,12 +18,16 @@ import type { Nav } from "../../App";
 import { NewPlace } from "./WorldScreen";
 import { TextBox } from "./text-box";
 import { TreePicker, useChosenTree } from "./tree-picker";
+import { useUndo } from "./undo";
+import { descendantsOf } from "../../../world/places";
+import { membersOf } from "../../../world/groups";
 
 type View = { k: number; tx: number; ty: number }; // screen = map × k + t
 type Point = { x: number; y: number };
 type Gesture =
   | { kind: "pan"; start: Point; from: View; moved: boolean }
-  | { kind: "pin"; thing: string; start: Point; moved: boolean }
+  | { kind: "pin"; thing: string; start: Point; moved: boolean; moving: string[]; from: Map<string, Point> }
+  | { kind: "area"; thing: string; start: Point; from: View; moved: boolean }
   | { kind: "pinch"; startDistance: number; startCentre: Point; from: View }
   | null;
 
@@ -36,7 +42,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
   const [map, setMap] = useState<WorldMap | undefined>(stored); // the pins as shown (live while dragging)
   const [view, setView] = useState<View | null>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
-  const [selected, setSelected] = useState<string | null>(focus ?? null);
+  const [selected, setSelected] = useState<string[]>(focus ? [focus] : []); // pins and areas; several for a bulk move
   const [placing, setPlacing] = useState<string | null>(place ?? null);
   const [adding, setAdding] = useState(false);
   const [shown, setShown] = useState<AreasShown>(() => readAreasShown(mapKey));
@@ -46,7 +52,11 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
   const wrap = useRef<HTMLDivElement>(null);
   const pointers = useRef(new Map<number, Point>());
   const gesture = useRef<Gesture>(null);
-  const lastTap = useRef<{ at: Point; time: number } | null>(null); // for a double tap
+  const lastTap = useRef<{ key: string; at: Point; time: number; before: string[] } | null>(null); // for a double tap ("" = empty space)
+  const undo = useUndo("map", map?.world ?? "", () => data.items, async (items) => {
+    await data.setItems(items);
+    setMap(items.find((i): i is WorldMap => i.kind === "map" && i.key === mapKey)); // undo and redo redraw the pins
+  });
   const [newAt, setNewAt] = useState<Point | null>(null); // a double tap here: a new item pinned at this point
   const [tree, setTree] = useChosenTree(data, map?.world ?? "");
 
@@ -71,9 +81,10 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
 
   if (!map) return <p className="hint">This map isn't in the world any more.</p>;
   const things = new Map(thingsIn(data.items, map.world).map((t) => [t.key, t]));
+  // Every change to the pins can be undone (owner, 26 Nov).
   const save = async (next: WorldMap) => {
     setMap(next);
-    await data.putItem(next);
+    await undo.apply(data.items.map((i) => (i.key === next.key ? next : i)));
   };
 
   // --- Pointer handling: one finger pans or drags a pin; two pinch -------------------------------
@@ -93,7 +104,17 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
       return;
     }
     const pin = (e.target as Element).closest("[data-pin]")?.getAttribute("data-pin");
-    gesture.current = pin && !placing ? { kind: "pin", thing: pin, start: local(e), moved: false } : { kind: "pan", start: local(e), from: view, moved: false };
+    const area = (e.target as Element).closest("[data-area]")?.getAttribute("data-area");
+    if (pin && !placing) {
+      // A selected pin brings the rest of the selected pins with it.
+      const moving = selected.includes(pin) ? selected.filter((k) => map?.pins.some((p) => p.thing === k)) : [pin];
+      const from = new Map((map?.pins ?? []).filter((p) => moving.includes(p.thing)).map((p) => [p.thing, { x: p.x, y: p.y }]));
+      gesture.current = { kind: "pin", thing: pin, start: local(e), moved: false, moving, from };
+    } else if (area && !placing) {
+      gesture.current = { kind: "area", thing: area, start: local(e), from: view, moved: false };
+    } else {
+      gesture.current = { kind: "pan", start: local(e), from: view, moved: false };
+    }
   };
 
   const move = (e: ReactPointerEvent) => {
@@ -107,7 +128,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
       const anchor = toMap(g.startCentre, g.from);
       const centre = middle(a, b);
       setView({ k, tx: centre.x - anchor.x * k, ty: centre.y - anchor.y * k });
-    } else if (g?.kind === "pan") {
+    } else if (g?.kind === "pan" || g?.kind === "area") {
       if (!g.moved && distance(at, g.start) < TAP) return;
       g.moved = true;
       setView({ k: g.from.k, tx: g.from.tx + at.x - g.start.x, ty: g.from.ty + at.y - g.start.y });
@@ -119,8 +140,14 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
         return;
       }
       g.moved = true;
-      const p = toMap(at, view);
-      setMap((m) => (m ? placePin(m, g.thing, p.x, p.y) : m));
+      const dx = (at.x - g.start.x) / view.k;
+      const dy = (at.y - g.start.y) / view.k;
+      setMap((m) => {
+        if (!m) return m;
+        let next = m;
+        for (const [thing, p] of g.from) next = placePin(next, thing, p.x + dx, p.y + dy);
+        return next;
+      });
     }
   };
 
@@ -135,26 +162,33 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
     if (!view) return;
     if (g?.kind === "pin") {
       if (g.moved) await save(map);
-      else setSelected(g.thing === selected ? null : g.thing);
+      else tap(g.thing, local(e));
+    } else if (g?.kind === "area" && !g.moved) {
+      tap(g.thing, local(e));
     } else if (g?.kind === "pan" && !g.moved) {
       if (placing) {
         const p = toMap(local(e), view);
         await save(placePin(map, placing, p.x, p.y));
-        setSelected(placing);
+        setSelected([placing]);
         setPlacing(null);
-      } else {
-        // A second tap close by and soon after: a new item here (owner, 25 Nov).
-        const at = local(e);
-        const before = lastTap.current;
-        if (before && Date.now() - before.time < DOUBLE_TAP_MS && distance(at, before.at) < DOUBLE_TAP_PX) {
-          lastTap.current = null;
-          setNewAt(toMap(at, view));
-        } else {
-          lastTap.current = { at, time: Date.now() };
-          setSelected(null);
-        }
-      }
+      } else tap("", local(e));
     }
+  };
+
+  // One tap selects or unselects a pin or area (empty space: clears); a second soon after, close
+  // by, opens the item (empty space: a new item there). Owner, 26 Nov.
+  const tap = (key: string, at: Point) => {
+    const before = lastTap.current;
+    if (before && before.key === key && Date.now() - before.time < DOUBLE_TAP_MS && distance(at, before.at) < DOUBLE_TAP_PX) {
+      lastTap.current = null;
+      setSelected(before.before); // the first tap of a double tap doesn't count as a select
+      if (key) nav.open({ name: "place", key });
+      else if (view) setNewAt(toMap(at, view));
+      return;
+    }
+    lastTap.current = { key, at, time: Date.now(), before: selected };
+    if (!key) setSelected([]);
+    else setSelected(selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key]);
   };
 
   const wheel = (e: WheelEvent) => {
@@ -166,7 +200,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
   };
 
   const allAreas = [...areasOn(data.items, map, tree), ...groupAreasOn(data.items, map)];
-  const selectedThing = selected ? things.get(selected) : undefined;
+
   const placingThing = placing ? things.get(placing) : undefined;
 
   return (
@@ -185,6 +219,8 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
           </span>
           <button className={locked ? "tool on" : "tool"} onClick={() => setLocked(!locked)}>{locked ? "Locked" : "Lock"}</button>
           <button className="tool" onClick={() => size && setView(fitView(map, size))}>Fit</button>
+          <button className="tool" disabled={!undo.canUndo} onClick={undo.undo} aria-label="Undo">↶</button>
+          <button className="tool" disabled={!undo.canRedo} onClick={undo.redo} aria-label="Redo">↷</button>
         </span>
       </div>
       {placingThing && (
@@ -192,17 +228,35 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
           Tap the map to place <b>{placingThing.name}</b> <button className="link" onClick={() => setPlacing(null)}>Cancel</button>
         </div>
       )}
+      {selected.length === 0 ? (
+        <div className="selection-bar empty sub">Tap to select (more for a bulk move) · double-tap to open · double-tap empty space for a new item.</div>
+      ) : (
+        <SelectionCard
+          data={data}
+          map={map}
+          selected={selected.map((k) => things.get(k)).filter((t): t is Thing => !!t)}
+          onOpen={(key) => nav.open({ name: "place", key })}
+          onUnpin={async (keys) => {
+            let next = map;
+            for (const k of keys) next = removePin(next, k);
+            await save(next);
+            setSelected([]);
+          }}
+          onSelect={setSelected}
+          onClose={() => setSelected([])}
+        />
+      )}
       <div className="map-wrap" ref={wrap} onTouchStart={(e) => e.stopPropagation()} onWheel={wheel}>
         {size && view && (
           <svg width={size.w} height={size.h} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} className={placing ? "placing" : ""}>
             <g transform={`translate(${view.tx} ${view.ty}) scale(${view.k})`}>
               <rect className="map-sheet" x={0} y={0} width={map.width} height={map.height} rx={8 / view.k} />
-              {shown.all && <Areas areas={allAreas.filter((a) => !shown.hidden.includes(areaId(a)))} k={view.k} />}
+              {shown.all && <Areas areas={allAreas.filter((a) => !shown.hidden.includes(areaId(a)))} k={view.k} selected={selected} />}
               {map.pins.map((p) => {
                 const thing = things.get(p.thing);
                 if (!thing) return null;
                 return (
-                  <g key={p.thing} data-pin={p.thing} transform={`translate(${p.x} ${p.y}) scale(${1 / view.k})`} className={p.thing === selected ? "pin on" : "pin"}>
+                  <g key={p.thing} data-pin={p.thing} transform={`translate(${p.x} ${p.y}) scale(${1 / view.k})`} className={selected.includes(p.thing) ? "pin on" : "pin"}>
                     <circle r={13} className="pin-dot" />
                     <text className="pin-icon" y={5}>{iconOf(data.items, thing)}</text>
                     <text className="pin-label" y={27}>{thing.name}</text>
@@ -214,28 +268,19 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
         )}
       </div>
 
-      {selectedThing && (
-        <PinCard
-          data={data}
-          thing={selectedThing}
-          onOpen={() => nav.open({ name: "place", key: selectedThing.key })}
-          onUnpin={async () => (await save(removePin(map, selectedThing.key)), setSelected(null))}
-          onClose={() => setSelected(null)}
-        />
-      )}
       {newAt && (
         <NewHere
           data={data}
           world={map.world}
           onMade={async (key) => {
             await save(placePin(map, key, newAt.x, newAt.y));
-            setSelected(key);
+            setSelected([key]);
             setNewAt(null);
           }}
           onClose={() => setNewAt(null)}
         />
       )}
-      {adding && <AddSheet data={data} map={map} onPick={(key) => (setAdding(false), setSelected(null), setPlacing(key))} onClose={() => setAdding(false)} />}
+      {adding && <AddSheet data={data} map={map} onPick={(key) => (setAdding(false), setSelected([]), setPlacing(key))} onClose={() => setAdding(false)} />}
 
       <details className="how map-settings">
         <summary>This map</summary>
@@ -263,7 +308,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
 // A place holding pinned places: a soft shape round them, with its name along the top. The padding
 // is a fixed size on screen, wider the higher the place sits in the tree, so nested areas sit inside
 // and their names stack instead of colliding.
-function Areas({ areas, k }: { areas: Area[]; k: number }) {
+function Areas({ areas, k, selected }: { areas: Area[]; k: number; selected: string[] }) {
   const deepest = Math.max(0, ...areas.filter((a) => a.by === "containment").map((a) => a.depth));
   return (
     <g className="areas">
@@ -273,7 +318,7 @@ function Areas({ areas, k }: { areas: Area[]; k: number }) {
         const d = a.outline.map((p, n) => `${n ? "L" : "M"}${p.x} ${p.y}`).join(" ") + " Z";
         const top = a.outline.reduce((best, p) => (p.y < best.y ? p : best), a.outline[0]);
         return (
-          <g key={areaId(a)} className={a.by === "group" ? "area group" : `area depth-${a.depth % 4}`}>
+          <g key={areaId(a)} className={(a.by === "group" ? "area group" : `area depth-${a.depth % 4}`) + (selected.includes(a.thing.key) ? " selected" : "")}>
             {a.by === "group" ? (
               <>
                 <path d={d} strokeWidth={(pad * 2) / k} className="group-fill" />
@@ -283,6 +328,11 @@ function Areas({ areas, k }: { areas: Area[]; k: number }) {
               <path d={d} strokeWidth={(pad * 2) / k} />
             )}
             <text x={top.x} y={top.y - (pad - 11) / k} style={{ fontSize: 10.5 / k }}>{a.thing.name}</text>
+            {/* A badge to tap, to select the area (owner, 26 Nov); double-tap opens it. */}
+            <g data-area={a.thing.key} className="area-badge" transform={`translate(${top.x + (labelWidth(a.thing.name) / 2 + 12) / k} ${top.y - (pad - 7) / k}) scale(${1 / k})`}>
+              <circle r={9} />
+              <text y={4}>{a.by === "group" ? "◌" : "◉"}</text>
+            </g>
           </g>
         );
       })}
@@ -320,6 +370,11 @@ function roundedOutline(points: Point[], pad: number): string {
 function sweep(side: { from: Point; to: Point }, next: { from: Point; to: Point }): number {
   const cross = (side.to.x - side.from.x) * (next.to.y - next.from.y) - (side.to.y - side.from.y) * (next.to.x - next.from.x);
   return cross > 0 ? 1 : 0;
+}
+
+// Roughly how wide an area's label is on screen (10.5px capitals, spaced), to sit its badge after it.
+function labelWidth(name: string): number {
+  return name.length * 7.6;
 }
 
 // An area's id in the Areas menu: a place can show both what it holds and its group members.
@@ -377,17 +432,30 @@ function AreasMenu({ areas, shown, onChange, onClose, children }: { areas: Area[
   );
 }
 
-function PinCard({ data, thing, onOpen, onUnpin, onClose }: { data: AppData; thing: Thing; onOpen: () => void; onUnpin: () => void; onClose: () => void }) {
-  const path = pathOf(data.items, thing.world, thing.key).slice(0, -1).map((t) => t.name).join(" › ");
+// What's selected: one item's card (Open; take it off the map; select what's inside it), or a count
+// for a bulk move (owner, 26 Nov: "I want to be able to do bulk moves").
+function SelectionCard({ data, map, selected, onOpen, onUnpin, onSelect, onClose }: { data: AppData; map: WorldMap; selected: Thing[]; onOpen: (key: string) => void; onUnpin: (keys: string[]) => void; onSelect: (keys: string[]) => void; onClose: () => void }) {
+  const pinned = selected.filter((t) => map.pins.some((p) => p.thing === t.key));
+  // Inside the selection: what each holds (any depth, main tree) and its group members, pinned here.
+  const inside = [...new Set(selected.flatMap((t) => [...descendantsOf(data.items, map.world, t.key), ...membersOf(data.items, map.world, t.key).map((m) => m.thing)]).map((t) => t.key))]
+    .filter((k) => map.pins.some((p) => p.thing === k) && !selected.some((t) => t.key === k));
+  const one = selected.length === 1 ? selected[0] : null;
+  const path = one ? pathOf(data.items, one.world, one.key).slice(0, -1).map((t) => t.name).join(" › ") : "";
   return (
-    <div className="pin-card">
+    <div className="selection-bar">
       <button className="link popup-close" aria-label="Close" onClick={onClose}>✕</button>
-      <div className="title">{iconOf(data.items, thing)} {thing.name}</div>
-      {path && <div className="sub">in {path}</div>}
-      {thing.summary && <p>{thing.summary}</p>}
-      <div className="buttons">
-        <button className="primary" onClick={onOpen}>Open</button>
-        <button onClick={onUnpin}>Take off this map</button>
+      {one ? (
+        <>
+          <div className="title">{iconOf(data.items, one)} {one.name}</div>
+          {path && <div className="sub">in {path}</div>}
+        </>
+      ) : (
+        <div className="title">{selected.length} selected</div>
+      )}
+      <div className="selection-buttons">
+        {one && <button className="primary" onClick={() => onOpen(one.key)}>Open</button>}
+        {inside.length > 0 && <button onClick={() => onSelect([...selected.map((t) => t.key), ...inside])}>Select what's inside ({inside.length})</button>}
+        {pinned.length > 0 && <button onClick={() => onUnpin(pinned.map((t) => t.key))}>Take {pinned.length > 1 ? `${pinned.length} ` : ""}off this map</button>}
       </div>
     </div>
   );

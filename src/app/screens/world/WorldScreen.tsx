@@ -3,7 +3,7 @@
 // 25 Nov), §2 (kinds as world content), §3 (several trees: "different views are different link
 // kinds"), §4 (containment; groups as area things), §5 (maps); spec/session-20-notes-3.md §0.1
 // (structure first on the phone, a canvas as another view).
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { Item, Thing } from "../../../items/items";
 import { linkKindsIn, mapsIn, newKey, thingKindsIn, thingsIn, worldOf } from "../../../world/world";
 import { childrenOf, isContainer, pathOf, setParent, topPlaces, treeWarnings } from "../../../world/places";
@@ -14,6 +14,7 @@ import type { Nav } from "../../App";
 import { useRemembered } from "./remembered";
 import { TreeDiagram } from "./TreeDiagram";
 import { TreePicker, useChosenTree } from "./tree-picker";
+import { hasKind, kindTree, setFlavourOf } from "../../../world/kinds";
 
 type Tab = "items" | "diagram" | "maps" | "kinds";
 const TABS: { id: Tab; label: string }[] = [
@@ -63,7 +64,7 @@ function Items({ data, nav, world, save }: Part) {
   const warnings = treeWarnings(data.items, world, tree);
   const filtering = text.trim() !== "" || kind !== null || shape !== "all";
   const matches = thingsIn(data.items, world)
-    .filter((t) => (kind ? t.kinds.includes(kind) : true))
+    .filter((t) => (kind ? hasKind(data.items, world, t.kinds, kind) : true)) // a kind's flavours count
     .filter((t) => shape === "all" || (shape === "containers") === isContainer(data.items, world, t.key))
     .filter((t) => matchesText(t, text))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -71,6 +72,13 @@ function Items({ data, nav, world, save }: Part) {
 
   return (
     <>
+      <Fold title={view === "groups" && !filtering ? "+ New group" : "+ New item"}>
+        {view === "groups" && !filtering ? (
+          <NewGroup data={data} world={world} save={save} onMade={(key) => nav.open({ name: "place", key })} />
+        ) : (
+          <NewPlace data={data} world={world} save={save} onMade={(key) => nav.open({ name: "place", key })} />
+        )}
+      </Fold>
       <input className="filter" placeholder="Find an item (name, other names, summary, tags)" value={text} onChange={(e) => setText(e.target.value)} />
       <div className="chips">
         {(["all", "containers", "base"] as Shape[]).map((s) => (
@@ -85,7 +93,7 @@ function Items({ data, nav, world, save }: Part) {
       </div>
       {shape !== "all" && <p className="sub">{shape === "containers" ? "Containers hold something, in a tree or as a group." : "Base items hold nothing."}</p>}
       {warnings.length > 0 && <ul className="plain problems">{warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
-      {thingsIn(data.items, world).length === 0 && <p className="hint">No items yet. Add one below, or double-tap a map.</p>}
+      {thingsIn(data.items, world).length === 0 && <p className="hint">No items yet. Add one with + New item above, or double-tap a map or the diagram.</p>}
       {filtering ? (
         <ul className="list">
           {matches.map((t) => (
@@ -115,8 +123,19 @@ function Items({ data, nav, world, save }: Part) {
           )}
         </>
       )}
-      {(filtering || view === "tree") && <NewPlace data={data} world={world} save={save} onMade={(key) => nav.open({ name: "place", key })} />}
     </>
+  );
+}
+
+// A form folded away at the top of a list until wanted (owner, 26 Nov: "the new item set-up
+// collapsing at the top"). Remembers being open while the app is open.
+function Fold({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useRemembered(`fold|${title}`, false);
+  return (
+    <details className="fold" open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
+      <summary>{title}</summary>
+      {children}
+    </details>
   );
 }
 
@@ -136,11 +155,10 @@ function Groups({ data, nav, world, save }: Part) {
   const groups = groupsIn(data.items, world);
   return (
     <>
-      {groups.length === 0 && <p className="hint">No groups yet. A group is an item others are "{kinds[0].name}": make one below.</p>}
+      {groups.length === 0 && <p className="hint">No groups yet. A group is an item others are "{kinds[0].name}": make one with + New group above.</p>}
       <ul className="list tree">
         {groups.map((g) => <GroupBranch key={g.key} data={data} nav={nav} world={world} group={g} />)}
       </ul>
-      <NewGroup data={data} world={world} save={save} onMade={(key) => nav.open({ name: "place", key })} />
     </>
   );
 }
@@ -247,7 +265,7 @@ function PlaceRow({ data, thing, withPath, count, onOpen }: { data: AppData; thi
 }
 
 // Name, kind and where it is (in the main tree); everything else on its page.
-export function NewPlace({ data, world, save, onMade, inside, autoFocus }: { data: AppData; world: string; save: (items: Item[]) => Promise<void>; onMade: (key: string) => void; inside?: string; autoFocus?: boolean }) {
+export function NewPlace({ data, world, save, onMade, inside, autoFocus, noPlacePicker }: { data: AppData; world: string; save: (items: Item[]) => Promise<void>; onMade: (key: string) => void; inside?: string; autoFocus?: boolean; noPlacePicker?: boolean }) {
   const kinds = thingKindsIn(data.items, world);
   const [name, setName] = useState("");
   // With one kind (the starter's generic Place), every new item has it; with several, the kind most
@@ -279,7 +297,7 @@ export function NewPlace({ data, world, save, onMade, inside, autoFocus }: { dat
           </select>
         </label>
         )}
-        {!inside && (
+        {!inside && !noPlacePicker && (
           <label className="stack">
             <span className="sub">In</span>
             <select value={parent} onChange={(e) => setParentKey(e.target.value)}>
@@ -340,14 +358,15 @@ function Maps({ data, nav, world, save }: Part) {
 
 function Kinds({ data, nav, world, save }: Part) {
   const [name, setName] = useState("");
+  const [parentKind, setParentKind] = useState("");
   const [linkName, setLinkName] = useState("");
   const w = worldOf(data.items, world)!;
-  const thingKinds = thingKindsIn(data.items, world);
+  const thingKinds = kindTree(data.items, world);
   const linkKinds = linkKindsIn(data.items, world);
   const addKind = async () => {
     if (!name.trim()) return;
     const key = newKey(data.items, world, "thing-kind", name);
-    await save([...data.items, { key, kind: "thing-kind", world, name: name.trim(), fields: [] }]);
+    await save(setFlavourOf([...data.items, { key, kind: "thing-kind", world, name: name.trim(), fields: [] }], world, key, parentKind || null).items);
     setName("");
     nav.open({ name: "thing-kind", key });
   };
@@ -365,19 +384,26 @@ function Kinds({ data, nav, world, save }: Part) {
       <p className="sub">A world's kinds are its own: change them freely. A kind offers fields; it never forbids any.</p>
       <h2>Kinds of item</h2>
       <ul className="list">
-        {thingKinds.map((k) => (
-          <li key={k.key}>
+        {thingKinds.map(({ kind: k, depth }) => (
+          <li key={k.key} style={{ paddingLeft: depth * 18 }}>
             <button onClick={() => nav.open({ name: "thing-kind", key: k.key })}>
-              <span className="title">{k.icon} {k.name}</span>
-              <span className="sub">{[k.about, k.fields.map((f) => f.name).join(", ")].filter(Boolean).join(" · ") || "no fields yet"}</span>
+              <span className="title">{depth > 0 ? "↳ " : ""}{k.icon} {k.name}</span>
+              <span className="sub">{[k.about, k.fields.map((f) => f.name).join(", ")].filter(Boolean).join(" · ") || (depth > 0 ? "its parent's fields" : "no fields yet")}</span>
             </button>
           </li>
         ))}
       </ul>
       <div className="inline-add">
-        <input className="filter" placeholder="New kind (e.g. Temple)" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addKind()} />
+        <input className="filter" placeholder="New kind (e.g. City)" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addKind()} />
         <button className="primary" onClick={addKind}>Add</button>
       </div>
+      <label className="stack">
+        <select value={parentKind} onChange={(e) => setParentKind(e.target.value)}>
+          <option value="">a kind of its own</option>
+          {thingKinds.map(({ kind: k, depth }) => <option key={k.key} value={k.key}>{"  ".repeat(depth)}a flavour of {k.name}</option>)}
+        </select>
+        <span className="sub">A flavour has its parent's fields as well as its own, and anything that expects the parent accepts it.</span>
+      </label>
       <h2>Kinds of link</h2>
       <ul className="list">
         {linkKinds.map((k) => (

@@ -5,6 +5,7 @@
 import { useState } from "react";
 import type { Item, LinkKind, ThingKind } from "../../../items/items";
 import { linksIn, removeThingKind, thingKindsIn, thingsIn, worldOf } from "../../../world/world";
+import { fieldsOffered, flavoursOf, hasKind, kindTree, setFlavourOf } from "../../../world/kinds";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { TextBox } from "./text-box";
@@ -16,7 +17,17 @@ export function ThingKindScreen({ data, nav, kindKey }: { data: AppData; nav: Na
   if (!kind) return <p className="hint">This kind isn't in the world any more.</p>;
   const save = async (items: Item[]) => (await data.setItems(items), setChanged((n) => n + 1));
   const change = (patch: Partial<ThingKind>) => save(data.items.map((i) => (i.key === kind.key ? ({ ...kind, ...patch } as ThingKind) : i)));
-  const used = thingsIn(data.items, kind.world).filter((t) => t.kinds.includes(kind.key));
+  const used = thingsIn(data.items, kind.world).filter((t) => hasKind(data.items, kind.world, t.kinds, kind.key));
+  const inherited = fieldsOffered(data.items, kind.world, kind.key).filter((f) => f.inherited);
+  const flavours = flavoursOf(data.items, kind.world, kind.key).filter((f) => f.flavourOf === kind.key);
+  const below = new Set(flavoursOf(data.items, kind.world, kind.key).map((k) => k.key));
+  const parentChoices = kindTree(data.items, kind.world).filter(({ kind: k }) => k.key !== kind.key && !below.has(k.key));
+  const nameOf = (key: string) => thingKindsIn(data.items, kind.world).find((k) => k.key === key)?.name ?? key;
+  const setParentKind = async (to: string) => {
+    const result = setFlavourOf(data.items, kind.world, kind.key, to || null);
+    if (result.problem) return alert(result.problem);
+    await save(result.items);
+  };
   const moveField = (n: number, by: number) => {
     const fields = [...kind.fields];
     const [f] = fields.splice(n, 1);
@@ -31,7 +42,23 @@ export function ThingKindScreen({ data, nav, kindKey }: { data: AppData; nav: Na
         <div className="place-title"><TextBox className="name-box" value={kind.name} onSave={(v) => v && change({ name: v })} /></div>
       </div>
       <TextBox className="filter" value={kind.about ?? ""} placeholder="What it is (one line)" onSave={(v) => change({ about: v || undefined })} />
+      <label className="stack">
+        <span className="sub">Flavour of</span>
+        <select value={kind.flavourOf ?? ""} onChange={(e) => setParentKind(e.target.value)}>
+          <option value="">(nothing: a kind of its own)</option>
+          {parentChoices.map(({ kind: k, depth }) => <option key={k.key} value={k.key}>{"  ".repeat(depth)}{k.name}</option>)}
+        </select>
+      </label>
+      {flavours.length > 0 && (
+        <p className="sub">Its flavours: {flavours.map((f, n) => <span key={f.key}>{n > 0 && ", "}<button className="link" onClick={() => nav.open({ name: "thing-kind", key: f.key })}>{f.name}</button></span>)}</p>
+      )}
       <h2>Fields offered</h2>
+      {inherited.map((f) => (
+        <div className="field kind-field inherited" key={`${f.of}|${f.field.name}`}>
+          <span className="label">{f.field.name}</span>
+          <span className="sub">from {nameOf(f.of)}</span>
+        </div>
+      ))}
       <p className="sub">Every {kind.name.toLowerCase()} is offered these; any item can still have fields of its own.</p>
       {kind.fields.map((f, n) => (
         <div className="field kind-field" key={`${f.name}-${n}`}>
@@ -48,7 +75,7 @@ export function ThingKindScreen({ data, nav, kindKey }: { data: AppData; nav: Na
         <input className="filter" placeholder="New field (e.g. population)" value={field} onChange={(e) => setField(e.target.value)} onKeyDown={(e) => e.key === "Enter" && field.trim() && (change({ fields: [...kind.fields, { name: field.trim() }] }), setField(""))} />
         <button disabled={!field.trim()} onClick={() => (change({ fields: [...kind.fields, { name: field.trim() }] }), setField(""))}>Add</button>
       </div>
-      <h2>Items of this kind ({used.length})</h2>
+      <h2>Items of this kind ({used.length}{flavours.length ? ", flavours included" : ""})</h2>
       <ul className="plain">
         {used.map((t) => <li key={t.key}><button className="link" onClick={() => nav.open({ name: "place", key: t.key })}>{t.name}</button></li>)}
       </ul>
@@ -68,7 +95,7 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
   const kind = data.items.find((i): i is LinkKind => i.kind === "link-kind" && i.key === kindKey);
   if (!kind) return <p className="hint">This link kind isn't in the world any more.</p>;
   const change = async (patch: Partial<LinkKind>) => (await data.setItems(data.items.map((i) => (i.key === kind.key ? ({ ...kind, ...patch } as LinkKind) : i))), setChanged((n) => n + 1));
-  const thingKinds = thingKindsIn(data.items, kind.world);
+  const thingKinds = kindTree(data.items, kind.world); // flavours after their kind
   const count = linksIn(data.items, kind.world).filter((l) => l.linkKind === kind.key).length;
   const isTree = worldOf(data.items, kind.world)?.tree === kind.key;
   const toggle = (list: string[] | undefined, key: string) => {
@@ -104,14 +131,14 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
       <h2>What this does here</h2>
       <ul className="plain does">{whatItDoes(kind, isTree).map((line) => <li key={line}>{line}</li>)}</ul>
       <h2>Expects</h2>
-      <p className="sub">Which kinds of thing usually sit at each end. A link that doesn't fit is warned about, never refused.</p>
+      <p className="sub">Which kinds of item usually sit at each end. A kind's flavours count too, even ones added later. A link that doesn't fit is warned about, never refused.</p>
       <div className="sub">From</div>
       <div className="chips">
-        {thingKinds.map((k) => <button key={k.key} className={kind.expectsFrom?.includes(k.key) ? "on" : ""} onClick={() => change({ expectsFrom: toggle(kind.expectsFrom, k.key) })}>{k.icon} {k.name}</button>)}
+        {thingKinds.map(({ kind: k }) => <button key={k.key} className={kind.expectsFrom?.includes(k.key) ? "on" : ""} onClick={() => change({ expectsFrom: toggle(kind.expectsFrom, k.key) })}>{k.icon} {k.name}</button>)}
       </div>
       <div className="sub">To</div>
       <div className="chips">
-        {thingKinds.map((k) => <button key={k.key} className={kind.expectsTo?.includes(k.key) ? "on" : ""} onClick={() => change({ expectsTo: toggle(kind.expectsTo, k.key) })}>{k.icon} {k.name}</button>)}
+        {thingKinds.map(({ kind: k }) => <button key={k.key} className={kind.expectsTo?.includes(k.key) ? "on" : ""} onClick={() => change({ expectsTo: toggle(kind.expectsTo, k.key) })}>{k.icon} {k.name}</button>)}
       </div>
       <p className="sub">{count} link{count === 1 ? "" : "s"} of this kind.</p>
       {count === 0 && !isTree && (

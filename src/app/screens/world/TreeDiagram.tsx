@@ -10,7 +10,8 @@
 // is refused), §5 (abstract views laid out by containment); spec/session-20-notes-3.md §0.1 (a
 // canvas as another view on the same structure). Layout: src/world/diagram.ts.
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from "react";
-import { descendantsOf, hideHere, looseIn, setParent } from "../../../world/places";
+import { descendantsOf, hideHere, looseIn, setParent, treeKinds } from "../../../world/places";
+import { groupOutlines, treeOutlines } from "../../../world/outlines";
 import { itemsWithMisfits, refusal } from "../../../world/kinds";
 import { iconOf } from "../../../world/maps";
 import { worldOf } from "../../../world/world";
@@ -58,6 +59,15 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const folded = new Set(foldedList);
   const toggleFold = (key: string) => setFoldedList(folded.has(key) ? foldedList.filter((k) => k !== key) : [...foldedList, key]);
   const boxes = arrangedLayout(data.items, world, tree, direction, folded);
+  // Outlines of groups and of other trees' containers round the boxes they hold (owner, 26 Nov).
+  const [outlined, setOutlined] = useKept<string[]>(`diagram-outlines|${world}`, []); // "groups" and tree keys
+  const [outlineMenu, setOutlineMenu] = useState(false);
+  const otherTrees = treeKinds(data.items, world).filter((k) => k.key !== tree);
+  const outlines = [
+    ...(outlined.includes("groups") ? groupOutlines(data.items, world) : []),
+    ...otherTrees.filter((k) => outlined.includes(k.key)).flatMap((k) => treeOutlines(data.items, world, k.key)),
+  ];
+  const toggleOutline = (id: string) => setOutlined(outlined.includes(id) ? outlined.filter((o) => o !== id) : [...outlined, id]);
   const byKey = new Map(boxes.map((b) => [b.key, b]));
 
   useEffect(() => {
@@ -258,6 +268,20 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
           <label className="choice"><input type="checkbox" checked={withBranch} onChange={() => setWithBranch(!withBranch)} /> Branch follows</label>
         )}
         <TreePicker data={data} world={world} tree={tree} onChoose={setTree} />
+        <span className="map-tools outlines-menu">
+          <button className={outlined.length ? "tool on" : "tool"} onClick={() => setOutlineMenu(!outlineMenu)}>Outlines ▾</button>
+          {outlineMenu && (
+            <>
+              <div className="menu-catcher" onClick={() => setOutlineMenu(false)} />
+              <div className="filter-panel areas-panel">
+                <label className="choice"><input type="checkbox" checked={outlined.includes("groups")} onChange={() => toggleOutline("groups")} /> Groups (dashed)</label>
+                {otherTrees.map((k, n) => (
+                  <label key={k.key} className="choice"><input type="checkbox" checked={outlined.includes(k.key)} onChange={() => toggleOutline(k.key)} /> <span className={`tree-swatch tree-${n % 3}`} /> {k.name} (dotted)</label>
+                ))}
+              </div>
+            </>
+          )}
+        </span>
         <span className="map-tools">
           <button className="tool" disabled={!undo.canUndo} onClick={undo.undo} aria-label="Undo">↶ Undo</button>
           <button className="tool" disabled={!undo.canRedo} onClick={undo.redo} aria-label="Redo">↷ Redo</button>
@@ -296,6 +320,22 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
         {size && view && (
           <svg width={size.w} height={size.h} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
             <g transform={`translate(${view.tx} ${view.ty}) scale(${view.k})`}>
+              {/* Each outlined member's box gets a border (offset per outline, so several nest), joined by a
+                  line to the next member, the name on the first: no shape round boxes that aren't in it. */}
+              {outlines.map((o, i) => {
+                const members = boxes.filter((b) => o.members.includes(b.key) || b.key === o.thing.key).map(drawnAt);
+                if (members.length === 0) return null;
+                const gap = 4 + (i % 4) * 4;
+                const centres = members.map((p) => ({ x: p.x + NODE_W / 2, y: p.y + NODE_H / 2 }));
+                const n = otherTrees.findIndex((k) => k.key === o.tree);
+                return (
+                  <g key={`${o.by}|${o.tree}|${o.thing.key}`} className={o.by === "group" ? "outline group" : `outline tree-${n % 3}`} style={o.thing.colour ? { color: o.thing.colour } : undefined}>
+                    {centres.length > 1 && <path className="outline-join" d={centres.map((p, j) => `${j ? "L" : "M"}${p.x} ${p.y}`).join(" ")} />}
+                    {members.map((p, j) => <rect key={j} x={p.x - gap} y={p.y - gap} width={NODE_W + gap * 2} height={NODE_H + gap * 2} rx={10} />)}
+                    <text x={members[0].x - gap + 2} y={members[0].y - gap - 3}>{o.thing.name}</text>
+                  </g>
+                );
+              })}
               {boxes.filter((b) => b.parent).map((b) => (
                 <path key={`edge-${b.key}`} className="diagram-edge" d={edge(drawnAt(byKey.get(b.parent!)!), drawnAt(b))} />
               ))}

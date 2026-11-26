@@ -406,3 +406,12 @@ main:has(.map-screen), main:has(.diagram-wrap) { max-width: none; }
 .diagram-node.misfit rect { stroke: var(--warn); stroke-width: 2.5; stroke-dasharray: 5 3; }
 .fold-all { font-size: .85rem; font-weight: normal; text-transform: none; letter-spacing: 0; margin-left: 6px; } .card > .fold-all { display: block; margin: 0 0 4px; }
 .list li .misfit-row button { display: inline; width: auto; padding: 0; border: 0; background: none; margin: 0; font-weight: 600; }
+.outlines-menu { position: relative; }
+.outline rect { fill: none; stroke: currentColor; stroke-width: 1.6; pointer-events: none; }
+.outline .outline-join { fill: none; stroke: currentColor; stroke-width: 1; opacity: .5; pointer-events: none; }
+.outline text { fill: currentColor; font-size: 11px; font-weight: 700; pointer-events: none; }
+.outline.group { color: #b07a1f; } .outline.group rect, .outline.group .outline-join { stroke-dasharray: 7 4; }
+.outline.tree-0 { color: #2f6f8f; } .outline.tree-1 { color: #6b8f2f; } .outline.tree-2 { color: #8f2f5e; }
+.outline[class*="tree-"] rect, .outline[class*="tree-"] .outline-join { stroke-dasharray: 2 4; stroke-width: 2; }
+.tree-swatch { display: inline-block; width: 12px; height: 3px; border-top: 3px dotted currentColor; vertical-align: middle; }
+.tree-swatch.tree-0 { color: #2f6f8f; } .tree-swatch.tree-1 { color: #6b8f2f; } .tree-swatch.tree-2 { color: #8f2f5e; }

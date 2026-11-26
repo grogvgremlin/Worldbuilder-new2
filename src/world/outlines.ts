@@ -4,7 +4,7 @@
 // Worked out, never stored. Design: design/world-structure.md §3–4 (trees and groups).
 
 import type { Item, Thing } from "../items/items";
-import { groupsIn, membersOf } from "./groups";
+import { effectiveMembers, groupsIn } from "./groups";
 import { childrenOf, descendantsOf } from "./places";
 import { thingsIn } from "./world";
 
@@ -12,7 +12,7 @@ export type Outline = { thing: Thing; by: "group" | "tree"; tree?: string; membe
 
 // Every group's members (one hop: a group reaches its members, not what they hold).
 export function groupOutlines(items: Item[], world: string): Outline[] {
-  return groupsIn(items, world).map((g) => ({ thing: g, by: "group" as const, members: membersOf(items, world, g.key).map((m) => m.thing.key) }));
+  return groupsIn(items, world).map((g) => ({ thing: g, by: "group" as const, members: effectiveMembers(items, world, g.key).map((m) => m.thing.key) }));
 }
 
 // Every container in another tree, with everything it holds there.

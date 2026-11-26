@@ -4,7 +4,7 @@
 // Design: design/world-structure.md §3–4 (containment one parent at a time; groups many at once).
 
 import type { Item, Thing } from "../items/items";
-import { addToGroup, groupLinkKinds, groupsIn } from "./groups";
+import { addToGroup, groupLinkKinds, groupsIn, type Brings } from "./groups";
 import { childrenOf, setParent } from "./places";
 import { newKey, thingKindsIn, thingsIn } from "./world";
 import { endRule } from "./kinds";
@@ -12,14 +12,14 @@ import { endRule } from "./kinds";
 export type BulkResult = { items: Item[]; done: number; problems: string[] };
 
 // Puts every selected item into a group (each one that can go; the rest say why).
-export function groupSelected(items: Item[], world: string, selected: string[], group: string, linkKind?: string): BulkResult {
+export function groupSelected(items: Item[], world: string, selected: string[], group: string, linkKind?: string, scopes: Map<string, Brings> = new Map()): BulkResult {
   const kind = linkKind ?? groupLinkKinds(items, world)[0]?.key;
   if (!kind) return { items, done: 0, problems: ["this world has no link kind for groups"] };
   let out = items;
   let done = 0;
   const problems: string[] = [];
   for (const key of selected.filter((k) => k !== group)) {
-    const result = addToGroup(out, world, key, kind, group);
+    const result = addToGroup(out, world, key, kind, group, scopes.get(key)); // a container may bring what it holds
     if (result.problem) problems.push(`${nameOf(out, key)}: ${result.problem}`);
     else (out = result.items), done++;
   }
@@ -27,12 +27,12 @@ export function groupSelected(items: Item[], world: string, selected: string[], 
 }
 
 // A new group holding the selected items.
-export function newGroupOf(items: Item[], world: string, selected: string[], name: string, kind?: string): BulkResult & { group?: string } {
+export function newGroupOf(items: Item[], world: string, selected: string[], name: string, kind?: string, scopes: Map<string, Brings> = new Map()): BulkResult & { group?: string } {
   if (!name.trim()) return { items, done: 0, problems: ["a group needs a name"] };
   const key = newKey(items, world, "thing", name);
   const chosen = kind ?? groupKindFor(items, world);
   const group: Thing = { key, kind: "thing", world, name: name.trim(), kinds: chosen ? [chosen] : [], fields: [] };
-  return { ...groupSelected([...items, group], world, selected, key), group: key };
+  return { ...groupSelected([...items, group], world, selected, key, undefined, scopes), group: key };
 }
 
 // The kind a new group starts as: the first kind its link kind takes as the container (so it can hold

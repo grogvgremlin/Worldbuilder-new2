@@ -606,6 +606,7 @@ export const Thing = z.strictObject({
   kinds: z.array(z.string()), // thing-kind keys; several allowed (Nuln: settlement + polity)
   icon: z.string().optional(), // overrides its kind's icon
   colour: z.string().optional(), // how it shows as an area on maps ("#2f6f8f"); blank: by depth
+  excludedMembers: z.array(z.string()).optional(), // as a group: items brought in by a member, left out
   summary: z.string().optional(), // one line, shown under the name
   description: z.string().optional(), // the entry's text
   fields: z.array(ThingField),
@@ -624,6 +625,11 @@ export const Link = z.strictObject({
   linkKind: z.string(), // link-kind key
   to: z.string(), // thing key
   value: z.string().optional(), // what it carries, where its kind carries one (loyalty +2)
+  // A group membership can bring more than the member itself (owner, 26 Nov: "a container brings its
+  // items with it"): its contents in one tree, or, for a group, its members. Worked out each time,
+  // so what's added there later is in the group too.
+  brings: z.enum(["contents", "members"]).optional(),
+  broughtFrom: z.string().optional(), // for contents: the tree (link kind key) they're taken from
   start: z.string().optional(), // in-world date, as written, until calendars come
   end: z.string().optional(),
 });

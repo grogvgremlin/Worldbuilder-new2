@@ -11,7 +11,8 @@
 // canvas as another view on the same structure). Layout: src/world/diagram.ts.
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from "react";
 import { descendantsOf, hideHere, looseIn, setParent, treeKinds } from "../../../world/places";
-import { groupOutlines, treeOutlines } from "../../../world/outlines";
+import { groupOutlines, treeOutlines, type Outline } from "../../../world/outlines";
+import { colourOf } from "./area-colours";
 import { itemsWithMisfits, refusal } from "../../../world/kinds";
 import { iconOf } from "../../../world/maps";
 import { worldOf } from "../../../world/world";
@@ -46,7 +47,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [grouping, setGrouping] = useState(false);
-  const flagged = itemsWithMisfits(data.items, world); // in a link that doesn't fit (owner, 26 Nov)
+  const flagged = itemsWithMisfits(data.items, world, tree); // in one of this tree's links that doesn't fit
   const looseKeys = new Set(looseIn(data.items, world, tree).map((t) => t.key));
   const looseSelected = selected.filter((k) => looseKeys.has(k));
   const [newAt, setNewAt] = useState<Point | null>(null); // a double tap on empty space: a new item here
@@ -63,11 +64,26 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const [outlined, setOutlined] = useKept<string[]>(`diagram-outlines|${world}`, []); // "groups" and tree keys
   const [outlineMenu, setOutlineMenu] = useState(false);
   const otherTrees = treeKinds(data.items, world).filter((k) => k.key !== tree);
-  const outlines = [
-    ...(outlined.includes("groups") ? groupOutlines(data.items, world) : []),
-    ...otherTrees.filter((k) => outlined.includes(k.key)).flatMap((k) => treeOutlines(data.items, world, k.key)),
-  ];
+  const [hiddenOutlines, setHiddenOutlines] = useKept<string[]>(`diagram-outlines-hidden|${world}`, []); // single ones switched off
+  const [outlineHover, setOutlineHover] = useState<string | null>(null);
+  // Every outline there could be; those drawn (their kind on, not switched off); one pointed at is drawn too.
+  const everyOutline = [...groupOutlines(data.items, world), ...otherTrees.flatMap((k) => treeOutlines(data.items, world, k.key))];
+  const categoryOf = (o: Outline) => (o.by === "group" ? "groups" : o.tree!);
+  const drawnOutlines = everyOutline.filter((o) => outlined.includes(categoryOf(o)) && !hiddenOutlines.includes(outlineId(o)));
+  const hovered = everyOutline.find((o) => outlineId(o) === outlineHover);
+  const outlines = hovered && !drawnOutlines.includes(hovered) ? [...drawnOutlines, hovered] : drawnOutlines;
   const toggleOutline = (id: string) => setOutlined(outlined.includes(id) ? outlined.filter((o) => o !== id) : [...outlined, id]);
+  // A row in the key switches one outline on or off, as the menu does (owner, 26 Nov).
+  const toggleOne = (o: Outline) => {
+    const id = outlineId(o);
+    if (drawnOutlines.includes(o)) return setHiddenOutlines([...hiddenOutlines, id]);
+    if (outlined.includes(categoryOf(o))) return setHiddenOutlines(hiddenOutlines.filter((h) => h !== id));
+    // Its kind was off: turn the kind on with only this one showing.
+    const others = everyOutline.filter((x) => categoryOf(x) === categoryOf(o) && x !== o).map(outlineId);
+    setHiddenOutlines([...hiddenOutlines.filter((h) => h !== id && !others.includes(h)), ...others]);
+    setOutlined([...outlined, categoryOf(o)]);
+  };
+  const outlineColour = (o: Outline) => colourOf(o.thing, o.by, o.by === "group" ? 0 : otherTrees.findIndex((k) => k.key === o.tree) + 1, 0);
   const byKey = new Map(boxes.map((b) => [b.key, b]));
 
   useEffect(() => {
@@ -290,32 +306,33 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
         </span>
       </div>
       {tree && <HiddenNote data={data} nav={nav} world={world} tree={tree} />}
-      <p className="sub diagram-hint">
+      {/* What's selected, in a bar of its own that keeps its height (owner, 26 Nov: the Group button
+          was cut off in the hint line until something else changed). */}
+      <div className="selection-bar diagram-selection">
         {selected.length > 0 ? (
           <>
-            <b>{selected.length} selected</b> (drag one to move them all) ·{" "}
-            {selected.length > 1 && (
-              <>
-                <button className="link" onClick={() => setGrouping(true)}>Group / move into…</button> ·{" "}
-              </>
-            )}
-            {tree && looseSelected.length > 0 && (
-              <>
-                <button className="link" onClick={async () => {
+            <div className="title">{selected.length} selected <span className="sub">· drag one to move them all</span></div>
+            <div className="selection-buttons">
+              {selected.length > 1 && <button className="primary" onClick={() => setGrouping(true)}>Group / move into…</button>}
+              {tree && looseSelected.length > 0 && (
+                <button onClick={async () => {
                   let items = data.items;
                   for (const k of looseSelected) items = hideHere(items, tree, k, true);
                   await undo.apply(items);
                   setSelected([]);
-                }}>Hide {looseSelected.length} loose from this tree</button> ·{" "}
-              </>
-            )}
-            <button className="link" onClick={() => setSelected([])}>Clear</button>
+                }}>Hide {looseSelected.length} loose from this tree</button>
+              )}
+              <button onClick={() => setSelected([])}>Clear</button>
+            </div>
           </>
         ) : (
-          <>Tap to select, double-tap to open, double-tap empty space for a new item.</>
-        )}{" "}
-        {mode === "arrange" ? (withBranch ? "Branches follow." : "Boxes move on their own.") : "Drop onto a box to move inside; onto the world for the top."}
-      </p>
+          <span className="sub">
+            Tap to select (more for a bulk move) · double-tap to open · double-tap empty space for a new item ·{" "}
+            {mode === "arrange" ? (withBranch ? "branches follow" : "boxes move on their own") : "drop onto a box to move inside, onto the world for the top"}
+          </span>
+        )}
+      </div>
+      <div className="map-layout">
       <div className="map-wrap diagram-wrap" ref={wrap} onTouchStart={(e) => e.stopPropagation()} onTouchEnd={(e) => e.preventDefault()} onWheel={wheel}>
         {size && view && (
           <svg width={size.w} height={size.h} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
@@ -329,7 +346,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
                 const centres = members.map((p) => ({ x: p.x + NODE_W / 2, y: p.y + NODE_H / 2 }));
                 const n = otherTrees.findIndex((k) => k.key === o.tree);
                 return (
-                  <g key={`${o.by}|${o.tree}|${o.thing.key}`} className={o.by === "group" ? "outline group" : `outline tree-${n % 3}`} style={o.thing.colour ? { color: o.thing.colour } : undefined}>
+                  <g key={outlineId(o)} className={(o.by === "group" ? "outline group" : `outline tree-${n % 3}`) + (outlineHover === outlineId(o) ? " lit" : "")} style={{ color: outlineColour(o) }}>
                     {centres.length > 1 && <path className="outline-join" d={centres.map((p, j) => `${j ? "L" : "M"}${p.x} ${p.y}`).join(" ")} />}
                     {members.map((p, j) => <rect key={j} x={p.x - gap} y={p.y - gap} width={NODE_W + gap * 2} height={NODE_H + gap * 2} rx={10} />)}
                     <text x={members[0].x - gap + 2} y={members[0].y - gap - 3}>{o.thing.name}</text>
@@ -366,6 +383,8 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
           </svg>
         )}
       </div>
+      <OutlineKey everyOutline={everyOutline} drawn={drawnOutlines} hover={outlineHover} onToggle={toggleOne} onHover={setOutlineHover} colour={outlineColour} trees={otherTrees.map((k) => ({ key: k.key, name: k.name }))} />
+      </div>
       {grouping && (
         <GroupPopup
           data={data}
@@ -389,6 +408,46 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
         </div>
       )}
     </>
+  );
+}
+
+function outlineId(o: Outline): string {
+  return `${o.by}|${o.tree ?? ""}|${o.thing.key}`;
+}
+
+// The key beside the Diagram (owner, 26 Nov: "a key would be nice … the same layout and options as on
+// maps"): every outline there could be, by groups and by tree, each with a dot in its colour. Tapping
+// a row switches it on or off; with a mouse, pointing at one picks it out on the Diagram.
+function OutlineKey({ everyOutline, drawn, hover, onToggle, onHover, colour, trees }: { everyOutline: Outline[]; drawn: Outline[]; hover: string | null; onToggle: (o: Outline) => void; onHover: (id: string | null) => void; colour: (o: Outline) => string; trees: { key: string; name: string }[] }) {
+  if (everyOutline.length === 0) return null;
+  const sections = [
+    { id: "groups", title: "Groups (dashed)", list: everyOutline.filter((o) => o.by === "group") },
+    ...trees.map((t) => ({ id: t.key, title: `${t.name} (dotted)`, list: everyOutline.filter((o) => o.tree === t.key) })),
+  ].filter((sec) => sec.list.length > 0);
+  return (
+    <aside className="area-list">
+      <div className="sub menu-heading">Key · tap to switch on or off</div>
+      {sections.map((sec) => (
+        <details key={sec.id} open={sec.list.some((o) => drawn.includes(o))}>
+          <summary className="sub menu-heading">{sec.title} ({sec.list.filter((o) => drawn.includes(o)).length} of {sec.list.length})</summary>
+          <ul className="plain">
+            {sec.list.map((o) => (
+              <li key={outlineId(o)}>
+                <button
+                  className={"area-row" + (hover === outlineId(o) ? " lit" : "") + (drawn.includes(o) ? " on" : "")}
+                  onClick={() => onToggle(o)}
+                  onPointerEnter={(e) => e.pointerType === "mouse" && onHover(outlineId(o))}
+                  onPointerLeave={(e) => e.pointerType === "mouse" && onHover(null)}
+                >
+                  <span className={o.by === "group" ? "area-dot dashed" : "area-dot dotted"} style={{ background: drawn.includes(o) ? colour(o) : "transparent", borderColor: colour(o) }} />
+                  {o.thing.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ))}
+    </aside>
   );
 }
 

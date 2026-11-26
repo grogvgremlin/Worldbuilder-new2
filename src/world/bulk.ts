@@ -7,6 +7,7 @@ import type { Item, Thing } from "../items/items";
 import { addToGroup, groupLinkKinds, groupsIn } from "./groups";
 import { childrenOf, setParent } from "./places";
 import { newKey, thingKindsIn, thingsIn } from "./world";
+import { endRule } from "./kinds";
 
 export type BulkResult = { items: Item[]; done: number; problems: string[] };
 
@@ -26,12 +27,23 @@ export function groupSelected(items: Item[], world: string, selected: string[], 
 }
 
 // A new group holding the selected items.
-export function newGroupOf(items: Item[], world: string, selected: string[], name: string): BulkResult & { group?: string } {
+export function newGroupOf(items: Item[], world: string, selected: string[], name: string, kind?: string): BulkResult & { group?: string } {
   if (!name.trim()) return { items, done: 0, problems: ["a group needs a name"] };
-  const kinds = thingKindsIn(items, world);
   const key = newKey(items, world, "thing", name);
-  const group: Thing = { key, kind: "thing", world, name: name.trim(), kinds: kinds.length === 1 ? [kinds[0].key] : [], fields: [] };
+  const chosen = kind ?? groupKindFor(items, world);
+  const group: Thing = { key, kind: "thing", world, name: name.trim(), kinds: chosen ? [chosen] : [], fields: [] };
   return { ...groupSelected([...items, group], world, selected, key), group: key };
+}
+
+// The kind a new group starts as: the first kind its link kind takes as the container (so it can hold
+// its members; owner, 26 Nov: a new group with no kind was refused by "in area takes Place"); else the
+// world's only kind; else none.
+export function groupKindFor(items: Item[], world: string, linkKind?: string): string | undefined {
+  const kind = groupLinkKinds(items, world).find((k) => !linkKind || k.key === linkKind);
+  const takes = kind ? endRule(kind, "to").take : [];
+  if (takes.length) return takes[0];
+  const kinds = thingKindsIn(items, world);
+  return kinds.length === 1 ? kinds[0].key : undefined;
 }
 
 // Moves every selected item inside a container, in one tree (the main one unless given).

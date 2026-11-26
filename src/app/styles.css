@@ -415,3 +415,9 @@ main:has(.map-screen), main:has(.diagram-wrap) { max-width: none; }
 .outline[class*="tree-"] rect, .outline[class*="tree-"] .outline-join { stroke-dasharray: 2 4; stroke-width: 2; }
 .tree-swatch { display: inline-block; width: 12px; height: 3px; border-top: 3px dotted currentColor; vertical-align: middle; }
 .tree-swatch.tree-0 { color: #2f6f8f; } .tree-swatch.tree-1 { color: #6b8f2f; } .tree-swatch.tree-2 { color: #8f2f5e; }
+.area-dot { border: 2px solid var(--muted); box-sizing: border-box; width: 12px; height: 12px; }
+.area-dot.dashed { border-style: dashed; }
+.area-row:not(.on) { opacity: .65; }
+.area-dot.dotted { border-style: dotted; }
+.outline.lit rect { stroke-width: 3; }
+.selection-bar > span.sub { white-space: normal; }

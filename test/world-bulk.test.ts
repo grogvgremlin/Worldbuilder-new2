@@ -43,3 +43,15 @@ describe("acting on a selection", () => {
     expect(s.containers.map((t) => t.name)).toEqual(["Averland"]);
   });
 });
+
+describe("a new group starts as a kind its link kind takes (owner, 26 Nov)", () => {
+  it("with several kinds, the group is made a Place, so 'in area' (takes Place) holds its members", () => {
+    const items = sample();
+    const place = items.find((i) => i.kind === "thing-kind")!.key;
+    const person: Item = { key: `${W}.kind.person`, kind: "thing-kind", world: W, name: "Person", fields: [] };
+    const result = newGroupOf([...items, person], W, [key(items, "Nuln"), key(items, "Streissen")], "Powerhouse");
+    expect(result.problems).toEqual([]);
+    expect(result.done).toBe(2);
+    expect((result.items.find((i) => i.key === result.group) as Thing).kinds).toEqual([place]);
+  });
+});

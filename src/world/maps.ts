@@ -8,7 +8,7 @@
 
 import type { Item, Pin, Thing, WorldMap } from "../items/items";
 import { descendantsOf, depthOf } from "./places";
-import { groupsIn, membersOf } from "./groups";
+import { effectiveMembers, groupsIn } from "./groups";
 import { newKey, thingsIn } from "./world";
 import { kindLine } from "./kinds";
 
@@ -92,7 +92,7 @@ export function groupAreasOn(items: Item[], map: WorldMap): Area[] {
   const pins = new Map(map.pins.map((p) => [p.thing, p]));
   const out: Area[] = [];
   for (const group of groupsIn(items, map.world)) {
-    const members = membersOf(items, map.world, group.key).map((m) => m.thing);
+    const members = effectiveMembers(items, map.world, group.key).map((m) => m.thing); // brought-in members too
     const inside = members.flatMap((m) => [m, ...descendantsOf(items, map.world, m.key)]);
     const points = [...new Map(inside.map((t) => [t.key, pins.get(t.key)])).values()].filter((p): p is Pin => !!p);
     if (points.length === 0) continue;

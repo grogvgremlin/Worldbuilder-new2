@@ -9,11 +9,13 @@ import { linkKindsIn, linksIn, mapsIn, newKey, removeThing, removeThingKind, thi
 import { SwipeRow } from "../../swipe";
 import { childrenOf, firstTree, hideHere, isContainer, looseIn, looseItems, pathOf, setParent, topPlaces, treeKinds, treeWarnings } from "../../../world/places";
 import { iconOf, newMap } from "../../../world/maps";
-import { addToGroup, groupLinkKinds, groupsIn, isOnlyAGroup, membersOf, newGroupLinkKind } from "../../../world/groups";
+import { addToGroup, effectiveMembers, groupLinkKinds, groupsIn, isOnlyAGroup, membersOf, newGroupLinkKind } from "../../../world/groups";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { recall, recalled, rememberAll, useRemembered } from "./remembered";
 import { useFoldAll } from "./fold-all";
+import { ScopePicks } from "./scope-picks";
+import type { Brings } from "../../../world/groups";
 import { groupKindFor } from "../../../world/bulk";
 import { TreeDiagram } from "./TreeDiagram";
 import { ALL, TreePicker, useChosenTree } from "./tree-picker";
@@ -286,7 +288,7 @@ function Groups({ data, nav, world, save }: Part) {
 
 function GroupBranch({ data, nav, world, group }: { data: AppData; nav: Nav; world: string; group: Thing }) {
   const [open, setOpen] = useRemembered(`${world}|gopen|${group.key}`, recalled(`${world}|gopen|${group.key}`, `${world}|gopen|`, false));
-  const members = membersOf(data.items, world, group.key);
+  const members = effectiveMembers(data.items, world, group.key); // brought-in members too (owner, 26 Nov)
   return (
     <>
       <li className="branch">
@@ -298,9 +300,9 @@ function GroupBranch({ data, nav, world, group }: { data: AppData; nav: Nav; wor
       </li>
       {open &&
         members.map((m) => (
-          <li key={m.link.key} className="branch" style={{ paddingLeft: 18 }}>
+          <li key={m.thing.key} className="branch" style={{ paddingLeft: 18 }}>
             <span className="twisty" />
-            <PlaceRow data={data} thing={m.thing} withPath onOpen={() => nav.open({ name: "place", key: m.thing.key })} />
+            <PlaceRow data={data} thing={m.thing} withPath={!m.via} via={m.via?.name} onOpen={() => nav.open({ name: "place", key: m.thing.key })} />
           </li>
         ))}
     </>
@@ -312,6 +314,7 @@ function NewGroup({ data, world, save, onMade }: { data: AppData; world: string;
   const [name, setName] = useState("");
   const [find, setFind] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
+  const [scopes, setScopes] = useState(new Map<string, Brings>()); // what each container or group brings
   const linkKind = groupLinkKinds(data.items, world)[0];
   const kinds = thingKindsIn(data.items, world);
   const places = thingsIn(data.items, world).filter((t) => matchesText(t, find)).sort((a, b) => a.name.localeCompare(b.name));
@@ -320,7 +323,7 @@ function NewGroup({ data, world, save, onMade }: { data: AppData; world: string;
     const key = newKey(data.items, world, "thing", name);
     const kind = groupKindFor(data.items, world, linkKind.key); // one the group's link kind takes (owner, 26 Nov)
     let items: Item[] = [...data.items, { key, kind: "thing", world, name: name.trim(), kinds: kind ? [kind] : kinds.length === 1 ? [kinds[0].key] : [], fields: [] }];
-    for (const member of picked) items = addToGroup(items, world, member, linkKind.key, key).items;
+    for (const member of picked) items = addToGroup(items, world, member, linkKind.key, key, scopes.get(member)).items;
     await save(items);
     setName("");
     setPicked([]);
@@ -340,6 +343,7 @@ function NewGroup({ data, world, save, onMade }: { data: AppData; world: string;
           </label>
         ))}
       </div>
+      <ScopePicks data={data} world={world} keys={picked} scopes={scopes} onChange={setScopes} />
       <div className="buttons">
         <button className="primary" disabled={!name.trim()} onClick={make}>Add group{picked.length ? ` of ${picked.length}` : ""}</button>
       </div>
@@ -382,11 +386,11 @@ function Branch({ data, nav, world, tree, thing, depth, save }: { data: AppData;
   );
 }
 
-function PlaceRow({ data, thing, withPath, count, onOpen, tree }: { data: AppData; thing: Thing; withPath?: boolean; count?: number; onOpen: () => void; tree?: string }) {
+function PlaceRow({ data, thing, withPath, count, onOpen, tree, via }: { data: AppData; thing: Thing; withPath?: boolean; count?: number; onOpen: () => void; tree?: string; via?: string }) {
   const all = thingKindsIn(data.items, thing.world);
   const kinds = all.length > 1 ? all.filter((k) => thing.kinds.includes(k.key)).map((k) => k.name) : []; // one kind says nothing
   const path = withPath ? pathOf(data.items, thing.world, thing.key).slice(0, -1).map((t) => t.name).join(" › ") : "";
-  const sub = [kinds.join(", "), path, count ? `${count} inside` : "", thing.summary ?? ""].filter(Boolean).join(" · ");
+  const sub = [via ? `via ${via}` : "", kinds.join(", "), path, count ? `${count} inside` : "", thing.summary ?? ""].filter(Boolean).join(" · ");
   const flagged = itemsWithMisfits(data.items, thing.world, tree).has(thing.key); // in a link that doesn't fit (this tree's, in a tree)
   return (
     <button onClick={onOpen}>
@@ -397,7 +401,7 @@ function PlaceRow({ data, thing, withPath, count, onOpen, tree }: { data: AppDat
 }
 
 // Name, kind and where it is (in the main tree); everything else on its page.
-export function NewPlace({ data, world, save, onMade, inside, autoFocus, noPlacePicker }: { data: AppData; world: string; save: (items: Item[]) => Promise<void>; onMade: (key: string) => void; inside?: string; autoFocus?: boolean; noPlacePicker?: boolean }) {
+export function NewPlace({ data, world, save, onMade, inside, insideTree, autoFocus, noPlacePicker }: { data: AppData; world: string; save: (items: Item[]) => Promise<void>; onMade: (key: string) => void; inside?: string; insideTree?: string; autoFocus?: boolean; noPlacePicker?: boolean }) {
   const kinds = thingKindsIn(data.items, world);
   const [name, setName] = useState("");
   // With one kind (the starter's generic Place), every new item has it; with several, the kind most
@@ -411,7 +415,7 @@ export function NewPlace({ data, world, save, onMade, inside, autoFocus, noPlace
     const key = newKey(data.items, world, "thing", name);
     const thing: Thing = { key, kind: "thing", world, name: name.trim(), kinds: kind ? [kind] : [], fields: [] };
     let items: Item[] = [...data.items, thing];
-    if (parent) items = setParent(items, world, key, parent).items;
+    if (parent) items = setParent(items, world, key, parent, inside ? insideTree : undefined).items; // "inside" a container in its tree
     await save(items);
     setName("");
     onMade(key);

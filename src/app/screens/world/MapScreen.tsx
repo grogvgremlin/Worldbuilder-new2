@@ -20,6 +20,7 @@ import { TextBox } from "./text-box";
 import { treeKinds } from "../../../world/places";
 import { useUndo } from "./undo";
 import { GroupPopup } from "./GroupPopup";
+import { colourOf } from "./area-colours";
 import { DOUBLE_TAP_MS, DOUBLE_TAP_PX, swallowNextClick, tapSlop } from "./gestures";
 import { descendantsOf } from "../../../world/places";
 import { membersOf } from "../../../world/groups";
@@ -240,6 +241,19 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
   const toDraw = pickedArea && !drawn.some((a) => areaId(a) === picked) ? [...drawn, pickedArea] : drawn;
   const sheet = sheetOf(map);
 
+  // A row in the area list switches its area on or off, as the Areas menu does (owner, 26 Nov):
+  // turning one on also turns on areas in general, and its tree if that tree wasn't shown.
+  const toggleArea = (a: Area) => {
+    const id = areaId(a);
+    if (drawn.some((d) => areaId(d) === id)) return showArea({ ...shown, hidden: [...shown.hidden, id] });
+    const treeOff = a.by === "containment" && a.tree && !treesShown.includes(a.tree);
+    const trees2 = treeOff ? [...treesShown, a.tree!] : shown.trees;
+    // Areas (or its tree) were off: turn them on with only this one showing from that set.
+    const quiet = !shown.all ? everyArea : treeOff ? everyArea.filter((x) => x.tree === a.tree) : [];
+    const others = quiet.filter((x) => areaId(x) !== id).map(areaId);
+    showArea({ ...shown, all: true, hidden: [...shown.hidden.filter((h) => h !== id && !others.includes(h)), ...others], trees: trees2 });
+  };
+
   // What an area holds, for dragging it: the item itself and, for a tree, everything inside it there;
   // for a group, its members and what they hold.
   const insideArea = (id: string): string[] => {
@@ -328,7 +342,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
           </svg>
         )}
       </div>
-      <AreaList everyArea={everyArea} drawn={drawn} picked={picked} onPick={(id) => setLit(lit === id ? null : id)} onHover={setHover} trees={trees.map((t) => ({ key: t.key, name: t.name }))} />
+      <AreaList everyArea={everyArea} drawn={drawn} picked={picked} onToggle={toggleArea} onHover={setHover} trees={trees.map((t) => ({ key: t.key, name: t.name }))} colour={(a) => colourOf(a.thing, a.by === "group" ? "group" : "tree", treeStyle(a.tree), a.depth)} />
       </div>
       {grouping && (
         <GroupPopup
@@ -521,21 +535,21 @@ function AreasMenu({ areas, shown, onChange, onClose, trees, treesShown }: { are
   );
 }
 
-// The areas in the open beside (or under) the map (owner, 26 Nov): those drawn, and those filtered
-// out. Tapping one picks it out on the map (a filtered-out one is drawn while picked); with a mouse,
-// pointing at one does the same. An area picked on the map is picked out here too.
-function AreaList({ everyArea, drawn, picked, onPick, onHover, trees }: { everyArea: Area[]; drawn: Area[]; picked: string | null; onPick: (id: string) => void; onHover: (id: string | null) => void; trees: { key: string; name: string }[] }) {
+// The areas in the open beside (or under) the map, as a key (owner, 26 Nov): those drawn, and those
+// filtered out, each with a dot in its own colour. Tapping a row switches the area on or off, as the
+// Areas menu does; with a mouse, pointing at one picks it out on the map (even a filtered-out one).
+function AreaList({ everyArea, drawn, picked, onToggle, onHover, trees, colour }: { everyArea: Area[]; drawn: Area[]; picked: string | null; onToggle: (a: Area) => void; onHover: (id: string | null) => void; trees: { key: string; name: string }[]; colour: (a: Area) => string }) {
   const isDrawn = new Set(drawn.map(areaId));
   const titleOf = (a: Area) => (a.by === "group" ? "Groups" : trees.find((t) => t.key === a.tree)?.name ?? "Tree");
   const row = (a: Area) => (
     <li key={areaId(a)}>
       <button
-        className={"area-row" + (picked === areaId(a) ? " lit" : "")}
-        onClick={() => onPick(areaId(a))}
+        className={"area-row" + (picked === areaId(a) ? " lit" : "") + (isDrawn.has(areaId(a)) ? " on" : "")}
+        onClick={() => onToggle(a)}
         onPointerEnter={(e) => e.pointerType === "mouse" && onHover(areaId(a))}
         onPointerLeave={(e) => e.pointerType === "mouse" && onHover(null)}
       >
-        <span className="area-dot" style={a.thing.colour ? { background: a.thing.colour } : undefined} />
+        <span className={a.by === "group" ? "area-dot dashed" : "area-dot"} style={{ background: isDrawn.has(areaId(a)) ? colour(a) : "transparent", borderColor: colour(a) }} />
         <span style={{ paddingLeft: a.depth * 10 }}>{a.thing.name}</span>
         <span className="sub"> {titleOf(a)}</span>
       </button>
@@ -545,11 +559,11 @@ function AreaList({ everyArea, drawn, picked, onPick, onHover, trees }: { everyA
   if (everyArea.length === 0) return null;
   return (
     <aside className="area-list">
-      <div className="sub menu-heading">On the map ({drawn.length})</div>
+      <div className="sub menu-heading">On the map ({drawn.length}) · tap to switch off</div>
       <ul className="plain">{drawn.map(row)}</ul>
       {hidden.length > 0 && (
         <details>
-          <summary className="sub menu-heading">Filtered out ({hidden.length})</summary>
+          <summary className="sub menu-heading">Filtered out ({hidden.length}) · tap to switch on</summary>
           <ul className="plain">{hidden.map(row)}</ul>
         </details>
       )}

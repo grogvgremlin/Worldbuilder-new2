@@ -157,9 +157,11 @@ export function linkMisfits(items: Item[], world: string): string[] {
   return misfitLinks(items, world).map((m) => m.why);
 }
 
-// The items at either end of a link that doesn't fit, to mark them in lists and on the Diagram.
-export function itemsWithMisfits(items: Item[], world: string): Set<string> {
-  return new Set(misfitLinks(items, world).flatMap((m) => [m.link.from, m.link.to]));
+// The items at either end of a link that doesn't fit, to mark them in lists and on the Diagram. In a
+// tree's view, only that tree's own links count (owner, 26 Nov: a link that fits here was marked
+// because another tree's didn't).
+export function itemsWithMisfits(items: Item[], world: string, linkKind?: string): Set<string> {
+  return new Set(misfitLinks(items, world).filter((m) => !linkKind || m.link.linkKind === linkKind).flatMap((m) => [m.link.from, m.link.to]));
 }
 
 // --- Order -----------------------------------------------------------------------------------------

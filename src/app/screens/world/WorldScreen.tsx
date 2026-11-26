@@ -14,6 +14,7 @@ import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { useRemembered } from "./remembered";
 import { useFoldAll } from "./fold-all";
+import { groupKindFor } from "../../../world/bulk";
 import { TreeDiagram } from "./TreeDiagram";
 import { ALL, TreePicker, useChosenTree } from "./tree-picker";
 import { hasKind, inOrder, itemsWithMisfits, kindTree, misfitLinks, moveInOrder, refusal, removeLinkKind, setFlavourOf, type Misfit } from "../../../world/kinds";
@@ -309,7 +310,8 @@ function NewGroup({ data, world, save, onMade }: { data: AppData; world: string;
   const make = async () => {
     if (!name.trim()) return;
     const key = newKey(data.items, world, "thing", name);
-    let items: Item[] = [...data.items, { key, kind: "thing", world, name: name.trim(), kinds: kinds.length === 1 ? [kinds[0].key] : [], fields: [] }];
+    const kind = groupKindFor(data.items, world, linkKind.key); // one the group's link kind takes (owner, 26 Nov)
+    let items: Item[] = [...data.items, { key, kind: "thing", world, name: name.trim(), kinds: kind ? [kind] : kinds.length === 1 ? [kinds[0].key] : [], fields: [] }];
     for (const member of picked) items = addToGroup(items, world, member, linkKind.key, key).items;
     await save(items);
     setName("");
@@ -359,11 +361,11 @@ function Branch({ data, nav, world, tree, thing, depth, save }: { data: AppData;
         {/* Loose at the top of a tree (nothing above, nothing inside): swipe hides it from this tree. */}
         {depth === 1 && children.length === 0 && tree ? (
           <SwipeRow action="Hide here" onAction={() => save(hideHere(data.items, tree, thing.key, true))}>
-            <PlaceRow data={data} thing={thing} count={0} onOpen={() => nav.open({ name: "place", key: thing.key })} />
+            <PlaceRow data={data} thing={thing} count={0} tree={tree} onOpen={() => nav.open({ name: "place", key: thing.key })} />
           </SwipeRow>
         ) : (
           <SwipeRow action="Remove" onAction={() => removeItem(data, save, thing)}>
-            <PlaceRow data={data} thing={thing} count={children.length} onOpen={() => nav.open({ name: "place", key: thing.key })} />
+            <PlaceRow data={data} thing={thing} count={children.length} tree={tree} onOpen={() => nav.open({ name: "place", key: thing.key })} />
           </SwipeRow>
         )}
       </li>
@@ -372,12 +374,12 @@ function Branch({ data, nav, world, tree, thing, depth, save }: { data: AppData;
   );
 }
 
-function PlaceRow({ data, thing, withPath, count, onOpen }: { data: AppData; thing: Thing; withPath?: boolean; count?: number; onOpen: () => void }) {
+function PlaceRow({ data, thing, withPath, count, onOpen, tree }: { data: AppData; thing: Thing; withPath?: boolean; count?: number; onOpen: () => void; tree?: string }) {
   const all = thingKindsIn(data.items, thing.world);
   const kinds = all.length > 1 ? all.filter((k) => thing.kinds.includes(k.key)).map((k) => k.name) : []; // one kind says nothing
   const path = withPath ? pathOf(data.items, thing.world, thing.key).slice(0, -1).map((t) => t.name).join(" › ") : "";
   const sub = [kinds.join(", "), path, count ? `${count} inside` : "", thing.summary ?? ""].filter(Boolean).join(" · ");
-  const flagged = itemsWithMisfits(data.items, thing.world).has(thing.key); // in a link that doesn't fit
+  const flagged = itemsWithMisfits(data.items, thing.world, tree).has(thing.key); // in a link that doesn't fit (this tree's, in a tree)
   return (
     <button onClick={onOpen}>
       <span className="title">{flagged && <span className="warn" title="In a link that doesn't fit">⚠ </span>}{iconOf(data.items, thing)} {thing.name}</span>

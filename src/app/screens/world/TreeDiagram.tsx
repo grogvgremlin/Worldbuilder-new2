@@ -11,7 +11,7 @@
 // canvas as another view on the same structure). Layout: src/world/diagram.ts.
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from "react";
 import { descendantsOf, setParent } from "../../../world/places";
-import { misfit } from "../../../world/kinds";
+import { refusal } from "../../../world/kinds";
 import { iconOf } from "../../../world/maps";
 import { worldOf } from "../../../world/world";
 import { arrangedLayout, boxesThatMove, hasHandPlacing, moveBoxes, NODE_H, NODE_W, ROOT, tidyLayout, type Box, type Direction } from "../../../world/diagram";
@@ -97,7 +97,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const canDrop = (dragged: string, target: string | undefined): boolean => {
     if (!target || target === dragged) return false;
     if (target === ROOT) return true;
-    if (tree && misfit(data.items, world, tree, "to", target)) return false; // e.g. a Person holds nothing
+    if (tree && refusal(data.items, world, tree, "to", target)) return false; // e.g. a Person holds nothing
     return !descendantsOf(data.items, world, dragged, tree).some((d) => d.key === target);
   };
 

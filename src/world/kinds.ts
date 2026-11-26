@@ -6,7 +6,7 @@
 // the build log, 26 Nov, "Questions for design".
 
 import type { Item, KindField, LinkKind, Thing, ThingKind } from "../items/items";
-import { thingKindsIn } from "./world";
+import { linkKindsIn, newKey, thingKindsIn, worldOf } from "./world";
 
 // A kind and the kinds it's a flavour of, from itself up: Free city, City, Place.
 export function kindLine(items: Item[], world: string, kind: string): ThingKind[] {
@@ -61,7 +61,7 @@ export function kindTree(items: Item[], world: string): { kind: ThingKind; depth
   const keys = new Set(all.map((k) => k.key));
   const out: { kind: ThingKind; depth: number }[] = [];
   const walk = (parent: string | undefined, depth: number) => {
-    const here = all.filter((k) => (parent ? k.flavourOf === parent : !k.flavourOf || !keys.has(k.flavourOf))).sort((a, b) => a.name.localeCompare(b.name));
+    const here = inOrder(items, world, all.filter((k) => (parent ? k.flavourOf === parent : !k.flavourOf || !keys.has(k.flavourOf))));
     for (const k of here) {
       if (out.some((o) => o.kind.key === k.key)) continue;
       out.push({ kind: k, depth });
@@ -72,22 +72,113 @@ export function kindTree(items: Item[], world: string): { kind: ThingKind; depth
   return out;
 }
 
-// Why an item can't go at one end of a link kind, or null if it can (owner, 26 Nov: "places
-// shouldn't be able to nest people"; "in terrain shouldn't have people, just places"). Read from the
-// link kind's Expects: nothing expected means anything goes. A kind's flavours always fit.
+// --- What a link kind takes (owner, 26 Nov) -----------------------------------------------------
+// Each end takes the kinds listed for it, else the link kind's scope (both ends); `exclude` removes
+// kinds at both ends. For an item's kind, the nearest kind in its line that's listed decides: so
+// "exclude Place" also excludes City, unless City is listed to take; and "take Place, exclude
+// Fortress" takes every place but fortresses. Nothing listed to take: everything not excluded fits.
+
+function linkKindOf(items: Item[], key: string): LinkKind | undefined {
+  return items.find((i): i is LinkKind => i.kind === "link-kind" && i.key === key);
+}
+
+// What an end takes and leaves out.
+export function endRule(kind: LinkKind, end: "from" | "to"): { take: string[]; leave: string[] } {
+  const own = end === "from" ? kind.expectsFrom : kind.expectsTo;
+  return { take: own?.length ? own : kind.scope ?? [], leave: kind.exclude ?? [] };
+}
+
+// Whether one kind fits an end: the nearest listed kind in its line decides.
+function kindFits(items: Item[], world: string, kind: string, rule: { take: string[]; leave: string[] }): boolean {
+  for (const k of kindLine(items, world, kind)) {
+    if (rule.take.includes(k.key)) return true;
+    if (rule.leave.includes(k.key)) return false;
+  }
+  return rule.take.length === 0;
+}
+
+// Whether an item with these kinds fits an end: one of its kinds fits.
+export function itemFits(items: Item[], world: string, kinds: string[], rule: { take: string[]; leave: string[] }): boolean {
+  if (kinds.length === 0) return rule.take.length === 0;
+  return kinds.some((k) => kindFits(items, world, k, rule));
+}
+
+// Why an item doesn't fit one end of a link kind, or null if it does (whatever the strictness).
 export function misfit(items: Item[], world: string, linkKind: string, end: "from" | "to", thing: string): string | null {
-  const kind = items.find((i): i is LinkKind => i.kind === "link-kind" && i.key === linkKind);
+  const kind = linkKindOf(items, linkKind);
   const item = items.find((i): i is Thing => i.kind === "thing" && i.key === thing);
   if (!kind || !item) return null;
-  const expected = end === "from" ? kind.expectsFrom : kind.expectsTo;
-  if (fitsExpected(items, world, item.kinds, expected)) return null;
-  const names = (expected ?? []).map((k) => thingKindsIn(items, world).find((t) => t.key === k)?.name ?? k);
-  return `"${kind.name}" takes ${names.join(" or ")} ${end === "from" ? "inside" : "as the container"}; ${item.name} isn't one`;
+  const rule = endRule(kind, end);
+  if (itemFits(items, world, item.kinds, rule)) return null;
+  const name = (k: string) => thingKindsIn(items, world).find((t) => t.key === k)?.name ?? k;
+  const takes = rule.take.length ? `takes ${rule.take.map(name).join(" or ")}` : `leaves out ${rule.leave.map(name).join(" and ")}`;
+  return `"${kind.name}" ${takes} ${end === "from" ? "inside" : "as the container"}; ${item.name} doesn't fit`;
+}
+
+// Whether a link kind refuses misfits (strict, the default) or only flags them (warn).
+export function isStrict(items: Item[], linkKind: string): boolean {
+  return (linkKindOf(items, linkKind)?.strictness ?? "strict") === "strict";
+}
+
+// A misfit that stops the change: only for a strict link kind.
+export function refusal(items: Item[], world: string, linkKind: string, end: "from" | "to", thing: string): string | null {
+  return isStrict(items, linkKind) ? misfit(items, world, linkKind, end, thing) : null;
 }
 
 // Whether an item belongs in a tree at all: it fits one end or the other (a Place in "in terrain";
-// never a Person).
+// never a Person). A tree that only warns shows everything.
 export function fitsTree(items: Item[], world: string, tree: string | undefined, thing: string): boolean {
-  if (!tree) return true;
+  if (!tree || !isStrict(items, tree)) return true;
   return misfit(items, world, tree, "from", thing) === null || misfit(items, world, tree, "to", thing) === null;
+}
+
+// Links that don't fit their link kind (kept under a warn-only link kind, or from before a rule
+// changed): flagged, never removed.
+export function linkMisfits(items: Item[], world: string): string[] {
+  const out: string[] = [];
+  for (const l of items) {
+    if (l.kind !== "link" || l.world !== world) continue;
+    const why = misfit(items, world, l.linkKind, "from", l.from) ?? misfit(items, world, l.linkKind, "to", l.to);
+    if (why) out.push(why);
+  }
+  return out;
+}
+
+// --- Order -----------------------------------------------------------------------------------------
+
+// Kinds and link kinds in the world's display order (owner, 26 Nov); any not placed come after, by name.
+export function inOrder<T extends { key: string; name: string }>(items: Item[], world: string, list: T[]): T[] {
+  const order = worldOf(items, world)?.kindOrder ?? [];
+  const place = (k: string) => (order.includes(k) ? order.indexOf(k) : Number.MAX_SAFE_INTEGER);
+  return [...list].sort((a, b) => place(a.key) - place(b.key) || a.name.localeCompare(b.name));
+}
+
+// Moves a kind or link kind up (-1) or down (+1) among its own list.
+export function moveInOrder(items: Item[], world: string, list: { key: string; name: string }[], key: string, by: number): Item[] {
+  const keys = inOrder(items, world, list).map((k) => k.key);
+  const at = keys.indexOf(key);
+  const to = at + by;
+  if (at < 0 || to < 0 || to >= keys.length) return items;
+  [keys[at], keys[to]] = [keys[to], keys[at]];
+  const others = (worldOf(items, world)?.kindOrder ?? []).filter((k) => !keys.includes(k));
+  return items.map((i) => (i.kind === "sandbox" && i.key === world ? { ...i, kindOrder: [...others, ...keys] } : i));
+}
+
+// --- Link kinds: copy and remove --------------------------------------------------------------------
+
+// A copy of a link kind under a new name (owner, 26 Nov: "clone link type"): its settings, not its links.
+export function cloneLinkKind(items: Item[], world: string, key: string, name: string): { items: Item[]; key?: string; problem?: string } {
+  const source = linkKindOf(items, key);
+  if (!source) return { items, problem: "that link kind isn't there" };
+  if (!name.trim()) return { items, problem: "a copy needs a name" };
+  if (linkKindsIn(items, world).some((k) => k.name.toLowerCase() === name.trim().toLowerCase())) return { items, problem: `there's a link kind called ${name.trim()} already` };
+  const copy: LinkKind = { ...source, key: newKey(items, world, "link-kind", name), name: name.trim() };
+  return { items: [...items, copy], key: copy.key };
+}
+
+// A link kind goes with all its links; a world grouped by it no longer has a main tree.
+export function removeLinkKind(items: Item[], world: string, key: string): Item[] {
+  return items
+    .filter((i) => i.key !== key && !(i.kind === "link" && i.linkKind === key))
+    .map((i) => (i.kind === "sandbox" && i.key === world && i.tree === key ? { ...i, tree: undefined } : i));
 }

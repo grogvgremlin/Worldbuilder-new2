@@ -371,3 +371,10 @@ label.stack { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8p
 .area.other.tree-1 .group-fill, .area.other.tree-1 .group-edge { stroke: #6b8f2f; fill: #6b8f2f; } .area.other.tree-1 .group-edge { fill: none; } .area.other.tree-1 text { fill: #4f6b20; }
 .area.other.tree-2 .group-fill, .area.other.tree-2 .group-edge { stroke: #8f2f5e; fill: #8f2f5e; } .area.other.tree-2 .group-edge { fill: none; } .area.other.tree-2 text { fill: #8f2f5e; }
 .startup-error { padding: 24px 16px; max-width: 640px; margin: 0 auto; } .startup-error pre { white-space: pre-wrap; }
+.kind-chips { margin: 6px 0; } .kind-chips .chips { margin-top: 2px; }
+.list li.ordered-row { display: flex; align-items: flex-start; gap: 4px; }
+.list li.ordered-row > .swipe-row { flex: 1; }
+.order-arrows { display: flex; flex-direction: column; gap: 2px; padding-top: 6px; } .order-arrows button { padding: 2px 6px; }
+.list li.branch > .swipe-row { flex: 1; margin-bottom: 6px; } .list li.branch > .swipe-row button { margin-bottom: 0; }
+.colour-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; } .colour-row input[type=color] { width: 44px; height: 30px; border: 1px solid var(--line); border-radius: 6px; padding: 0; background: none; }
+.list li .order-arrows button { width: auto; padding: 2px 8px; border: 0; background: none; margin: 0; color: var(--link); }

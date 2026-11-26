@@ -453,6 +453,9 @@ export const Sandbox = z.strictObject({
   // The link kind places are grouped by (the containment tree, "in"): drives paths, the place
   // tree and areas on maps. Chosen per world, never by a name in code (world-structure §4).
   tree: z.string().optional(),
+  // The order kinds and link kinds are listed and shown in (owner, 26 Nov: "priority display order");
+  // keys; any not listed come after, by name.
+  kindOrder: z.array(z.string()).optional(),
   // Where boxes were dragged in the Diagram (owner, 25 Nov: arrange by hand), per tree and per
   // direction. A box with no position here is laid out automatically. Only how it's drawn.
   diagrams: z.array(z.strictObject({
@@ -559,8 +562,13 @@ export const LinkKind = z.strictObject({
   reverseName: z.string().optional(), // read from the other end: "in" → "holds"
   direction: z.enum(["one-way", "both ways"]),
   hierarchy: z.enum(["none", "one parent", "several parents"]), // one parent: a tree, one at a time
-  expectsFrom: z.array(z.string()).optional(), // thing-kind keys; a mismatch warns, never blocks
-  expectsTo: z.array(z.string()).optional(),
+  // Which kinds of item it takes (owner, 26 Nov). Thing-kind keys, flavours counting; the nearest
+  // kind in an item's line decides, so a flavour can be put back after its kind is excluded.
+  scope: z.array(z.string()).optional(), // both ends, unless an end has its own list below
+  expectsFrom: z.array(z.string()).optional(), // the inside / from end
+  expectsTo: z.array(z.string()).optional(), // the container / to end
+  exclude: z.array(z.string()).optional(), // kinds not taken at either end (their flavours too)
+  strictness: z.enum(["strict", "warn"]).optional(), // strict (the default): a misfit is refused; warn: allowed, flagged
   about: z.string().optional(),
 });
 export type LinkKind = z.infer<typeof LinkKind>;
@@ -591,6 +599,7 @@ export const Thing = z.strictObject({
   world: z.string(),
   kinds: z.array(z.string()), // thing-kind keys; several allowed (Nuln: settlement + polity)
   icon: z.string().optional(), // overrides its kind's icon
+  colour: z.string().optional(), // how it shows as an area on maps ("#2f6f8f"); blank: by depth
   summary: z.string().optional(), // one line, shown under the name
   description: z.string().optional(), // the entry's text
   fields: z.array(ThingField),

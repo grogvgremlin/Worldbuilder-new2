@@ -5,7 +5,8 @@
 // (structure first on the phone, a canvas as another view).
 import { useState, type ReactNode } from "react";
 import type { Item, Thing } from "../../../items/items";
-import { linkKindsIn, mapsIn, newKey, thingKindsIn, thingsIn, worldOf } from "../../../world/world";
+import { linkKindsIn, linksIn, mapsIn, newKey, removeThing, removeThingKind, thingKindsIn, thingsIn, worldOf } from "../../../world/world";
+import { SwipeRow } from "../../swipe";
 import { childrenOf, isContainer, pathOf, setParent, topPlaces, treeWarnings } from "../../../world/places";
 import { iconOf, newMap } from "../../../world/maps";
 import { addToGroup, groupLinkKinds, groupsIn, isOnlyAGroup, membersOf, newGroupLinkKind } from "../../../world/groups";
@@ -14,7 +15,7 @@ import type { Nav } from "../../App";
 import { useRemembered } from "./remembered";
 import { TreeDiagram } from "./TreeDiagram";
 import { TreePicker, useChosenTree } from "./tree-picker";
-import { hasKind, kindTree, misfit, setFlavourOf } from "../../../world/kinds";
+import { hasKind, inOrder, kindTree, moveInOrder, refusal, removeLinkKind, setFlavourOf } from "../../../world/kinds";
 
 type Tab = "items" | "diagram" | "maps" | "kinds";
 const TABS: { id: Tab; label: string }[] = [
@@ -98,7 +99,9 @@ function Items({ data, nav, world, save }: Part) {
         <ul className="list">
           {matches.map((t) => (
             <li key={t.key}>
-              <PlaceRow data={data} thing={t} withPath onOpen={() => nav.open({ name: "place", key: t.key })} />
+              <SwipeRow action="Remove" onAction={() => removeItem(data, save, t)}>
+                <PlaceRow data={data} thing={t} withPath onOpen={() => nav.open({ name: "place", key: t.key })} />
+              </SwipeRow>
             </li>
           ))}
         </ul>
@@ -116,7 +119,7 @@ function Items({ data, nav, world, save }: Part) {
               <li className="tree-root">{worldName}</li>
               {topPlaces(data.items, world, tree)
                 .filter((t) => !isOnlyAGroup(data.items, world, t.key))
-                .map((t) => <Branch key={t.key} data={data} nav={nav} world={world} tree={tree} thing={t} depth={1} />)}
+                .map((t) => <Branch key={t.key} data={data} nav={nav} world={world} tree={tree} thing={t} depth={1} save={save} />)}
             </ul>
           ) : (
             <Groups data={data} nav={nav} world={world} save={save} />
@@ -233,7 +236,7 @@ function matchesText(thing: Thing, text: string): boolean {
 }
 
 // An item and, unfolded, what it holds in this tree. The first level starts open.
-function Branch({ data, nav, world, tree, thing, depth }: { data: AppData; nav: Nav; world: string; tree: string | undefined; thing: Thing; depth: number }) {
+function Branch({ data, nav, world, tree, thing, depth, save }: { data: AppData; nav: Nav; world: string; tree: string | undefined; thing: Thing; depth: number; save: (items: Item[]) => Promise<void> }) {
   const children = childrenOf(data.items, world, thing.key, tree);
   const [open, setOpen] = useRemembered(`${world}|open|${tree}|${thing.key}`, depth < 2);
   return (
@@ -244,9 +247,11 @@ function Branch({ data, nav, world, tree, thing, depth }: { data: AppData; nav: 
         ) : (
           <span className="twisty" />
         )}
-        <PlaceRow data={data} thing={thing} count={children.length} onOpen={() => nav.open({ name: "place", key: thing.key })} />
+        <SwipeRow action="Remove" onAction={() => removeItem(data, save, thing)}>
+          <PlaceRow data={data} thing={thing} count={children.length} onOpen={() => nav.open({ name: "place", key: thing.key })} />
+        </SwipeRow>
       </li>
-      {open && children.map((c) => <Branch key={c.key} data={data} nav={nav} world={world} tree={tree} thing={c} depth={depth + 1} />)}
+      {open && children.map((c) => <Branch key={c.key} data={data} nav={nav} world={world} tree={tree} thing={c} depth={depth + 1} save={save} />)}
     </>
   );
 }
@@ -273,7 +278,7 @@ export function NewPlace({ data, world, save, onMade, inside, autoFocus, noPlace
   const [kind, setKind] = useState(kinds.length === 1 ? kinds[0].key : inside ? usualKindInside(data.items, world, inside) : "");
   const [parent, setParentKey] = useState(inside ?? "");
   const tree = worldOf(data.items, world)?.tree ?? "";
-  const places = thingsIn(data.items, world).filter((t) => !misfit(data.items, world, tree, "to", t.key)).sort((a, b) => a.name.localeCompare(b.name));
+  const places = thingsIn(data.items, world).filter((t) => !refusal(data.items, world, tree, "to", t.key)).sort((a, b) => a.name.localeCompare(b.name));
   const make = async () => {
     if (!name.trim()) return;
     const key = newKey(data.items, world, "thing", name);
@@ -322,6 +327,24 @@ function usualKindInside(items: Item[], world: string, parent: string): string {
   return [...count.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
 }
 
+// Removes an item after asking (swipe or cross on any list of items). What it held moves up to sit
+// straight in the world; its links and pins go.
+async function removeItem(data: AppData, save: (items: Item[]) => Promise<void>, thing: Thing) {
+  const held = childrenOf(data.items, thing.world, thing.key).length;
+  if (!confirm(`Remove ${thing.name}?${held ? ` The ${held} item${held === 1 ? "" : "s"} inside it move up to sit straight in the world.` : ""}`)) return;
+  await save(removeThing(data.items, thing.key));
+}
+
+// Up and down arrows for a list in the owner's order.
+function OrderArrows({ onMove }: { onMove: (by: number) => void }) {
+  return (
+    <span className="order-arrows">
+      <button className="link" aria-label="Up" onClick={() => onMove(-1)}>↑</button>
+      <button className="link" aria-label="Down" onClick={() => onMove(1)}>↓</button>
+    </span>
+  );
+}
+
 // --- Maps ----------------------------------------------------------------------------------------
 
 function Maps({ data, nav, world, save }: Part) {
@@ -339,10 +362,12 @@ function Maps({ data, nav, world, save }: Part) {
       <ul className="list">
         {maps.map((m) => (
           <li key={m.key}>
-            <button onClick={() => nav.open({ name: "map", key: m.key })}>
-              <span className="title">🗺️ {m.name}</span>
-              <span className="sub">{m.pins.length} pinned</span>
-            </button>
+            <SwipeRow action="Remove" onAction={async () => confirm(`Remove the map ${m.name}? Its items stay in the world.`) && (await save(data.items.filter((i) => i.key !== m.key)))}>
+              <button onClick={() => nav.open({ name: "map", key: m.key })}>
+                <span className="title">🗺️ {m.name}</span>
+                <span className="sub">{m.pins.length} pinned</span>
+              </button>
+            </SwipeRow>
           </li>
         ))}
       </ul>
@@ -363,7 +388,17 @@ function Kinds({ data, nav, world, save }: Part) {
   const [linkName, setLinkName] = useState("");
   const w = worldOf(data.items, world)!;
   const thingKinds = kindTree(data.items, world);
-  const linkKinds = linkKindsIn(data.items, world);
+  const linkKinds = inOrder(data.items, world, linkKindsIn(data.items, world)); // the owner's display order
+  const removeKind = async (key: string, name: string) => {
+    const count = thingsIn(data.items, world).filter((t) => t.kinds.includes(key)).length;
+    if (!confirm(`Remove the kind ${name}?${count ? ` ${count} item${count === 1 ? "" : "s"} lose it; their fields stay as their own.` : ""}`)) return;
+    await save(removeThingKind(data.items, key));
+  };
+  const removeLink = async (key: string, name: string) => {
+    const count = linksIn(data.items, world).filter((l) => l.linkKind === key).length;
+    if (!confirm(`Remove the link kind ${name}?${count ? ` Its ${count} link${count === 1 ? "" : "s"} go too.` : ""}${key === w.tree ? " It's the main tree." : ""}`)) return;
+    await save(removeLinkKind(data.items, world, key));
+  };
   const addKind = async () => {
     if (!name.trim()) return;
     const key = newKey(data.items, world, "thing-kind", name);
@@ -382,17 +417,23 @@ function Kinds({ data, nav, world, save }: Part) {
 
   return (
     <>
-      <p className="sub">A world's kinds are its own: change them freely. A kind offers fields; it never forbids any.</p>
+      <p className="sub">A world's kinds are its own: change them freely. Swipe one left to remove it; ↑ ↓ set the order they're shown in.</p>
       <h2>Kinds of item</h2>
       <ul className="list">
-        {thingKinds.map(({ kind: k, depth }) => (
-          <li key={k.key} style={{ paddingLeft: depth * 18 }}>
-            <button onClick={() => nav.open({ name: "thing-kind", key: k.key })}>
-              <span className="title">{depth > 0 ? "↳ " : ""}{k.icon} {k.name}</span>
-              <span className="sub">{[k.about, k.fields.map((f) => f.name).join(", ")].filter(Boolean).join(" · ") || (depth > 0 ? "its parent's fields" : "no fields yet")}</span>
-            </button>
-          </li>
-        ))}
+        {thingKinds.map(({ kind: k, depth }) => {
+          const siblings = thingKindsIn(data.items, world).filter((o) => o.flavourOf === k.flavourOf);
+          return (
+            <li key={k.key} className="ordered-row" style={{ paddingLeft: depth * 18 }}>
+              <SwipeRow action="Remove" onAction={() => removeKind(k.key, k.name)}>
+                <button onClick={() => nav.open({ name: "thing-kind", key: k.key })}>
+                  <span className="title">{depth > 0 ? "↳ " : ""}{k.icon} {k.name}</span>
+                  <span className="sub">{[k.about, k.fields.map((f) => f.name).join(", ")].filter(Boolean).join(" · ") || (depth > 0 ? "its parent's fields" : "no fields yet")}</span>
+                </button>
+              </SwipeRow>
+              <OrderArrows onMove={(by) => save(moveInOrder(data.items, world, siblings, k.key, by))} />
+            </li>
+          );
+        })}
       </ul>
       <div className="inline-add">
         <input className="filter" placeholder="New kind (e.g. City)" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addKind()} />
@@ -408,11 +449,14 @@ function Kinds({ data, nav, world, save }: Part) {
       <h2>Kinds of link</h2>
       <ul className="list">
         {linkKinds.map((k) => (
-          <li key={k.key}>
-            <button onClick={() => nav.open({ name: "link-kind", key: k.key })}>
-              <span className="title">{k.name}{k.reverseName ? ` / ${k.reverseName}` : ""}</span>
-              <span className="sub">{[k.direction, k.hierarchy === "none" ? "" : k.hierarchy, k.about].filter(Boolean).join(" · ")}</span>
-            </button>
+          <li key={k.key} className="ordered-row">
+            <SwipeRow action="Remove" onAction={() => removeLink(k.key, k.name)}>
+              <button onClick={() => nav.open({ name: "link-kind", key: k.key })}>
+                <span className="title">{k.name}{k.reverseName ? ` / ${k.reverseName}` : ""}{k.key === w.tree ? " (main tree)" : ""}</span>
+                <span className="sub">{[k.direction, k.hierarchy === "none" ? "" : k.hierarchy, k.strictness === "warn" ? "warn only" : "", k.about].filter(Boolean).join(" · ")}</span>
+              </button>
+            </SwipeRow>
+            <OrderArrows onMove={(by) => save(moveInOrder(data.items, world, linkKindsIn(data.items, world), k.key, by))} />
           </li>
         ))}
       </ul>

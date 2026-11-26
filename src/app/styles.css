@@ -378,3 +378,11 @@ label.stack { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8p
 .list li.branch > .swipe-row { flex: 1; margin-bottom: 6px; } .list li.branch > .swipe-row button { margin-bottom: 0; }
 .colour-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; } .colour-row input[type=color] { width: 44px; height: 30px; border: 1px solid var(--line); border-radius: 6px; padding: 0; background: none; }
 .list li .order-arrows button { width: auto; padding: 2px 8px; border: 0; background: none; margin: 0; color: var(--link); }
+.item-fold { margin: 10px 0 4px; }
+.item-fold > summary { cursor: pointer; color: var(--muted); font-size: .9rem; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; padding: 4px 0; }
+.item-fold.big { border-left: 2px solid var(--line); padding-left: 10px; margin-top: 14px; }
+.item-fold.big > summary { font-size: 1.05rem; text-transform: none; letter-spacing: 0; color: var(--ink); }
+.item-fold-body > .item-fold:first-child { margin-top: 4px; }
+.links .link-word { color: var(--muted); }
+.place-title .stack { margin: 4px 0 0; }
+.item-fold .form h2 { display: none; } .item-fold .form .buttons { margin-top: 4px; }

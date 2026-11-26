@@ -4,7 +4,7 @@
 // §4 (containment), §5 (the maps it's pinned on), §10 (a list of names).
 // The form is worked out from the place's kinds (one definition drives every surface,
 // authoring-v2 §5.2); it will join the shared form when Lists' editor brings one.
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { Item, Thing, ThingField, ThingName } from "../../../items/items";
 import { linkKindsIn, linksIn, mapsIn, removeThing, thingKindsIn, thingsIn, worldOf } from "../../../world/world";
 import { childrenOf, descendantsOf, pathOf, setParent, treeKinds } from "../../../world/places";
@@ -15,17 +15,25 @@ import type { Nav } from "../../App";
 import { NewPlace } from "./WorldScreen";
 import { TextBox } from "./text-box";
 import { SwipeRow } from "../../swipe";
+import { useChosenTree } from "./tree-picker";
+import { useRemembered } from "./remembered";
 import { fitsTree, kindLine, kindTree, refusal } from "../../../world/kinds";
 
 export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; thingKey: string }) {
   const [editing, setEditing] = useState(false);
   const [, setChanged] = useState(0);
   const thing = data.items.find((i): i is Thing => i.kind === "thing" && i.key === thingKey);
+  const [viewed] = useChosenTree(data, thing?.world ?? "");
   if (!thing) return <p className="hint">This item isn't in the world any more.</p>;
   const world = thing.world;
   const save = async (items: Item[]) => (await data.setItems(items), setChanged((n) => n + 1));
   const change = (patch: Partial<Thing>) => save(data.items.map((i) => (i.key === thing.key ? ({ ...thing, ...patch } as Thing) : i)));
-  const path = pathOf(data.items, world, thing.key).slice(0, -1);
+  // The trail under the name follows the tree being viewed (owner, 26 Nov), else the main tree.
+  const main = worldOf(data.items, world)?.tree;
+  const viewedPath = viewed ? pathOf(data.items, world, thing.key, viewed).slice(0, -1) : [];
+  const trailTree = viewedPath.length > 0 ? viewed : main;
+  const path = trailTree ? pathOf(data.items, world, thing.key, trailTree).slice(0, -1) : [];
+  const trailLabel = trailTree && trailTree !== main ? linkKindsIn(data.items, world).find((k) => k.key === trailTree)?.name : undefined;
 
   return (
     <article className="card place">
@@ -37,13 +45,13 @@ export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; 
         )}
         <div className="place-title">
           {editing ? <TextBox className="name-box" value={thing.name} onSave={(v) => v && change({ name: v })} /> : <h1>{thing.name}</h1>}
-          <Breadcrumb nav={nav} path={path} />
+          {/* Editing: where it is, as a dropdown per tree (the read-only trail would say it twice). */}
+          {editing ? <Parents data={data} nav={nav} thing={thing} editing save={save} /> : <Breadcrumb nav={nav} path={path} label={trailLabel} />}
         </div>
         <button className="link edit-toggle" onClick={() => setEditing(!editing)}>{editing ? "Done" : "Edit"}</button>
       </div>
 
       <Kinds data={data} thing={thing} editing={editing} change={change} />
-      <Parents data={data} nav={nav} thing={thing} editing={editing} save={save} />
       {editing && (
         // How it shows as an area on maps (owner, 26 Nov: "a colour option for containers").
         <label className="colour-row">
@@ -53,26 +61,25 @@ export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; 
         </label>
       )}
 
-      {editing ? (
-        <>
-          <TextBox className="filter" value={thing.summary ?? ""} placeholder="One line: what it is" onSave={(v) => change({ summary: v || undefined })} />
-          <TextBox multiline className="description-box" value={thing.description ?? ""} placeholder="Its entry: history, look, people, rumours…" onSave={(v) => change({ description: v || undefined })} />
-        </>
-      ) : (
-        <>
-          {thing.summary && <p className="summary">{thing.summary}</p>}
-          {thing.description && <div className="description">{thing.description}</div>}
-          {!thing.summary && !thing.description && <p className="sub">No entry yet: Edit to write one.</p>}
-        </>
-      )}
-
-      <Fields data={data} thing={thing} editing={editing} change={change} />
-      <OtherNames thing={thing} editing={editing} change={change} />
-      <Contents data={data} nav={nav} thing={thing} editing={editing} save={save} />
-      <Members data={data} nav={nav} thing={thing} editing={editing} save={save} />
-      <InGroups data={data} nav={nav} thing={thing} editing={editing} save={save} />
-      <OtherLinks data={data} nav={nav} thing={thing} />
-      <OnMaps data={data} nav={nav} thing={thing} />
+      {/* The owner's layout (26 Nov mock-up): two folding groups, each section folding inside. */}
+      <Fold id="wiki" title="Wiki entry" big>
+        <Fold id="entry" title="Entry" show={editing || Boolean(thing.summary || thing.description)}>
+          {editing ? (
+            <>
+              <TextBox className="filter" value={thing.summary ?? ""} placeholder="One line: what it is" onSave={(v) => change({ summary: v || undefined })} />
+              <TextBox multiline className="description-box" value={thing.description ?? ""} placeholder="Its entry: history, look, people, rumours…" onSave={(v) => change({ description: v || undefined })} />
+            </>
+          ) : (
+            <>
+              {thing.summary && <p className="summary">{thing.summary}</p>}
+              {thing.description && <div className="description">{thing.description}</div>}
+            </>
+          )}
+        </Fold>
+        {!editing && !thing.summary && !thing.description && <p className="sub">No entry yet: Edit to write one.</p>}
+        <Fields data={data} thing={thing} editing={editing} change={change} />
+        <OtherNames thing={thing} editing={editing} change={change} />
+      </Fold>
 
       {(editing || (thing.tags ?? []).length > 0) && (
         <section>
@@ -84,6 +91,15 @@ export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; 
           )}
         </section>
       )}
+
+      <Fold id="where" title="Where it sits" big>
+        <Contents data={data} nav={nav} thing={thing} editing={editing} save={save} />
+        <Members data={data} nav={nav} thing={thing} editing={editing} save={save} />
+        <InGroups data={data} nav={nav} thing={thing} editing={editing} save={save} />
+        <AllLinks data={data} nav={nav} thing={thing} />
+        <OnMaps data={data} nav={nav} thing={thing} />
+      </Fold>
+
       {(editing || thing.reference) && (
         <section>
           <h2>Source</h2>
@@ -97,16 +113,13 @@ export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; 
           )}
         </section>
       )}
-      {(editing || thing.notes) && (
-        <section>
-          <h2>Notes</h2>
-          {editing ? (
-            <TextBox multiline className="description-box" value={thing.notes ?? ""} placeholder="Your own notes" onSave={(v) => change({ notes: v || undefined })} />
-          ) : (
-            <div className="description">{thing.notes}</div>
-          )}
-        </section>
-      )}
+      <Fold id="notes" title="Notes" show={editing || Boolean(thing.notes)}>
+        {editing ? (
+          <TextBox multiline className="description-box" value={thing.notes ?? ""} placeholder="Your own notes" onSave={(v) => change({ notes: v || undefined })} />
+        ) : (
+          <div className="description">{thing.notes}</div>
+        )}
+      </Fold>
 
       {editing && (
         <div className="buttons">
@@ -122,11 +135,24 @@ export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; 
   );
 }
 
-function Breadcrumb({ nav, path }: { nav: Nav; path: Thing[] }) {
+// A section that folds (owner, 26 Nov mock-up: the arrows); remembered while the app is open.
+// `big` is one of the two groups (Wiki entry; Where it sits). `show` false: not drawn at all.
+function Fold({ id, title, big, show = true, children }: { id: string; title: string; big?: boolean; show?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useRemembered(`item-fold|${id}`, true);
+  if (!show) return null;
+  return (
+    <details className={big ? "item-fold big" : "item-fold"} open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
+      <summary>{title}</summary>
+      <div className="item-fold-body">{children}</div>
+    </details>
+  );
+}
+
+function Breadcrumb({ nav, path, label }: { nav: Nav; path: Thing[]; label?: string }) {
   if (path.length === 0) return null;
   return (
     <div className="breadcrumb">
-      in{" "}
+      {label ? `${label}: ` : "in "}
       {path.map((t, n) => (
         <span key={t.key}>
           {n > 0 && " › "}
@@ -161,11 +187,9 @@ function Kinds({ data, thing, editing, change }: { data: AppData; thing: Thing; 
 // itself and what it holds there.
 function Parents({ data, nav, thing, editing, save }: { data: AppData; nav: Nav; thing: Thing; editing: boolean; save: (items: Item[]) => Promise<void> }) {
   const trees = treeKinds(data.items, thing.world);
-  const main = worldOf(data.items, thing.world)?.tree;
   if (trees.length === 0) return editing ? <p className="sub">This world has no tree link kind (World → Kinds).</p> : null;
-  // Read: the main tree is the trail under the name; other trees each get a line.
-  const belongs = trees.filter((k) => fitsTree(data.items, thing.world, k.key, thing.key)); // not "in terrain" for a Person
-  const shown = editing ? belongs : belongs.filter((k) => k.key !== main && pathOf(data.items, thing.world, thing.key, k.key).length > 1);
+  // A dropdown per tree it belongs in (not "in terrain" for a Person); read, the Links section shows them.
+  const shown = editing ? trees.filter((k) => fitsTree(data.items, thing.world, k.key, thing.key)) : [];
   if (shown.length === 0) return null;
   return (
     <div className="parents">
@@ -230,8 +254,7 @@ function Fields({ data, thing, editing, change }: { data: AppData; thing: Thing;
   if (!editing && rows.length === 0 && others.length === 0) return null;
 
   return (
-    <section>
-      <h2>Details</h2>
+    <Fold id="details" title="Details">
       {rows.map((g) => (
         <div key={g.of}>
           {g.title && <div className="sub field-group">{g.title}</div>}
@@ -255,7 +278,7 @@ function Fields({ data, thing, editing, change }: { data: AppData; thing: Thing;
           <button disabled={!newField.trim()} onClick={() => (setValue(undefined, newField.trim(), "?"), setNewField(""))}>Add</button>
         </div>
       )}
-    </section>
+    </Fold>
   );
 }
 
@@ -273,8 +296,7 @@ function OtherNames({ thing, editing, change }: { thing: Thing; editing: boolean
     setDraft({ name: "" });
   };
   return (
-    <section>
-      <h2>Other names</h2>
+    <Fold id="names" title="Other names">
       <ul className="plain">
         {names.map((n, i) => (
           <li key={i}>
@@ -285,16 +307,18 @@ function OtherNames({ thing, editing, change }: { thing: Thing; editing: boolean
       </ul>
       {editing && (
         <div className="name-add">
-          <input className="filter" placeholder="Name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+          <div className="inline-add">
+            <input className="filter" placeholder="Name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && add()} />
+            <button disabled={!draft.name.trim()} onClick={add}>Add</button>
+          </div>
           <div className="row-fields">
             <input className="filter" placeholder="Kind (common, old…)" value={draft.nameKind ?? ""} onChange={(e) => setDraft({ ...draft, nameKind: e.target.value })} />
             <input className="filter" placeholder="Language" value={draft.language ?? ""} onChange={(e) => setDraft({ ...draft, language: e.target.value })} />
             <input className="filter" placeholder="Era" value={draft.era ?? ""} onChange={(e) => setDraft({ ...draft, era: e.target.value })} />
           </div>
-          <button disabled={!draft.name.trim()} onClick={add}>Add name</button>
         </div>
       )}
-    </section>
+    </Fold>
   );
 }
 
@@ -316,8 +340,20 @@ function Contents({ data, nav, thing, editing, save }: { data: AppData; nav: Nav
   };
   const reverse = worldOf(data.items, world)?.tree ? linkKindsIn(data.items, world).find((k) => k.key === worldOf(data.items, world)!.tree)?.reverseName : undefined;
   return (
-    <section>
-      <h2>{reverse ? `${reverse[0].toUpperCase()}${reverse.slice(1)}` : "Contains"} ({children.length})</h2>
+    <Fold id="holds" title={`${reverse ? `${reverse[0].toUpperCase()}${reverse.slice(1)}` : "Contains"} (${children.length})`}>
+      {editing && canHold && (
+        <>
+          <label className="stack">
+            <select value="" onChange={(e) => e.target.value && bringIn(e.target.value)}>
+              <option value="">Move an item in here…</option>
+              {movable.map((t) => <option key={t.key} value={t.key}>{t.name}</option>)}
+            </select>
+          </label>
+          <Fold id="add-inside" title="Add an item inside">
+            <NewPlace data={data} world={world} save={save} inside={thing.key} onMade={() => undefined} />
+          </Fold>
+        </>
+      )}
       {children.length > 0 && <p className="sub swipe-hint">Swipe one left to take it out: it then sits straight in the world.</p>}
       <ul className="list">
         {children.map((c) => (
@@ -333,19 +369,7 @@ function Contents({ data, nav, thing, editing, save }: { data: AppData; nav: Nav
           </li>
         ))}
       </ul>
-      {editing && canHold && (
-        <>
-          <label className="stack">
-            <span className="sub">Move an item in here</span>
-            <select value="" onChange={(e) => e.target.value && bringIn(e.target.value)}>
-              <option value="">Choose…</option>
-              {movable.map((t) => <option key={t.key} value={t.key}>{t.name}</option>)}
-            </select>
-          </label>
-          <NewPlace data={data} world={world} save={save} inside={thing.key} onMade={() => undefined} />
-        </>
-      )}
-    </section>
+    </Fold>
   );
 }
 
@@ -374,8 +398,15 @@ function InGroups({ data, nav, thing, editing, save }: GroupPart) {
     await save(result.items);
   };
   return (
-    <section>
-      <h2>Groups ({groups.length})</h2>
+    <Fold id="groups" title={`Groups (${groups.length})`}>
+      {editing && (
+        <label className="stack">
+          <select value="" onChange={(e) => e.target.value && join(e.target.value)}>
+            <option value="">Put it in a group…</option>
+            {offered.map((t) => <option key={t.key} value={t.key}>{t.name}{groupsIn(data.items, world).some((g) => g.key === t.key) ? "" : " (makes it a group)"}</option>)}
+          </select>
+        </label>
+      )}
       <ul className="list">
         {groups.map((g) => (
           <li key={g.link.key}>
@@ -388,15 +419,7 @@ function InGroups({ data, nav, thing, editing, save }: GroupPart) {
           </li>
         ))}
       </ul>
-      {editing && (
-        <label className="stack">
-          <select value="" onChange={(e) => e.target.value && join(e.target.value)}>
-            <option value="">Put it in a group…</option>
-            {offered.map((t) => <option key={t.key} value={t.key}>{t.name}{groupsIn(data.items, world).some((g) => g.key === t.key) ? "" : " (makes it a group)"}</option>)}
-          </select>
-        </label>
-      )}
-    </section>
+    </Fold>
   );
 }
 
@@ -417,8 +440,15 @@ function Members({ data, nav, thing, editing, save }: GroupPart) {
   };
   const heading = kinds[0].reverseName ? `${kinds[0].reverseName[0].toUpperCase()}${kinds[0].reverseName.slice(1)}` : "Members";
   return (
-    <section>
-      <h2>{heading} ({members.length})</h2>
+    <Fold id="covers" title={`${heading} (${members.length})`}>
+      {editing && (
+        <label className="stack">
+          <select value="" onChange={(e) => e.target.value && add(e.target.value)}>
+            <option value="">Add an item to this group…</option>
+            {offered.map((t) => <option key={t.key} value={t.key}>{pathOf(data.items, world, t.key).map((p) => p.name).join(" › ")}</option>)}
+          </select>
+        </label>
+      )}
       {editing && members.length === 0 && <p className="sub">Add items to make this a group: they stay where they are, and can be in other groups too.</p>}
       <ul className="list">
         {members.map((m) => (
@@ -432,45 +462,52 @@ function Members({ data, nav, thing, editing, save }: GroupPart) {
           </li>
         ))}
       </ul>
-      {editing && (
-        <label className="stack">
-          <select value="" onChange={(e) => e.target.value && add(e.target.value)}>
-            <option value="">Add an item to this group…</option>
-            {offered.map((t) => <option key={t.key} value={t.key}>{pathOf(data.items, world, t.key).map((p) => p.name).join(" › ")}</option>)}
-          </select>
-        </label>
-      )}
-    </section>
+    </Fold>
   );
 }
 
-// Every link but containment and groups (shown above), read from this end: "in" one way, "holds" the other.
-function OtherLinks({ data, nav, thing }: { data: AppData; nav: Nav; thing: Thing }) {
-  const world = worldOf(data.items, thing.world);
-  const kinds = new Map(linkKindsIn(data.items, thing.world).map((k) => [k.key, k]));
-  const names = new Map(thingsIn(data.items, thing.world).map((t) => [t.key, t.name]));
-  const grouping = new Set(groupLinkKinds(data.items, thing.world).map((k) => k.key)); // shown under Groups and Members
-  const rows = linksIn(data.items, thing.world)
-    .filter((l) => l.linkKind !== world?.tree && !grouping.has(l.linkKind) && (l.from === thing.key || l.to === thing.key))
+// Its links (owner, 26 Nov): first where it sits in each tree, in the world's order, each step
+// opening ("in: The Empire › Wissenland", "in (terrain): Kleindorf"); then every other link read from
+// this end ("in" one way, "holds" the other). Groups are their own section.
+function AllLinks({ data, nav, thing }: { data: AppData; nav: Nav; thing: Thing }) {
+  const world = thing.world;
+  const kinds = new Map(linkKindsIn(data.items, world).map((k) => [k.key, k]));
+  const names = new Map(thingsIn(data.items, world).map((t) => [t.key, t.name]));
+  const hierarchical = new Set(linkKindsIn(data.items, world).filter((k) => k.hierarchy !== "none").map((k) => k.key));
+  const chains = treeKinds(data.items, world)
+    .map((k) => ({ kind: k, path: pathOf(data.items, world, thing.key, k.key).slice(0, -1) }))
+    .filter((c) => c.path.length > 0);
+  const rows = linksIn(data.items, world)
+    .filter((l) => !hierarchical.has(l.linkKind) && (l.from === thing.key || l.to === thing.key))
     .map((l) => {
       const kind = kinds.get(l.linkKind);
       const outward = l.from === thing.key;
       const word = outward || kind?.direction === "both ways" ? kind?.name ?? l.linkKind : kind?.reverseName ?? `(${kind?.name ?? l.linkKind}) from`;
       return { key: l.key, word, other: outward ? l.to : l.from, value: l.value };
     });
-  if (rows.length === 0) return null;
+  if (chains.length === 0 && rows.length === 0) return null;
   return (
-    <section>
-      <h2>Links</h2>
-      <ul className="plain">
+    <Fold id="links" title="Links">
+      <ul className="plain links">
+        {chains.map((c) => (
+          <li key={c.kind.key}>
+            <span className="link-word">{c.kind.name}:</span>{" "}
+            {c.path.map((t, n) => (
+              <span key={t.key}>
+                {n > 0 && " › "}
+                <button className="link" onClick={() => nav.open({ name: "place", key: t.key })}>{t.name}</button>
+              </span>
+            ))}
+          </li>
+        ))}
         {rows.map((r) => (
           <li key={r.key}>
-            {r.word} <button className="link" onClick={() => nav.open({ name: "place", key: r.other })}>{names.get(r.other) ?? r.other}</button>
+            <span className="link-word">{r.word}:</span> <button className="link" onClick={() => nav.open({ name: "place", key: r.other })}>{names.get(r.other) ?? r.other}</button>
             {r.value && <span className="sub"> · {r.value}</span>}
           </li>
         ))}
       </ul>
-    </section>
+    </Fold>
   );
 }
 
@@ -479,14 +516,7 @@ function OnMaps({ data, nav, thing }: { data: AppData; nav: Nav; thing: Thing })
   const on = mapsShowing(data.items, thing.key);
   const others = mapsIn(data.items, thing.world).filter((m) => !on.some((o) => o.key === m.key));
   return (
-    <section>
-      <h2>On maps</h2>
-      {on.length === 0 && <p className="sub">Not on any map yet.</p>}
-      <ul className="plain">
-        {on.map((m) => (
-          <li key={m.key}><button className="link" onClick={() => nav.open({ name: "map", key: m.key, focus: thing.key })}>🗺️ {m.name}</button></li>
-        ))}
-      </ul>
+    <Fold id="maps" title={`On maps (${on.length})`}>
       {others.length > 0 && (
         <label className="stack">
           <select value="" onChange={(e) => e.target.value && nav.open({ name: "map", key: e.target.value, place: thing.key })}>
@@ -495,7 +525,13 @@ function OnMaps({ data, nav, thing }: { data: AppData; nav: Nav; thing: Thing })
           </select>
         </label>
       )}
-    </section>
+      {on.length === 0 && <p className="sub">Not on any map yet.</p>}
+      <ul className="plain">
+        {on.map((m) => (
+          <li key={m.key}><button className="link" onClick={() => nav.open({ name: "map", key: m.key, focus: thing.key })}>🗺️ {m.name}</button></li>
+        ))}
+      </ul>
+    </Fold>
   );
 }
 

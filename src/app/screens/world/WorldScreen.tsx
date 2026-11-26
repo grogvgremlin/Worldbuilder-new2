@@ -7,7 +7,7 @@ import { useState, type ReactNode } from "react";
 import type { Item, Thing } from "../../../items/items";
 import { linkKindsIn, linksIn, mapsIn, newKey, removeThing, removeThingKind, thingKindsIn, thingsIn, worldOf } from "../../../world/world";
 import { SwipeRow } from "../../swipe";
-import { childrenOf, isContainer, looseItems, pathOf, setParent, topPlaces, treeKinds, treeWarnings } from "../../../world/places";
+import { childrenOf, firstTree, hideHere, isContainer, looseIn, looseItems, pathOf, setParent, topPlaces, treeKinds, treeWarnings } from "../../../world/places";
 import { iconOf, newMap } from "../../../world/maps";
 import { addToGroup, groupLinkKinds, groupsIn, isOnlyAGroup, membersOf, newGroupLinkKind } from "../../../world/groups";
 import type { AppData } from "../../app-data";
@@ -127,6 +127,7 @@ function Items({ data, nav, world, save }: Part) {
             {view === "tree" && <TreePicker data={data} world={world} tree={byKind ? ALL : tree} onChoose={(k) => (k === ALL ? setByKind(true) : (setByKind(false), setTree(k)))} withAll />}
           </div>
           {view === "tree" && byKind && <ByKind data={data} world={world} row={row} />}
+          {view === "tree" && !byKind && tree && <HiddenNote data={data} nav={nav} world={world} tree={tree} />}
           {view === "tree" && !byKind && (
             <ul className="list tree">
               <li className="tree-root">{worldName}</li>
@@ -145,6 +146,20 @@ function Items({ data, nav, world, save }: Part) {
         </>
       )}
     </>
+  );
+}
+
+// How many loose items a tree hides, with the way to show them again (the link kind's page).
+export function HiddenNote({ data, nav, world, tree }: { data: AppData; nav: Nav; world: string; tree: string }) {
+  const kind = linkKindsIn(data.items, world).find((k) => k.key === tree);
+  const loose = looseIn(data.items, world, tree);
+  const hidden = kind?.loose === "hide" ? loose.length : loose.filter((t) => (kind?.hiddenHere ?? []).includes(t.key)).length;
+  if (!kind || hidden === 0) return <p className="sub swipe-hint">Swipe a loose item left to hide it from this tree.</p>;
+  return (
+    <p className="sub">
+      {hidden} loose item{hidden === 1 ? "" : "s"} hidden from "{kind.name}" ·{" "}
+      <button className="link" onClick={() => nav.open({ name: "link-kind", key: tree })}>Show or hide loose items</button>
+    </p>
   );
 }
 
@@ -303,9 +318,16 @@ function Branch({ data, nav, world, tree, thing, depth, save }: { data: AppData;
         ) : (
           <span className="twisty" />
         )}
-        <SwipeRow action="Remove" onAction={() => removeItem(data, save, thing)}>
-          <PlaceRow data={data} thing={thing} count={children.length} onOpen={() => nav.open({ name: "place", key: thing.key })} />
-        </SwipeRow>
+        {/* Loose at the top of a tree (nothing above, nothing inside): swipe hides it from this tree. */}
+        {depth === 1 && children.length === 0 && tree ? (
+          <SwipeRow action="Hide here" onAction={() => save(hideHere(data.items, tree, thing.key, true))}>
+            <PlaceRow data={data} thing={thing} count={0} onOpen={() => nav.open({ name: "place", key: thing.key })} />
+          </SwipeRow>
+        ) : (
+          <SwipeRow action="Remove" onAction={() => removeItem(data, save, thing)}>
+            <PlaceRow data={data} thing={thing} count={children.length} onOpen={() => nav.open({ name: "place", key: thing.key })} />
+          </SwipeRow>
+        )}
       </li>
       {open && children.map((c) => <Branch key={c.key} data={data} nav={nav} world={world} tree={tree} thing={c} depth={depth + 1} save={save} />)}
     </>
@@ -333,7 +355,7 @@ export function NewPlace({ data, world, save, onMade, inside, autoFocus, noPlace
   // of its new siblings have.
   const [kind, setKind] = useState(kinds.length === 1 ? kinds[0].key : inside ? usualKindInside(data.items, world, inside) : "");
   const [parent, setParentKey] = useState(inside ?? "");
-  const tree = worldOf(data.items, world)?.tree ?? "";
+  const tree = firstTree(data.items, world) ?? "";
   const places = thingsIn(data.items, world).filter((t) => !refusal(data.items, world, tree, "to", t.key)).sort((a, b) => a.name.localeCompare(b.name));
   const make = async () => {
     if (!name.trim()) return;
@@ -452,7 +474,7 @@ function Kinds({ data, nav, world, save }: Part) {
   };
   const removeLink = async (key: string, name: string) => {
     const count = linksIn(data.items, world).filter((l) => l.linkKind === key).length;
-    if (!confirm(`Remove the link kind ${name}?${count ? ` Its ${count} link${count === 1 ? "" : "s"} go too.` : ""}${key === w.tree ? " It's the main tree." : ""}`)) return;
+    if (!confirm(`Remove the link kind ${name}?${count ? ` Its ${count} link${count === 1 ? "" : "s"} go too.` : ""}`)) return;
     await save(removeLinkKind(data.items, world, key));
   };
   const addKind = async () => {
@@ -469,7 +491,6 @@ function Kinds({ data, nav, world, save }: Part) {
     setLinkName("");
     nav.open({ name: "link-kind", key });
   };
-  const setTree = (key: string) => save(data.items.map((i) => (i.key === world && i.kind === "sandbox" ? { ...i, tree: key || undefined } : i)));
 
   return (
     <>
@@ -508,7 +529,7 @@ function Kinds({ data, nav, world, save }: Part) {
           <li key={k.key} className="ordered-row">
             <SwipeRow action="Remove" onAction={() => removeLink(k.key, k.name)}>
               <button onClick={() => nav.open({ name: "link-kind", key: k.key })}>
-                <span className="title">{k.name}{k.reverseName ? ` / ${k.reverseName}` : ""}{k.key === w.tree ? " (main tree)" : ""}</span>
+                <span className="title">{k.name}{k.reverseName ? ` / ${k.reverseName}` : ""}</span>
                 <span className="sub">{[k.direction, k.hierarchy === "none" ? "" : k.hierarchy, k.strictness === "warn" ? "warn only" : "", k.about].filter(Boolean).join(" · ")}</span>
               </button>
             </SwipeRow>
@@ -520,14 +541,7 @@ function Kinds({ data, nav, world, save }: Part) {
         <input className="filter" placeholder="New link kind (e.g. road to)" value={linkName} onChange={(e) => setLinkName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addLinkKind()} />
         <button className="primary" onClick={addLinkKind}>Add</button>
       </div>
-      <h2>Main tree</h2>
-      <label className="stack">
-        <select value={w.tree ?? ""} onChange={(e) => setTree(e.target.value)}>
-          <option value="">(nothing: no tree)</option>
-          {linkKinds.filter((k) => k.hierarchy === "one parent").map((k) => <option key={k.key} value={k.key}>{k.name}</option>)}
-        </select>
-        <span className="sub">The tree that paths ("in The Empire › Averland") and new items follow, shown first. Any one-parent link kind is a tree: choose others under Items, Tree.</span>
-      </label>
+      <p className="sub">Trees (one-parent link kinds) are shown in this order: the first is shown first, and used wherever no tree is chosen.</p>
     </>
   );
 }

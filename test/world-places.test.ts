@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Item, Thing, WorldMap } from "../src/items/items";
 import { Item as ItemSchema } from "../src/items/items";
 import { linksIn, mapsIn, newKey, newWorld, removeThing, removeThingKind, thingsIn, worldOf } from "../src/world/world";
-import { childrenOf, isContainer, looseItems, parentOf, pathOf, setParent, topPlaces, treeKinds, treeWarnings } from "../src/world/places";
+import { childrenOf, firstTree, hideHere, isContainer, looseIn, looseItems, parentOf, pathOf, setParent, topPlaces, treeKinds, treeWarnings } from "../src/world/places";
 import { areasOn, convexHull, notOnMap, placePin, removePin, sheetOf } from "../src/world/maps";
 
 const sample = () => newWorld([], "Averland borders", "sample");
@@ -176,5 +176,23 @@ describe("loose items (owner, 26 Nov)", () => {
     const W = "averland-borders";
     const drifter: Item = { key: `${W}.thing.drifter`, kind: "thing", world: W, name: "Drifter", kinds: [], fields: [] };
     expect(looseItems([...items, drifter], W).map((t) => t.name)).toEqual(["Drifter"]);
+  });
+});
+
+describe("loose items in a tree, shown or hidden (owner, 26 Nov)", () => {
+  const W = "averland-borders";
+  it("hidden all, or chosen ones; an item holding something is never hidden", () => {
+    const items = sample();
+    const place = items.find((i) => i.kind === "thing-kind")!.key;
+    const drifter: Item = { key: `${W}.thing.drifter`, kind: "thing", world: W, name: "Drifter", kinds: [place], fields: [] };
+    const withDrifter = [...items, drifter];
+    const tree = treeKinds(withDrifter, W)[0].key;
+    expect(firstTree(withDrifter, W)).toBe(tree);
+    expect(looseIn(withDrifter, W).map((t) => t.name)).toContain("Drifter");
+    const hidden = hideHere(withDrifter, tree, drifter.key, true);
+    expect(topPlaces(hidden, W).map((t) => t.name)).not.toContain("Drifter");
+    expect(topPlaces(hideHere(hidden, tree, drifter.key, false), W).map((t) => t.name)).toContain("Drifter");
+    const all = withDrifter.map((i) => (i.key === tree ? { ...i, loose: "hide" as const } : i));
+    expect(topPlaces(all, W).map((t) => t.name)).toEqual(["The Empire"]); // the empire holds things: still shown
   });
 });

@@ -41,6 +41,10 @@ export function upgradeItem(item: Record<string, any>): Record<string, any> {
     const { race, tree, rank, ...rest } = o;
     return { rest, profile };
   };
+  // A link kind from before 26 Nov with lists per end: those ends differ (one list or the other now).
+  if (item.kind === "link-kind" && item.endsDiffer === undefined && (item.expectsFrom?.length || item.expectsTo?.length) && !item.scope?.length) {
+    return { ...item, endsDiffer: true };
+  }
   if (item.kind === "roster" && "battle" in item) {
     const { battle, ...rest } = item; // battle marks from a short-lived build (24 Nov): battles come with the Battle tool
     return rest;

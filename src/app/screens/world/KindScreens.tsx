@@ -5,8 +5,9 @@
 import { useState } from "react";
 import type { Item, LinkKind, ThingKind } from "../../../items/items";
 import { linksIn, removeThingKind, thingKindsIn, thingsIn, worldOf } from "../../../world/world";
-import { cloneLinkKind, fieldsOffered, flavoursOf, hasKind, kindTree, removeLinkKind, setFlavourOf } from "../../../world/kinds";
+import { cloneLinkKind, fieldsOffered, flavoursOf, hasKind, kindTree, removeLinkKind, setEndsDiffer, setFlavourOf } from "../../../world/kinds";
 import type { AppData } from "../../app-data";
+import { firstTree } from "../../../world/places";
 import type { Nav } from "../../App";
 import { TextBox } from "./text-box";
 
@@ -106,8 +107,9 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
   const change = async (patch: Partial<LinkKind>) => (await data.setItems(data.items.map((i) => (i.key === kind.key ? ({ ...kind, ...patch } as LinkKind) : i))), setChanged((n) => n + 1));
   const thingKinds = kindTree(data.items, kind.world); // flavours after their kind
   const count = linksIn(data.items, kind.world).filter((l) => l.linkKind === kind.key).length;
-  const isTree = worldOf(data.items, kind.world)?.tree === kind.key;
+  const isTree = firstTree(data.items, kind.world) === kind.key; // first in the order: shown first
   const strict = (kind.strictness ?? "strict") === "strict";
+  const replace = async (next: LinkKind) => (await data.setItems(data.items.map((i) => (i.key === kind.key ? next : i))), setChanged((n) => n + 1));
   const toggle = (list: string[] | undefined, key: string) => {
     const now = list ?? [];
     const next = now.includes(key) ? now.filter((k) => k !== key) : [...now, key];
@@ -131,13 +133,12 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
       </div>
       <div className="field">
         <span className="label">Hierarchy</span>
-        <select value={kind.hierarchy} onChange={(e) => change({ hierarchy: e.target.value as LinkKind["hierarchy"] })} disabled={isTree}>
+        <select value={kind.hierarchy} onChange={(e) => change({ hierarchy: e.target.value as LinkKind["hierarchy"] })}>
           <option value="none">none</option>
           <option value="one parent">one parent at a time (a tree)</option>
           <option value="several parents">several parents, no loops</option>
         </select>
       </div>
-      {isTree && <p className="sub">This is the world's main tree, so it stays one parent at a time.</p>}
       <h2>What this does here</h2>
       <ul className="plain does">{whatItDoes(kind, isTree).map((line) => <li key={line}>{line}</li>)}</ul>
       <h2>What it takes</h2>
@@ -148,14 +149,40 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
       <p className="sub">
         {strict ? "Strict: an item that doesn't fit isn't offered and can't be put in." : "Warn only: anything can be put in; what doesn't fit is flagged on the Items tab."} A kind's flavours count too, even ones added later; the nearest kind decides, so a flavour can be put back after its kind is left out.
       </p>
-      <KindChips label="Takes (both ends)" hint="Nothing ticked: every kind not left out." kinds={thingKinds} on={kind.scope} onToggle={(k) => change({ scope: toggle(kind.scope, k) })} />
-      <KindChips label="Leaves out (both ends)" hint="Their flavours too, unless ticked under Takes." kinds={thingKinds} on={kind.exclude} onToggle={(k) => change({ exclude: toggle(kind.exclude, k) })} />
-      <details className="fold" open={Boolean(kind.expectsFrom?.length || kind.expectsTo?.length)}>
-        <summary>The two ends differ</summary>
-        <p className="sub">An end with kinds ticked here uses them instead of Takes.</p>
-        <KindChips label={kind.hierarchy === "none" ? "From" : "Inside"} kinds={thingKinds} on={kind.expectsFrom} onToggle={(k) => change({ expectsFrom: toggle(kind.expectsFrom, k) })} />
-        <KindChips label={kind.hierarchy === "none" ? "To" : "Container"} kinds={thingKinds} on={kind.expectsTo} onToggle={(k) => change({ expectsTo: toggle(kind.expectsTo, k) })} />
-      </details>
+      {/* One list for both ends, or one per end: never both (owner, 26 Nov). */}
+      <nav className="segments small">
+        <button className={!kind.endsDiffer ? "on" : ""} onClick={() => replace(setEndsDiffer(kind, false))}>Same at both ends</button>
+        <button className={kind.endsDiffer ? "on" : ""} onClick={() => replace(setEndsDiffer(kind, true))}>Ends differ</button>
+      </nav>
+      {kind.endsDiffer ? (
+        <>
+          <KindChips label={kind.hierarchy === "none" ? "From takes" : "Inside takes"} hint="Nothing ticked: every kind not left out." kinds={thingKinds} on={kind.expectsFrom} onToggle={(k) => change({ expectsFrom: toggle(kind.expectsFrom, k) })} />
+          <KindChips label={kind.hierarchy === "none" ? "To takes" : "Container takes"} hint="Nothing ticked: every kind not left out." kinds={thingKinds} on={kind.expectsTo} onToggle={(k) => change({ expectsTo: toggle(kind.expectsTo, k) })} />
+        </>
+      ) : (
+        <KindChips label="Takes" hint="Nothing ticked: every kind not left out." kinds={thingKinds} on={kind.scope} onToggle={(k) => change({ scope: toggle(kind.scope, k) })} />
+      )}
+      <KindChips label="Leaves out (both ends)" hint="Their flavours too, unless ticked to take." kinds={thingKinds} on={kind.exclude} onToggle={(k) => change({ exclude: toggle(kind.exclude, k) })} />
+      {kind.hierarchy === "one parent" && (
+        <>
+          <h2>Loose items in this tree</h2>
+          <p className="sub">Items that fit this tree but sit loose in it (nothing above, nothing inside): shown at the top of the tree, or not: a dynasty of rulers without everyone else.</p>
+          <nav className="segments small">
+            <button className={kind.loose !== "hide" ? "on" : ""} onClick={() => change({ loose: undefined })}>Show</button>
+            <button className={kind.loose === "hide" ? "on" : ""} onClick={() => change({ loose: "hide" })}>Hide</button>
+          </nav>
+          {(kind.hiddenHere ?? []).length > 0 && (
+            <>
+              <p className="sub">Hidden here by hand (swipe on Items or the Diagram):</p>
+              <ul className="plain">
+                {(kind.hiddenHere ?? []).map((k) => (
+                  <li key={k}>{thingsIn(data.items, kind.world).find((t) => t.key === k)?.name ?? k} · <button className="link" onClick={() => replace({ ...kind, hiddenHere: kind.hiddenHere!.filter((h) => h !== k).length ? kind.hiddenHere!.filter((h) => h !== k) : undefined })}>Show again</button></li>
+                ))}
+              </ul>
+            </>
+          )}
+        </>
+      )}
       <p className="sub">{count} link{count === 1 ? "" : "s"} of this kind.</p>
       <div className="buttons">
         <button onClick={async () => {
@@ -167,7 +194,7 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
           nav.open({ name: "link-kind", key: result.key! });
         }}>Copy as a new link kind</button>
         <button className="danger" onClick={async () => {
-          if (!confirm(`Remove the link kind ${kind.name}?${count ? ` Its ${count} link${count === 1 ? "" : "s"} go too.` : ""}${isTree ? " It's the main tree: the world will have none until you choose one." : ""}`)) return;
+          if (!confirm(`Remove the link kind ${kind.name}?${count ? ` Its ${count} link${count === 1 ? "" : "s"} go too.` : ""}${isTree ? " It's the first tree in the order: the next one takes its place." : ""}`)) return;
           await data.setItems(removeLinkKind(data.items, kind.world, kind.key));
           nav.back();
         }}>Remove this link kind</button>
@@ -197,7 +224,7 @@ function whatItDoes(kind: LinkKind, isMain: boolean): string[] {
   if (kind.hierarchy === "one parent") {
     lines.push("A tree: an item is in at most one at a time, so containers of this kind don't overlap.");
     lines.push("Shown under Items → Tree and in the Diagram (choose the tree there), as a line on each item's page, and as areas on maps (Areas ▾ → Tree).");
-    if (isMain) lines.push("The main tree: the trail under an item's name and the new-item form follow it.");
+    if (isMain) lines.push("First in the order (Kinds tab, ↑ ↓): shown first, and used wherever no tree is chosen.");
   } else if (kind.hierarchy === "several parents") {
     lines.push("Groups: an item can be in many at once, and groups can overlap.");
     lines.push("Shown under Items → Groups, as Groups and members on each item's page, and as dashed areas on maps.");

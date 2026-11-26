@@ -450,8 +450,8 @@ export const Sandbox = z.strictObject({
   world: z.boolean(), // has world features (things, links, events, a log)
   permanent: z.boolean().optional(),
   description: z.string().optional(),
-  // The link kind places are grouped by (the containment tree, "in"): drives paths, the place
-  // tree and areas on maps. Chosen per world, never by a name in code (world-structure §4).
+  // Earlier: the "main" tree. Now only a hint for worlds with no display order yet: the first tree
+  // in the order is the one shown first (owner, 26 Nov: "we don't really need a main").
   tree: z.string().optional(),
   // The order kinds and link kinds are listed and shown in (owner, 26 Nov: "priority display order");
   // keys; any not listed come after, by name.
@@ -564,11 +564,17 @@ export const LinkKind = z.strictObject({
   hierarchy: z.enum(["none", "one parent", "several parents"]), // one parent: a tree, one at a time
   // Which kinds of item it takes (owner, 26 Nov). Thing-kind keys, flavours counting; the nearest
   // kind in an item's line decides, so a flavour can be put back after its kind is excluded.
-  scope: z.array(z.string()).optional(), // both ends, unless an end has its own list below
+  // Either one list for both ends (scope), or a list per end (endsDiffer), never both (owner, 26 Nov).
+  scope: z.array(z.string()).optional(), // both ends (when the ends don't differ)
+  endsDiffer: z.boolean().optional(), // true: expectsFrom / expectsTo apply, scope doesn't
   expectsFrom: z.array(z.string()).optional(), // the inside / from end
   expectsTo: z.array(z.string()).optional(), // the container / to end
   exclude: z.array(z.string()).optional(), // kinds not taken at either end (their flavours too)
   strictness: z.enum(["strict", "warn"]).optional(), // strict (the default): a misfit is refused; warn: allowed, flagged
+  // For a tree: items sitting loose in it (nothing above, nothing inside) shown or not, and ones
+  // hidden here by hand (owner, 26 Nov: a dynasty of Nuln's rulers without everyone else).
+  loose: z.enum(["show", "hide"]).optional(), // absent: show
+  hiddenHere: z.array(z.string()).optional(), // thing keys
   about: z.string().optional(),
 });
 export type LinkKind = z.infer<typeof LinkKind>;

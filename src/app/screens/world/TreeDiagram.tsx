@@ -10,14 +10,14 @@
 // is refused), §5 (abstract views laid out by containment); spec/session-20-notes-3.md §0.1 (a
 // canvas as another view on the same structure). Layout: src/world/diagram.ts.
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from "react";
-import { descendantsOf, setParent } from "../../../world/places";
+import { descendantsOf, hideHere, looseIn, setParent } from "../../../world/places";
 import { refusal } from "../../../world/kinds";
 import { iconOf } from "../../../world/maps";
 import { worldOf } from "../../../world/world";
 import { arrangedLayout, boxesThatMove, hasHandPlacing, moveBoxes, NODE_H, NODE_W, ROOT, tidyLayout, type Box, type Direction } from "../../../world/diagram";
 import { TreePicker, useChosenTree } from "./tree-picker";
 import { useKept, useRemembered } from "./remembered";
-import { NewPlace, type Part } from "./WorldScreen";
+import { HiddenNote, NewPlace, type Part } from "./WorldScreen";
 import { useUndo } from "./undo";
 import { GroupPopup } from "./GroupPopup";
 import { DOUBLE_TAP_MS, swallowNextClick, tapSlop } from "./gestures";
@@ -45,6 +45,8 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [grouping, setGrouping] = useState(false);
+  const looseKeys = new Set(looseIn(data.items, world, tree).map((t) => t.key));
+  const looseSelected = selected.filter((k) => looseKeys.has(k));
   const [newAt, setNewAt] = useState<Point | null>(null); // a double tap on empty space: a new item here
   const lastTap = useRef<{ key: string; time: number; before: string[] } | null>(null);
   const undo = useUndo("diagram", world, () => data.items, save);
@@ -262,6 +264,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
           <button className="tool" onClick={() => setView(fit())}>Fit</button>
         </span>
       </div>
+      {tree && <HiddenNote data={data} nav={nav} world={world} tree={tree} />}
       <p className="sub diagram-hint">
         {selected.length > 0 ? (
           <>
@@ -269,6 +272,16 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
             {selected.length > 1 && (
               <>
                 <button className="link" onClick={() => setGrouping(true)}>Group / move into…</button> ·{" "}
+              </>
+            )}
+            {tree && looseSelected.length > 0 && (
+              <>
+                <button className="link" onClick={async () => {
+                  let items = data.items;
+                  for (const k of looseSelected) items = hideHere(items, tree, k, true);
+                  await undo.apply(items);
+                  setSelected([]);
+                }}>Hide {looseSelected.length} loose from this tree</button> ·{" "}
               </>
             )}
             <button className="link" onClick={() => setSelected([])}>Clear</button>

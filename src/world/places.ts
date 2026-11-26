@@ -10,7 +10,8 @@ import type { Item, Link, LinkKind, Thing } from "../items/items";
 import { linkKindsIn, linksIn, newLink, thingsIn, worldOf } from "./world";
 import { fitsTree, inOrder, refusal } from "./kinds";
 
-// The world's trees: its link kinds declared "one parent", in the world's order, else the main one first.
+// The world's trees: its link kinds declared "one parent", in the world's order (Kinds tab); with no
+// order set yet, the starter's "in" first.
 export function treeKinds(items: Item[], world: string): LinkKind[] {
   const w = worldOf(items, world);
   const trees = linkKindsIn(items, world).filter((k) => k.hierarchy === "one parent");
@@ -18,8 +19,13 @@ export function treeKinds(items: Item[], world: string): LinkKind[] {
   return trees.sort((a, b) => (a.key === w?.tree ? -1 : b.key === w?.tree ? 1 : a.name.localeCompare(b.name)));
 }
 
+// The first tree in the order: used wherever no tree is chosen (owner, 26 Nov: no "main", just priority).
+export function firstTree(items: Item[], world: string): string | undefined {
+  return treeKinds(items, world)[0]?.key;
+}
+
 function treeOrMain(items: Item[], world: string, tree?: string): string | undefined {
-  return tree ?? worldOf(items, world)?.tree;
+  return tree ?? firstTree(items, world);
 }
 
 // The links of one tree.
@@ -70,12 +76,35 @@ export function pathOf(items: Item[], world: string, thing: string, tree?: strin
   return path;
 }
 
-// The items with no parent in this tree: they sit straight in the world. Items that don't belong in
-// the tree at all (a Person in "in terrain": its Expects) are left out.
+// The items with no parent in this tree: they sit straight in the world. Left out: items that don't
+// belong in the tree at all (a Person in "in terrain": what it takes), and loose items (nothing above,
+// nothing inside) when the tree hides them, all or chosen ones (owner, 26 Nov).
 export function topPlaces(items: Item[], world: string, tree?: string): Thing[] {
   const kind = treeOrMain(items, world, tree);
-  const hasParent = new Set(treeLinks(items, world, tree).map((l) => l.from));
-  return byName(thingsIn(items, world).filter((t) => !hasParent.has(t.key) && fitsTree(items, world, kind, t.key)));
+  const links = treeLinks(items, world, tree);
+  const hasParent = new Set(links.map((l) => l.from));
+  const holds = new Set(links.map((l) => l.to));
+  const rule = linkKindsIn(items, world).find((k) => k.key === kind);
+  const hidden = (t: Thing) => !holds.has(t.key) && (rule?.loose === "hide" || (rule?.hiddenHere ?? []).includes(t.key));
+  return byName(thingsIn(items, world).filter((t) => !hasParent.has(t.key) && fitsTree(items, world, kind, t.key) && !hidden(t)));
+}
+
+// Items sitting loose in a tree (nothing above, nothing inside), hidden or not: for "show again".
+export function looseIn(items: Item[], world: string, tree?: string): Thing[] {
+  const links = treeLinks(items, world, tree);
+  const linked = new Set(links.flatMap((l) => [l.from, l.to]));
+  const kind = treeOrMain(items, world, tree);
+  return byName(thingsIn(items, world).filter((t) => !linked.has(t.key) && fitsTree(items, world, kind, t.key)));
+}
+
+// Hides an item from a tree's view, or shows it again (only while it sits loose there).
+export function hideHere(items: Item[], tree: string, thing: string, hide: boolean): Item[] {
+  return items.map((i) => {
+    if (i.kind !== "link-kind" || i.key !== tree) return i;
+    const now = (i.hiddenHere ?? []).filter((k) => k !== thing);
+    const next = hide ? [...now, thing] : now;
+    return { ...i, hiddenHere: next.length ? next : undefined };
+  });
 }
 
 // How deep an item sits: 0 at the top.

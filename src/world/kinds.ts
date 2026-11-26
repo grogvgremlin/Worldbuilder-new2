@@ -82,10 +82,17 @@ function linkKindOf(items: Item[], key: string): LinkKind | undefined {
   return items.find((i): i is LinkKind => i.kind === "link-kind" && i.key === key);
 }
 
-// What an end takes and leaves out.
+// What an end takes and leaves out: the same list for both ends, or each end's own (never both).
 export function endRule(kind: LinkKind, end: "from" | "to"): { take: string[]; leave: string[] } {
-  const own = end === "from" ? kind.expectsFrom : kind.expectsTo;
-  return { take: own?.length ? own : kind.scope ?? [], leave: kind.exclude ?? [] };
+  const take = kind.endsDiffer ? (end === "from" ? kind.expectsFrom : kind.expectsTo) ?? [] : kind.scope ?? [];
+  return { take, leave: kind.exclude ?? [] };
+}
+
+// Switches between one list for both ends and a list per end, carrying the kinds across: Takes is
+// copied to both ends; back again, the inside end's kinds become Takes.
+export function setEndsDiffer(kind: LinkKind, differ: boolean): LinkKind {
+  if (differ) return { ...kind, endsDiffer: true, expectsFrom: kind.scope, expectsTo: kind.scope, scope: undefined };
+  return { ...kind, endsDiffer: undefined, scope: kind.expectsFrom ?? kind.scope, expectsFrom: undefined, expectsTo: undefined };
 }
 
 // Whether one kind fits an end: the nearest listed kind in its line decides.

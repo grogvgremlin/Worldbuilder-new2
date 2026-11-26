@@ -7,7 +7,7 @@
 import { useState, type ReactNode } from "react";
 import type { Item, Thing, ThingField, ThingName } from "../../../items/items";
 import { linkKindsIn, linksIn, mapsIn, removeThing, thingKindsIn, thingsIn, worldOf } from "../../../world/world";
-import { childrenOf, descendantsOf, pathOf, setParent, treeKinds } from "../../../world/places";
+import { childrenOf, descendantsOf, firstTree, pathOf, setParent, treeKinds } from "../../../world/places";
 import { iconOf, mapsShowing } from "../../../world/maps";
 import { addToGroup, groupLinkKinds, groupsIn, groupsOf, membersOf, removeFromGroup, type Membership } from "../../../world/groups";
 import type { AppData } from "../../app-data";
@@ -29,7 +29,7 @@ export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; 
   const save = async (items: Item[]) => (await data.setItems(items), setChanged((n) => n + 1));
   const change = (patch: Partial<Thing>) => save(data.items.map((i) => (i.key === thing.key ? ({ ...thing, ...patch } as Thing) : i)));
   // The trail under the name follows the tree being viewed (owner, 26 Nov), else the main tree.
-  const main = worldOf(data.items, world)?.tree;
+  const main = firstTree(data.items, world);
   const viewedPath = viewed ? pathOf(data.items, world, thing.key, viewed).slice(0, -1) : [];
   const trailTree = viewedPath.length > 0 ? viewed : main;
   const path = trailTree ? pathOf(data.items, world, thing.key, trailTree).slice(0, -1) : [];
@@ -327,7 +327,7 @@ function Contents({ data, nav, thing, editing, save }: { data: AppData; nav: Nav
   const world = thing.world;
   const children = childrenOf(data.items, world, thing.key);
   const above = new Set(pathOf(data.items, world, thing.key).map((t) => t.key));
-  const tree = worldOf(data.items, world)?.tree ?? "";
+  const tree = firstTree(data.items, world) ?? "";
   const canHold = !refusal(data.items, world, tree, "to", thing.key); // a Person holds nothing by "in"
   const movable = thingsIn(data.items, world)
     .filter((t) => !above.has(t.key) && !children.some((c) => c.key === t.key) && !refusal(data.items, world, tree, "from", t.key))
@@ -338,7 +338,7 @@ function Contents({ data, nav, thing, editing, save }: { data: AppData; nav: Nav
     if (result.problem) return alert(result.problem);
     await save(result.items);
   };
-  const reverse = worldOf(data.items, world)?.tree ? linkKindsIn(data.items, world).find((k) => k.key === worldOf(data.items, world)!.tree)?.reverseName : undefined;
+  const reverse = linkKindsIn(data.items, world).find((k) => k.key === tree)?.reverseName;
   return (
     <Fold id="holds" title={`${reverse ? `${reverse[0].toUpperCase()}${reverse.slice(1)}` : "Contains"} (${children.length})`}>
       {editing && canHold && (

@@ -6,14 +6,14 @@ import { useState } from "react";
 import type { Item, Thing } from "../../../items/items";
 import { groupSelected, moveSelectedInto, newGroupOf, suggestions, type BulkResult } from "../../../world/bulk";
 import { groupsIn } from "../../../world/groups";
-import { pathOf } from "../../../world/places";
+import { firstTree, pathOf } from "../../../world/places";
 import { refusal } from "../../../world/kinds";
 import { linkKindsIn, thingsIn, worldOf } from "../../../world/world";
 import type { AppData } from "../../app-data";
 
 export function GroupPopup({ data, world, selected, tree, apply, onClose }: { data: AppData; world: string; selected: string[]; tree?: string; apply: (items: Item[]) => Promise<void>; onClose: () => void }) {
   const [name, setName] = useState("");
-  const treeKey = tree ?? worldOf(data.items, world)?.tree;
+  const treeKey = tree ?? firstTree(data.items, world);
   const treeName = linkKindsIn(data.items, world).find((k) => k.key === treeKey)?.name ?? "the tree";
   const suggest = suggestions(data.items, world, selected, treeKey);
   const others = (target: string) => selected.filter((k) => k !== target).length;

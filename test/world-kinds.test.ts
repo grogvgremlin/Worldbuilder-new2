@@ -65,9 +65,9 @@ describe("what a tree or group takes (owner, 26 Nov: places can't hold people)",
     return { ...made, tree, items: [...made.items, town, hills, bob] };
   };
 
-  it("the starter's in takes places at both ends", () => {
+  it("the starter's in takes places, the same at both ends", () => {
     const { items, tree, place } = setUp();
-    expect(items.find((i) => i.key === tree)).toMatchObject({ expectsFrom: [place], expectsTo: [place] });
+    expect(items.find((i) => i.key === tree)).toMatchObject({ scope: [place] });
   });
 
   it("a person can't go in a place, nor a place in a person; a city (a flavour of Place) can", () => {
@@ -169,5 +169,20 @@ describe("link kinds: order, copy, remove (owner, 26 Nov)", () => {
     const after = removeLinkKind(linked, W, tree);
     expect(after.some((i) => i.kind === "link")).toBe(false);
     expect(worldOf(after, W)!.tree).toBeUndefined();
+  });
+});
+
+describe("one list for both ends, or a list per end (owner, 26 Nov)", () => {
+  it("switching carries the kinds across, and only one applies", async () => {
+    const { setEndsDiffer, endRule } = await import("../src/world/kinds");
+    const base: LinkKind = { key: "k", kind: "link-kind", world: W, name: "rules", direction: "one-way", hierarchy: "none", scope: ["a"] };
+    const differ = setEndsDiffer(base, true);
+    expect(differ).toMatchObject({ endsDiffer: true, expectsFrom: ["a"], expectsTo: ["a"] });
+    expect(differ.scope).toBeUndefined();
+    const changed = { ...differ, expectsTo: ["b"] };
+    expect(endRule(changed, "to").take).toEqual(["b"]);
+    const same = setEndsDiffer(changed, false);
+    expect(same).toMatchObject({ scope: ["a"] });
+    expect(endRule(same, "to").take).toEqual(["a"]);
   });
 });

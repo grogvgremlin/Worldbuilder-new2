@@ -10,6 +10,7 @@
 import type { Item, Link, LinkKind, Thing } from "../items/items";
 import { linkKindsIn, linksIn, newLink, thingsIn, worldOf } from "./world";
 import { refusal } from "./kinds";
+import { firstTree } from "./places";
 
 export type Membership = { link: Link; linkKind: LinkKind; thing: Thing };
 
@@ -52,7 +53,7 @@ export function groupsIn(items: Item[], world: string): Thing[] {
 // A group and nothing else: it has members but sits nowhere in the containment tree, so the tree
 // leaves it out and the groups list shows it (the plague zone; the bridge town as a whole).
 export function isOnlyAGroup(items: Item[], world: string, thing: string): boolean {
-  const tree = worldOf(items, world)?.tree;
+  const tree = firstTree(items, world);
   const inTree = linksIn(items, world).some((l) => l.linkKind === tree && (l.from === thing || l.to === thing));
   return !inTree && membersOf(items, world, thing).length > 0;
 }

@@ -20,12 +20,11 @@ export const ALL = "(all)";
 export function TreePicker({ data, world, tree, onChoose, withAll }: { data: AppData; world: string; tree: string | undefined; onChoose: (key: string) => void; withAll?: boolean }) {
   const trees = treeKinds(data.items, world);
   if (trees.length < (withAll ? 1 : 2)) return null;
-  const main = worldOf(data.items, world)?.tree;
   return (
     <label className="tree-picker">
       <span className="sub">Tree</span>
       <select value={tree ?? ""} onChange={(e) => onChoose(e.target.value)}>
-        {trees.map((k) => <option key={k.key} value={k.key}>{k.name}{k.key === main ? " (main)" : ""}</option>)}
+        {trees.map((k) => <option key={k.key} value={k.key}>{k.name}</option>)}
         {withAll && <option value={ALL}>All, by kind</option>}
       </select>
     </label>

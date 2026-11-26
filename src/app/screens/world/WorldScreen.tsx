@@ -12,7 +12,7 @@ import { iconOf, newMap } from "../../../world/maps";
 import { addToGroup, groupLinkKinds, groupsIn, isOnlyAGroup, membersOf, newGroupLinkKind } from "../../../world/groups";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
-import { useRemembered } from "./remembered";
+import { recall, recalled, rememberAll, useRemembered } from "./remembered";
 import { useFoldAll } from "./fold-all";
 import { groupKindFor } from "../../../world/bulk";
 import { TreeDiagram } from "./TreeDiagram";
@@ -20,15 +20,10 @@ import { ALL, TreePicker, useChosenTree } from "./tree-picker";
 import { hasKind, inOrder, itemsWithMisfits, kindTree, misfitLinks, moveInOrder, refusal, removeLinkKind, setFlavourOf, type Misfit } from "../../../world/kinds";
 
 type Tab = "items" | "diagram" | "maps" | "kinds";
-const TABS: { id: Tab; label: string }[] = [
-  { id: "items", label: "Items" },
-  { id: "diagram", label: "Diagram" },
-  { id: "maps", label: "Maps" },
-  { id: "kinds", label: "Kinds" },
-];
 
 export function WorldScreen({ data, nav, worldKey }: { data: AppData; nav: Nav; worldKey: string }) {
-  const [tab, setTab] = useRemembered<Tab>(`${worldKey}|tab`, "items");
+  // Which section is open: chosen in the World bar (src/app/screens/world/Trail.tsx), read here.
+  const tab = recall<Tab>(`${worldKey}|tab`, "items");
   const [, setChanged] = useState(0);
   const world = worldOf(data.items, worldKey);
   if (!world) return <p className="hint">This world isn't on the device any more.</p>;
@@ -38,11 +33,6 @@ export function WorldScreen({ data, nav, worldKey }: { data: AppData; nav: Nav; 
     <section>
       <h1>{world.name}</h1>
       {world.description && <p className="sub">{world.description}</p>}
-      <nav className="segments">
-        {TABS.map((t) => (
-          <button key={t.id} className={tab === t.id ? "on" : ""} onClick={() => setTab(t.id)}>{t.label}</button>
-        ))}
-      </nav>
       {tab === "items" && <Items data={data} nav={nav} world={worldKey} save={save} />}
       {tab === "diagram" && <TreeDiagram data={data} nav={nav} world={worldKey} save={save} />}
       {tab === "maps" && <Maps data={data} nav={nav} world={worldKey} save={save} />}
@@ -59,6 +49,7 @@ type Shape = "all" | "containers" | "base";
 
 function Items({ data, nav, world, save }: Part) {
   const [view, setView] = useRemembered<"tree" | "groups" | "loose" | "misfits">(`${world}|items-view`, "tree");
+  const [epoch, setEpoch] = useState(0); // bumped by Fold all / Open all: the tree redraws
   const [tree, setTree] = useChosenTree(data, world);
   const [byKind, setByKind] = useRemembered(`${world}|by-kind`, false); // the tree picker's "All"
   const [shape, setShape] = useRemembered<Shape>(`${world}|shape`, "all");
@@ -136,7 +127,15 @@ function Items({ data, nav, world, save }: Part) {
           {view === "tree" && byKind && <ByKind data={data} world={world} row={row} />}
           {view === "tree" && !byKind && tree && <HiddenNote data={data} nav={nav} world={world} tree={tree} />}
           {view === "tree" && !byKind && (
-            <ul className="list tree">
+            <p className="sub">
+              <span className="fold-all">
+                <button className="link" onClick={() => (rememberAll(`${world}|open|${tree}|`, false), setEpoch((n) => n + 1))}>Fold all</button> ·{" "}
+                <button className="link" onClick={() => (rememberAll(`${world}|open|${tree}|`, true), setEpoch((n) => n + 1))}>Open all</button>
+              </span>
+            </p>
+          )}
+          {view === "tree" && !byKind && (
+            <ul className="list tree" key={epoch}>
               <li className="tree-root">{worldName}</li>
               {topPlaces(data.items, world, tree)
                 .filter((t) => !isOnlyAGroup(data.items, world, t.key))
@@ -255,6 +254,7 @@ function Fold({ title, children }: { title: string; children: ReactNode }) {
 // --- Groups: items in several groups at once (area things, world-structure §4) --------------------
 
 function Groups({ data, nav, world, save }: Part) {
+  const [epoch, setEpoch] = useState(0); // bumped by Fold all / Open all
   const kinds = groupLinkKinds(data.items, world);
   if (kinds.length === 0) {
     const add = () => save([...data.items, newGroupLinkKind(data.items, world, `${world}.link-kind.in-area`)]);
@@ -269,7 +269,15 @@ function Groups({ data, nav, world, save }: Part) {
   return (
     <>
       {groups.length === 0 && <p className="hint">No groups yet. A group is an item others are "{kinds[0].name}": make one with + New group above.</p>}
-      <ul className="list tree">
+      {groups.length > 0 && (
+        <p className="sub">
+          <span className="fold-all">
+            <button className="link" onClick={() => (rememberAll(`${world}|gopen|`, false), setEpoch((n) => n + 1))}>Fold all</button> ·{" "}
+            <button className="link" onClick={() => (rememberAll(`${world}|gopen|`, true), setEpoch((n) => n + 1))}>Open all</button>
+          </span>
+        </p>
+      )}
+      <ul className="list tree" key={epoch}>
         {groups.map((g) => <GroupBranch key={g.key} data={data} nav={nav} world={world} group={g} />)}
       </ul>
     </>
@@ -277,7 +285,7 @@ function Groups({ data, nav, world, save }: Part) {
 }
 
 function GroupBranch({ data, nav, world, group }: { data: AppData; nav: Nav; world: string; group: Thing }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useRemembered(`${world}|gopen|${group.key}`, recalled(`${world}|gopen|${group.key}`, `${world}|gopen|`, false));
   const members = membersOf(data.items, world, group.key);
   return (
     <>
@@ -349,7 +357,7 @@ function matchesText(thing: Thing, text: string): boolean {
 // An item and, unfolded, what it holds in this tree. The first level starts open.
 function Branch({ data, nav, world, tree, thing, depth, save }: { data: AppData; nav: Nav; world: string; tree: string | undefined; thing: Thing; depth: number; save: (items: Item[]) => Promise<void> }) {
   const children = childrenOf(data.items, world, thing.key, tree);
-  const [open, setOpen] = useRemembered(`${world}|open|${tree}|${thing.key}`, depth < 2);
+  const [open, setOpen] = useRemembered(`${world}|open|${tree}|${thing.key}`, recalled(`${world}|open|${tree}|${thing.key}`, `${world}|open|${tree}|`, depth < 2));
   return (
     <>
       <li className="branch" style={{ paddingLeft: depth * 16 }}>

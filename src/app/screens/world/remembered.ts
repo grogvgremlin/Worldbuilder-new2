@@ -37,6 +37,11 @@ export function useKept<T>(key: string, start: T): [T, (value: T) => void] {
   return [value, set];
 }
 
+// Reads a remembered view without holding it (the World bar shows which section is open).
+export function recall<T>(key: string, start: T): T {
+  return memory.has(key) ? (memory.get(key) as T) : start;
+}
+
 // Sets a remembered view from outside its screen (the trail's Items · Diagram · Maps).
 export function remember<T>(key: string, value: T): void {
   memory.set(key, value);

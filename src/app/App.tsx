@@ -30,7 +30,7 @@ import { PlaceScreen } from "./screens/world/PlaceScreen";
 import { MapScreen } from "./screens/world/MapScreen";
 import { LinkKindScreen, ThingKindScreen } from "./screens/world/KindScreens";
 import { worldOf } from "../world/world";
-import { Trail } from "./screens/world/Trail";
+import { WorldBar } from "./screens/world/Trail";
 
 export type Screen =
   | { name: "library" }
@@ -115,6 +115,7 @@ export function App({ data }: { data: AppData }) {
 
   return (
     <div className="app" {...backSwipe}>
+      <div className="top-wrap">
       <header className="top">
         {stack.length > 1 ? (
           <button className="link back" onClick={nav.back}>‹ Back</button>
@@ -133,6 +134,12 @@ export function App({ data }: { data: AppData }) {
           </button>
         </span>
       </header>
+      {/* The World bar (owner, 26 Nov): the world's sections and the way here, fixed under the
+          header on every World screen, full width so it doesn't move when a map or the Diagram widens. */}
+      {tool === "world" && data.openWorld && worldOf(data.items, data.openWorld) && screen?.name !== "worlds" && (
+        <WorldBar data={data} stack={stack} popTo={(n) => (nav.popTo(n), refresh())} />
+      )}
+      </div>
 
       <main>
         {!screen ? (
@@ -148,7 +155,6 @@ export function App({ data }: { data: AppData }) {
                 <button className={screen.name === "data" ? "on" : ""} onClick={() => setStack(() => [{ name: "data" }])}>Data</button>
               </nav>
             )}
-            {tool === "world" && <Trail data={data} stack={stack} popTo={nav.popTo} />}
             {render(screen, data, nav, draft, setDraft, refresh, openWorld)}
           </>
         )}

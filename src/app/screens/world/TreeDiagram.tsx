@@ -13,6 +13,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, ty
 import { descendantsOf, hideHere, looseIn, setParent, treeKinds } from "../../../world/places";
 import { groupOutlines, treeOutlines, type Outline } from "../../../world/outlines";
 import { colourOf } from "./area-colours";
+import { OverlayList, OverlayMenu, type OverlayRow, type OverlaySet } from "./overlays";
 import { itemsWithMisfits, refusal } from "../../../world/kinds";
 import { iconOf } from "../../../world/maps";
 import { worldOf } from "../../../world/world";
@@ -69,7 +70,8 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   // Every outline there could be; those drawn (their kind on, not switched off); one pointed at is drawn too.
   const everyOutline = [...groupOutlines(data.items, world), ...otherTrees.flatMap((k) => treeOutlines(data.items, world, k.key))];
   const categoryOf = (o: Outline) => (o.by === "group" ? "groups" : o.tree!);
-  const drawnOutlines = everyOutline.filter((o) => outlined.includes(categoryOf(o)) && !hiddenOutlines.includes(outlineId(o)));
+  const [outlinesAll, setOutlinesAll] = useKept(`diagram-outlines-all|${world}`, true); // "Show outlines"
+  const drawnOutlines = outlinesAll ? everyOutline.filter((o) => outlined.includes(categoryOf(o)) && !hiddenOutlines.includes(outlineId(o))) : [];
   const hovered = everyOutline.find((o) => outlineId(o) === outlineHover);
   const outlines = hovered && !drawnOutlines.includes(hovered) ? [...drawnOutlines, hovered] : drawnOutlines;
   const toggleOutline = (id: string) => setOutlined(outlined.includes(id) ? outlined.filter((o) => o !== id) : [...outlined, id]);
@@ -77,6 +79,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const toggleOne = (o: Outline) => {
     const id = outlineId(o);
     if (drawnOutlines.includes(o)) return setHiddenOutlines([...hiddenOutlines, id]);
+    if (!outlinesAll) setOutlinesAll(true);
     if (outlined.includes(categoryOf(o))) return setHiddenOutlines(hiddenOutlines.filter((h) => h !== id));
     // Its kind was off: turn the kind on with only this one showing.
     const others = everyOutline.filter((x) => categoryOf(x) === categoryOf(o) && x !== o).map(outlineId);
@@ -84,6 +87,13 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
     setOutlined([...outlined, categoryOf(o)]);
   };
   const outlineColour = (o: Outline) => colourOf(o.thing, o.by, o.by === "group" ? 0 : otherTrees.findIndex((k) => k.key === o.tree) + 1, 0);
+  // The sets for the shared filter menu and key: groups, then each other tree (as on maps).
+  const outlineRow = (o: Outline): OverlayRow => ({ id: outlineId(o), thing: o.thing, depth: 0, on: drawnOutlines.includes(o), colour: outlineColour(o), line: o.by === "group" ? "dashed" : "dotted" });
+  const outlineSets: OverlaySet[] = [
+    { id: "groups", title: "Groups", on: outlined.includes("groups"), rows: everyOutline.filter((o) => o.by === "group").map(outlineRow) },
+    ...otherTrees.map((k) => ({ id: k.key, title: k.name, on: outlined.includes(k.key), rows: everyOutline.filter((o) => o.tree === k.key).map(outlineRow) })),
+  ];
+  const outlineByRow = (row: OverlayRow) => everyOutline.find((o) => outlineId(o) === row.id);
   const byKey = new Map(boxes.map((b) => [b.key, b]));
 
   useEffect(() => {
@@ -287,15 +297,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
         <span className="map-tools outlines-menu">
           <button className={outlined.length ? "tool on" : "tool"} onClick={() => setOutlineMenu(!outlineMenu)}>Outlines ▾</button>
           {outlineMenu && (
-            <>
-              <div className="menu-catcher" onClick={() => setOutlineMenu(false)} />
-              <div className="filter-panel areas-panel">
-                <label className="choice"><input type="checkbox" checked={outlined.includes("groups")} onChange={() => toggleOutline("groups")} /> Groups (dashed)</label>
-                {otherTrees.map((k, n) => (
-                  <label key={k.key} className="choice"><input type="checkbox" checked={outlined.includes(k.key)} onChange={() => toggleOutline(k.key)} /> <span className={`tree-swatch tree-${n % 3}`} /> {k.name} (dotted)</label>
-                ))}
-              </div>
-            </>
+            <OverlayMenu label="outlines" master={outlinesAll} onMaster={() => setOutlinesAll(!outlinesAll)} sets={outlineSets} onSet={toggleOutline} onRow={(row) => { const o = outlineByRow(row); if (o) toggleOne(o); }} onClose={() => setOutlineMenu(false)} />
           )}
         </span>
         <span className="map-tools">
@@ -383,7 +385,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
           </svg>
         )}
       </div>
-      <OutlineKey everyOutline={everyOutline} drawn={drawnOutlines} hover={outlineHover} onToggle={toggleOne} onHover={setOutlineHover} colour={outlineColour} trees={otherTrees.map((k) => ({ key: k.key, name: k.name }))} />
+      <OverlayList heading="Key" sets={outlineSets} picked={outlineHover} onRow={(row) => { const o = outlineByRow(row); if (o) toggleOne(o); }} onHover={setOutlineHover} onOpen={(key) => nav.open({ name: "place", key })} />
       </div>
       {grouping && (
         <GroupPopup
@@ -413,42 +415,6 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
 
 function outlineId(o: Outline): string {
   return `${o.by}|${o.tree ?? ""}|${o.thing.key}`;
-}
-
-// The key beside the Diagram (owner, 26 Nov: "a key would be nice … the same layout and options as on
-// maps"): every outline there could be, by groups and by tree, each with a dot in its colour. Tapping
-// a row switches it on or off; with a mouse, pointing at one picks it out on the Diagram.
-function OutlineKey({ everyOutline, drawn, hover, onToggle, onHover, colour, trees }: { everyOutline: Outline[]; drawn: Outline[]; hover: string | null; onToggle: (o: Outline) => void; onHover: (id: string | null) => void; colour: (o: Outline) => string; trees: { key: string; name: string }[] }) {
-  if (everyOutline.length === 0) return null;
-  const sections = [
-    { id: "groups", title: "Groups (dashed)", list: everyOutline.filter((o) => o.by === "group") },
-    ...trees.map((t) => ({ id: t.key, title: `${t.name} (dotted)`, list: everyOutline.filter((o) => o.tree === t.key) })),
-  ].filter((sec) => sec.list.length > 0);
-  return (
-    <aside className="area-list">
-      <div className="sub menu-heading">Key · tap to switch on or off</div>
-      {sections.map((sec) => (
-        <details key={sec.id} open={sec.list.some((o) => drawn.includes(o))}>
-          <summary className="sub menu-heading">{sec.title} ({sec.list.filter((o) => drawn.includes(o)).length} of {sec.list.length})</summary>
-          <ul className="plain">
-            {sec.list.map((o) => (
-              <li key={outlineId(o)}>
-                <button
-                  className={"area-row" + (hover === outlineId(o) ? " lit" : "") + (drawn.includes(o) ? " on" : "")}
-                  onClick={() => onToggle(o)}
-                  onPointerEnter={(e) => e.pointerType === "mouse" && onHover(outlineId(o))}
-                  onPointerLeave={(e) => e.pointerType === "mouse" && onHover(null)}
-                >
-                  <span className={o.by === "group" ? "area-dot dashed" : "area-dot dotted"} style={{ background: drawn.includes(o) ? colour(o) : "transparent", borderColor: colour(o) }} />
-                  {o.thing.name}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </details>
-      ))}
-    </aside>
-  );
 }
 
 function clip(text: string, most: number): string {

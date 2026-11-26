@@ -370,3 +370,4 @@ label.stack { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8p
 .area.other.tree-0 .group-fill, .area.other.tree-0 .group-edge { stroke: #2f6f8f; fill: #2f6f8f; } .area.other.tree-0 .group-edge { fill: none; } .area.other.tree-0 text { fill: #2f6f8f; }
 .area.other.tree-1 .group-fill, .area.other.tree-1 .group-edge { stroke: #6b8f2f; fill: #6b8f2f; } .area.other.tree-1 .group-edge { fill: none; } .area.other.tree-1 text { fill: #4f6b20; }
 .area.other.tree-2 .group-fill, .area.other.tree-2 .group-edge { stroke: #8f2f5e; fill: #8f2f5e; } .area.other.tree-2 .group-edge { fill: none; } .area.other.tree-2 text { fill: #8f2f5e; }
+.startup-error { padding: 24px 16px; max-width: 640px; margin: 0 auto; } .startup-error pre { white-space: pre-wrap; }

@@ -12,6 +12,33 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- If the app's code fails before it can draw anything (owner, 26 Nov: a blank page), say why
+         after a few seconds, with a way to fetch a fresh copy. Plain script: it runs even when the
+         app's own code can't. Nothing saved is touched. -->
+    <script>
+      (function () {
+        var problems = [];
+        window.addEventListener("error", function (e) { problems.push((e.message || "error") + (e.filename ? " (" + e.filename.split("/").pop() + ":" + e.lineno + ")" : "")); }, true);
+        window.addEventListener("unhandledrejection", function (e) { problems.push(String(e.reason && (e.reason.stack || e.reason.message) || e.reason)); });
+        setTimeout(function () {
+          var root = document.getElementById("root");
+          if (!root || root.childElementCount > 0) return;
+          root.innerHTML = '<section style="padding:24px 16px;font-family:sans-serif;max-width:640px;margin:0 auto">' +
+            "<h1>The app didn't start</h1><p>Nothing you've saved is lost. Try a fresh copy; if it still happens, send the message below.</p>" +
+            '<p><button id="fresh" style="padding:10px 16px">Clear the offline copy and reload</button></p>' +
+            '<pre id="why" style="white-space:pre-wrap;background:#fff;border:1px solid #ddd;padding:10px"></pre>' +
+            "<p>" + navigator.userAgent + "</p></section>";
+          document.getElementById("why").textContent = problems.join("\n") || "No error was reported: the app's code may not have loaded at all.";
+          document.getElementById("fresh").onclick = function () {
+            var done = function () { location.reload(); };
+            var jobs = [];
+            if (navigator.serviceWorker) jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }));
+            if (window.caches) jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }));
+            Promise.all(jobs).then(done, done);
+          };
+        }, 6000);
+      })();
+    </script>
     <script type="module" src="/src/app/main.tsx"></script>
   </body>
 </html>

@@ -169,3 +169,15 @@ export function looseItems(items: Item[], world: string): Thing[] {
   const linked = new Set(linksIn(items, world).filter((l) => hierarchical.has(l.linkKind)).flatMap((l) => [l.from, l.to]));
   return byName(thingsIn(items, world).filter((t) => !linked.has(t.key)));
 }
+
+// Why an item doesn't show in a tree's view, or null if it does: hidden by hand ("hide here"), or
+// loose while the tree hides loose items (owner, 26 Nov: "how do I add an item removed from a tree
+// back").
+export function hiddenIn(items: Item[], world: string, tree: string, thing: string): "by hand" | "loose hidden" | null {
+  const kind = linkKindsIn(items, world).find((k) => k.key === tree);
+  const links = treeLinks(items, world, tree);
+  const loose = !links.some((l) => l.from === thing || l.to === thing);
+  if (!kind || !loose) return null;
+  if ((kind.hiddenHere ?? []).includes(thing)) return "by hand";
+  return kind.loose === "hide" ? "loose hidden" : null;
+}

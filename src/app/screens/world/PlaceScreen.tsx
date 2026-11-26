@@ -7,7 +7,7 @@
 import { useState, type ReactNode } from "react";
 import type { Item, Thing, ThingField, ThingName } from "../../../items/items";
 import { linkKindsIn, linksIn, mapsIn, removeThing, thingKindsIn, thingsIn, worldOf } from "../../../world/world";
-import { childrenOf, descendantsOf, firstTree, pathOf, setParent, treeKinds } from "../../../world/places";
+import { childrenOf, descendantsOf, firstTree, hiddenIn, hideHere, pathOf, setParent, treeKinds } from "../../../world/places";
 import { iconOf, mapsShowing } from "../../../world/maps";
 import { addToGroup, groupLinkKinds, groupsIn, groupsOf, membersOf, removeFromGroup, type Membership } from "../../../world/groups";
 import type { AppData } from "../../app-data";
@@ -47,10 +47,12 @@ export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; 
         <div className="place-title">
           {editing ? <TextBox className="name-box" value={thing.name} onSave={(v) => v && change({ name: v })} /> : <h1>{thing.name}</h1>}
           {/* Editing: where it is, as a dropdown per tree (the read-only trail would say it twice). */}
-          {editing ? <Parents data={data} nav={nav} thing={thing} editing save={save} /> : <Breadcrumb nav={nav} path={path} label={trailLabel} />}
+          {!editing && <Breadcrumb nav={nav} path={path} label={trailLabel} />}
         </div>
         <button className="link edit-toggle" onClick={() => setEditing(!editing)}>{editing ? "Done" : "Edit"}</button>
       </div>
+      {/* Editing: where it is, a labelled row per tree, full width (owner, 26 Nov). */}
+      {editing && <Parents data={data} nav={nav} thing={thing} editing save={save} />}
       <span className="fold-all">
         <button className="link" onClick={() => (rememberAll("item-fold|", false), setEpoch((n) => n + 1))}>Fold all</button> ·{" "}
         <button className="link" onClick={() => (rememberAll("item-fold|", true), setEpoch((n) => n + 1))}>Open all</button>
@@ -193,31 +195,35 @@ function Kinds({ data, thing, editing, change }: { data: AppData; thing: Thing; 
 function Parents({ data, nav, thing, editing, save }: { data: AppData; nav: Nav; thing: Thing; editing: boolean; save: (items: Item[]) => Promise<void> }) {
   const trees = treeKinds(data.items, thing.world);
   if (trees.length === 0) return editing ? <p className="sub">This world has no tree link kind (World → Kinds).</p> : null;
-  // A dropdown per tree it belongs in (not "in terrain" for a Person); read, the Links section shows them.
-  const shown = editing ? trees.filter((k) => fitsTree(data.items, thing.world, k.key, thing.key)) : [];
-  if (shown.length === 0) return null;
+  if (!editing) return null; // read, the trail and Links show where it sits
+  // A row per tree it fits, or already sits in (owner, 26 Nov: "what about the other viable trees"):
+  // each labelled with its tree, in the world's order.
+  const rows = trees.filter((k) => fitsTree(data.items, thing.world, k.key, thing.key) || pathOf(data.items, thing.world, thing.key, k.key).length > 1);
   return (
     <div className="parents">
-      {shown.map((k) => <TreeParent key={k.key} data={data} nav={nav} thing={thing} tree={k.key} label={k.name} editing={editing} save={save} />)}
+      <div className="sub field-group">Where it is</div>
+      {rows.map((k) => <TreeParent key={k.key} data={data} nav={nav} thing={thing} tree={k.key} label={k.name} save={save} />)}
+      {rows.length < trees.length && <p className="sub">Not in {trees.filter((k) => !rows.includes(k)).map((k) => `"${k.name}"`).join(", ")}: it doesn't fit what {rows.length === trees.length - 1 ? "that tree takes" : "those trees take"}.</p>}
     </div>
   );
 }
 
-function TreeParent({ data, nav, thing, tree, label, editing, save }: { data: AppData; nav: Nav; thing: Thing; tree: string; label: string; editing: boolean; save: (items: Item[]) => Promise<void> }) {
+function TreeParent({ data, nav, thing, tree, label, save }: { data: AppData; nav: Nav; thing: Thing; tree: string; label: string; save: (items: Item[]) => Promise<void> }) {
   const world = thing.world;
   const path = pathOf(data.items, world, thing.key, tree).slice(0, -1);
   const current = path[path.length - 1]?.key ?? "";
-  if (!editing) {
-    // Each step of the chain opens (owner, 26 Nov: "the other available chains … a clickable view").
+  const fits = fitsTree(data.items, world, tree, thing.key);
+  const hidden = hiddenIn(data.items, world, tree, thing.key);
+  const openKind = () => nav.open({ name: "link-kind", key: tree });
+  if (!fits) {
+    // It sits in this tree but no longer fits what it takes (a rule changed): say so, and offer the way out.
     return (
-      <div className="breadcrumb">
-        {label}{" "}
-        {path.map((t, n) => (
-          <span key={t.key}>
-            {n > 0 && " › "}
-            <button className="link" onClick={() => nav.open({ name: "place", key: t.key })}>{t.name}</button>
-          </span>
-        ))}
+      <div className="tree-row misfit">
+        <span className="tree-label">{label}:</span> {path.map((t) => t.name).join(" › ")}
+        <div className="sub warn">
+          Doesn't fit what "{label}" takes · <button className="link" onClick={openKind}>Change what it takes</button> ·{" "}
+          <button className="link" onClick={async () => save(setParent(data.items, world, thing.key, null, tree).items)}>Take it out</button>
+        </div>
       </div>
     );
   }
@@ -225,17 +231,33 @@ function TreeParent({ data, nav, thing, tree, label, editing, save }: { data: Ap
   const choices = thingsIn(data.items, world).filter((t) => t.key !== thing.key && !inside.has(t.key) && !refusal(data.items, world, tree, "to", t.key));
   const name = (t: Thing) => pathOf(data.items, world, t.key, tree).map((p) => p.name).join(" › ");
   const move = async (to: string) => {
-    const result = setParent(data.items, world, thing.key, to || null, tree);
+    if (!to) {
+      // Loose: straight in the world, and shown in this tree again if it was hidden by hand.
+      let items = setParent(data.items, world, thing.key, null, tree).items;
+      if (hidden === "by hand") items = hideHere(items, tree, thing.key, false);
+      return save(items);
+    }
+    const result = setParent(data.items, world, thing.key, to, tree);
     if (result.problem) return alert(result.problem);
     await save(result.items);
   };
   return (
-    <label className="stack">
-      <span className="sub">{label}</span>
+    <label className="tree-row">
+      <span className="tree-label">{label}:</span>
       <select value={current} onChange={(e) => move(e.target.value)}>
-        <option value="">(straight in the world)</option>
+        <option value="">(loose: straight in the world)</option>
         {choices.map((t) => ({ t, name: name(t) })).sort((a, b) => a.name.localeCompare(b.name)).map(({ t, name }) => <option key={t.key} value={t.key}>{name}</option>)}
       </select>
+      {hidden === "by hand" && (
+        <span className="sub warn">
+          Hidden from "{label}" · <button className="link" onClick={async (e) => (e.preventDefault(), save(hideHere(data.items, tree, thing.key, false)))}>Show it here</button>
+        </span>
+      )}
+      {hidden === "loose hidden" && (
+        <span className="sub warn">
+          "{label}" hides loose items · <button className="link" onClick={(e) => (e.preventDefault(), openKind())}>Show them</button> or put it in a container
+        </span>
+      )}
     </label>
   );
 }

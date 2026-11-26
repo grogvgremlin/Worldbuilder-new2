@@ -17,8 +17,9 @@ import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { NewPlace } from "./WorldScreen";
 import { TextBox } from "./text-box";
-import { TreePicker, useChosenTree } from "./tree-picker";
+import { treeKinds } from "../../../world/places";
 import { useUndo } from "./undo";
+import { DOUBLE_TAP_MS, DOUBLE_TAP_PX, swallowNextClick, tapSlop } from "./gestures";
 import { descendantsOf } from "../../../world/places";
 import { membersOf } from "../../../world/groups";
 
@@ -31,9 +32,6 @@ type Gesture =
   | { kind: "pinch"; startDistance: number; startCentre: Point; from: View }
   | null;
 
-const TAP = 6; // px a finger may wander and still be a tap
-const DOUBLE_TAP_MS = 350;
-const DOUBLE_TAP_PX = 30;
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 12;
 
@@ -58,7 +56,6 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
     setMap(items.find((i): i is WorldMap => i.kind === "map" && i.key === mapKey)); // undo and redo redraw the pins
   });
   const [newAt, setNewAt] = useState<Point | null>(null); // a double tap here: a new item pinned at this point
-  const [tree, setTree] = useChosenTree(data, map?.world ?? "");
 
   // The sheet's size on screen, kept up to date (turning the phone, resizing the window).
   useEffect(() => {
@@ -129,11 +126,11 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
       const centre = middle(a, b);
       setView({ k, tx: centre.x - anchor.x * k, ty: centre.y - anchor.y * k });
     } else if (g?.kind === "pan" || g?.kind === "area") {
-      if (!g.moved && distance(at, g.start) < TAP) return;
+      if (!g.moved && distance(at, g.start) < tapSlop(e.pointerType)) return;
       g.moved = true;
       setView({ k: g.from.k, tx: g.from.tx + at.x - g.start.x, ty: g.from.ty + at.y - g.start.y });
     } else if (g?.kind === "pin") {
-      if (!g.moved && distance(at, g.start) < TAP) return;
+      if (!g.moved && distance(at, g.start) < tapSlop(e.pointerType)) return;
       if (locked) {
         // Pins locked: a drag that starts on a pin pans instead.
         gesture.current = { kind: "pan", start: g.start, from: view, moved: true };
@@ -182,6 +179,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
     if (before && before.key === key && Date.now() - before.time < DOUBLE_TAP_MS && distance(at, before.at) < DOUBLE_TAP_PX) {
       lastTap.current = null;
       setSelected(before.before); // the first tap of a double tap doesn't count as a select
+      swallowNextClick();
       if (key) nav.open({ name: "place", key });
       else if (view) setNewAt(toMap(at, view));
       return;
@@ -199,7 +197,11 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
     setView({ k, tx: at.x - anchor.x * k, ty: at.y - anchor.y * k });
   };
 
-  const allAreas = [...areasOn(data.items, map, tree), ...groupAreasOn(data.items, map)];
+  // The trees whose areas show (several at once: owner, 26 Nov), the main tree if none chosen yet.
+  const trees = treeKinds(data.items, map.world);
+  const treesShown = (shown.trees ?? [trees[0]?.key]).filter((k) => trees.some((t) => t.key === k));
+  const allAreas = [...treesShown.flatMap((t) => areasOn(data.items, map, t)), ...groupAreasOn(data.items, map)];
+  const treeStyle = (tree?: string) => Math.max(0, treesShown.indexOf(tree ?? "")); // 0: the first tree shown, drawn filled
 
   const placingThing = placing ? things.get(placing) : undefined;
 
@@ -212,9 +214,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
           <span className="areas-menu">
             <button className={shown.all ? "tool on" : "tool"} onClick={() => setAreasMenu(!areasMenu)}>Areas ▾</button>
             {areasMenu && (
-              <AreasMenu areas={allAreas} shown={shown} onChange={showArea} onClose={() => setAreasMenu(false)}>
-                <TreePicker data={data} world={map.world} tree={tree} onChoose={setTree} />
-              </AreasMenu>
+              <AreasMenu areas={allAreas} shown={shown} onChange={showArea} onClose={() => setAreasMenu(false)} trees={trees.map((t) => ({ key: t.key, name: t.name }))} treesShown={treesShown} />
             )}
           </span>
           <button className={locked ? "tool on" : "tool"} onClick={() => setLocked(!locked)}>{locked ? "Locked" : "Lock"}</button>
@@ -246,12 +246,12 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
           onClose={() => setSelected([])}
         />
       )}
-      <div className="map-wrap" ref={wrap} onTouchStart={(e) => e.stopPropagation()} onWheel={wheel}>
+      <div className="map-wrap" ref={wrap} onTouchStart={(e) => e.stopPropagation()} onTouchEnd={(e) => e.preventDefault()} onWheel={wheel}>
         {size && view && (
           <svg width={size.w} height={size.h} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} className={placing ? "placing" : ""}>
             <g transform={`translate(${view.tx} ${view.ty}) scale(${view.k})`}>
               <rect className="map-sheet" x={0} y={0} width={map.width} height={map.height} rx={8 / view.k} />
-              {shown.all && <Areas areas={allAreas.filter((a) => !shown.hidden.includes(areaId(a)))} k={view.k} selected={selected} />}
+              {shown.all && <Areas areas={allAreas.filter((a) => !shown.hidden.includes(areaId(a)))} k={view.k} selected={selected} treeStyle={treeStyle} />}
               {map.pins.map((p) => {
                 const thing = things.get(p.thing);
                 if (!thing) return null;
@@ -308,7 +308,9 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
 // A place holding pinned places: a soft shape round them, with its name along the top. The padding
 // is a fixed size on screen, wider the higher the place sits in the tree, so nested areas sit inside
 // and their names stack instead of colliding.
-function Areas({ areas, k, selected }: { areas: Area[]; k: number; selected: string[] }) {
+// The first tree shown is drawn as filled shapes; others as dotted outlines in their own colour, so
+// where trees cross can be seen on one map.
+function Areas({ areas, k, selected, treeStyle }: { areas: Area[]; k: number; selected: string[]; treeStyle: (tree?: string) => number }) {
   const deepest = Math.max(0, ...areas.filter((a) => a.by === "containment").map((a) => a.depth));
   return (
     <g className="areas">
@@ -318,8 +320,8 @@ function Areas({ areas, k, selected }: { areas: Area[]; k: number; selected: str
         const d = a.outline.map((p, n) => `${n ? "L" : "M"}${p.x} ${p.y}`).join(" ") + " Z";
         const top = a.outline.reduce((best, p) => (p.y < best.y ? p : best), a.outline[0]);
         return (
-          <g key={areaId(a)} className={(a.by === "group" ? "area group" : `area depth-${a.depth % 4}`) + (selected.includes(a.thing.key) ? " selected" : "")}>
-            {a.by === "group" ? (
+          <g key={areaId(a)} className={(a.by === "group" ? "area group" : treeStyle(a.tree) > 0 ? `area other tree-${treeStyle(a.tree) % 3}` : `area depth-${a.depth % 4}`) + (selected.includes(a.thing.key) ? " selected" : "")}>
+            {a.by === "group" || treeStyle(a.tree) > 0 ? (
               <>
                 <path d={d} strokeWidth={(pad * 2) / k} className="group-fill" />
                 <path d={roundedOutline(a.outline, pad / k)} strokeWidth={1.5 / k} strokeDasharray={`${5 / k} ${4 / k}`} className="group-edge" />
@@ -379,12 +381,12 @@ function labelWidth(name: string): number {
 
 // An area's id in the Areas menu: a place can show both what it holds and its group members.
 function areaId(a: Area): string {
-  return a.by === "group" ? `group:${a.thing.key}` : a.thing.key;
+  return a.by === "group" ? `group:${a.thing.key}` : `${a.tree}:${a.thing.key}`;
 }
 
 // Which areas a map shows: all of them on or off, and single ones hidden. A view setting kept on this
 // device (world-structure §5: view presets are display settings, not world data).
-type AreasShown = { all: boolean; hidden: string[] };
+type AreasShown = { all: boolean; hidden: string[]; trees?: string[] }; // trees: whose areas show
 
 function readAreasShown(mapKey: string): AreasShown {
   try {
@@ -404,29 +406,40 @@ function saveAreasShown(mapKey: string, shown: AreasShown) {
   }
 }
 
-function AreasMenu({ areas, shown, onChange, onClose, children }: { areas: Area[]; shown: AreasShown; onChange: (s: AreasShown) => void; onClose: () => void; children?: ReactNode }) {
+function AreasMenu({ areas, shown, onChange, onClose, trees, treesShown }: { areas: Area[]; shown: AreasShown; onChange: (s: AreasShown) => void; onClose: () => void; trees: { key: string; name: string }[]; treesShown: string[] }) {
   const toggle = (key: string) => onChange({ ...shown, hidden: shown.hidden.includes(key) ? shown.hidden.filter((k) => k !== key) : [...shown.hidden, key] });
+  const toggleTree = (key: string) => onChange({ ...shown, trees: treesShown.includes(key) ? treesShown.filter((k) => k !== key) : [...treesShown, key] });
+  // One folding list per tree shown, and one for groups, so the menu stays short (owner, 26 Nov).
+  const sections = [
+    ...treesShown.map((t) => ({ id: t, title: trees.find((x) => x.key === t)?.name ?? t, list: areas.filter((a) => a.by === "containment" && a.tree === t) })),
+    { id: "group", title: "Groups", list: areas.filter((a) => a.by === "group") },
+  ].filter((sec) => sec.list.length > 0);
   return (
     <>
       <div className="menu-catcher" onClick={onClose} />
       <div className="filter-panel areas-panel">
         <label className="choice"><input type="checkbox" checked={shown.all} onChange={() => onChange({ ...shown, all: !shown.all })} /> <b>Show areas</b></label>
-        {children}
-        {areas.length === 0 && <p className="sub">No areas: an item shows as one once something inside it is pinned here.</p>}
-        {(["containment", "group"] as const).map((by) => {
-          const these = areas.filter((a) => a.by === by);
-          if (these.length === 0) return null;
-          return (
-            <div key={by}>
-              <div className="sub menu-heading">{by === "group" ? "Groups" : "Containers"}</div>
-              {these.map((a) => (
-                <label key={areaId(a)} className="choice" style={{ paddingLeft: 8 + a.depth * 16, opacity: shown.all ? 1 : 0.5 }}>
-                  <input type="checkbox" disabled={!shown.all} checked={!shown.hidden.includes(areaId(a))} onChange={() => toggle(areaId(a))} /> {a.thing.name}
-                </label>
+        {trees.length > 1 && (
+          <>
+            <div className="sub menu-heading">Trees</div>
+            <div className="chips tree-chips">
+              {trees.map((t) => (
+                <button key={t.key} className={treesShown.includes(t.key) ? "on" : ""} onClick={() => toggleTree(t.key)}>{t.name}</button>
               ))}
             </div>
-          );
-        })}
+          </>
+        )}
+        {areas.length === 0 && <p className="sub">No areas: an item shows as one once something inside it is pinned here.</p>}
+        {sections.map((sec) => (
+          <details key={sec.id} className="menu-section">
+            <summary className="sub menu-heading">{sec.title} ({sec.list.length})</summary>
+            {sec.list.map((a) => (
+              <label key={areaId(a)} className="choice" style={{ paddingLeft: 8 + a.depth * 16, opacity: shown.all ? 1 : 0.5 }}>
+                <input type="checkbox" disabled={!shown.all} checked={!shown.hidden.includes(areaId(a))} onChange={() => toggle(areaId(a))} /> {a.thing.name}
+              </label>
+            ))}
+          </details>
+        ))}
       </div>
     </>
   );

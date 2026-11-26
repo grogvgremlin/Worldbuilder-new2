@@ -78,7 +78,7 @@ type StarterFile = {
   tree: string; // the name of the link kind places are contained by
   group?: string; // the name of the link kind places are grouped by (several groups at once)
   thingKinds: { name: string; icon?: string; about?: string; fields: { name: string; about?: string }[] }[];
-  linkKinds: { name: string; reverseName?: string; direction: LinkKind["direction"]; hierarchy: LinkKind["hierarchy"]; about?: string }[];
+  linkKinds: { name: string; reverseName?: string; direction: LinkKind["direction"]; hierarchy: LinkKind["hierarchy"]; about?: string; expectsFrom?: string[]; expectsTo?: string[] }[];
 };
 
 type SampleFile = {
@@ -104,7 +104,9 @@ function addStarter(made: Item[], world: Sandbox, file: StarterFile) {
   }
   for (const k of file.linkKinds) {
     const key = newKey(made, world.key, "link-kind", k.name);
-    made.push({ key, kind: "link-kind", world: world.key, name: k.name, reverseName: k.reverseName, direction: k.direction, hierarchy: k.hierarchy, about: k.about });
+    // Expects name kinds; stored as the kinds' keys (owner, 26 Nov: "in" and "in area" take places only).
+    const kindKeys = (names?: string[]) => names?.map((n) => thingKindsIn(made, world.key).find((t) => t.name === n)?.key ?? n);
+    made.push({ key, kind: "link-kind", world: world.key, name: k.name, reverseName: k.reverseName, direction: k.direction, hierarchy: k.hierarchy, about: k.about, expectsFrom: kindKeys(k.expectsFrom), expectsTo: kindKeys(k.expectsTo) });
     if (k.name === file.tree) world.tree = key;
   }
 }

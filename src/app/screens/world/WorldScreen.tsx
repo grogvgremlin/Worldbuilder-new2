@@ -14,7 +14,7 @@ import type { Nav } from "../../App";
 import { useRemembered } from "./remembered";
 import { TreeDiagram } from "./TreeDiagram";
 import { TreePicker, useChosenTree } from "./tree-picker";
-import { hasKind, kindTree, setFlavourOf } from "../../../world/kinds";
+import { hasKind, kindTree, misfit, setFlavourOf } from "../../../world/kinds";
 
 type Tab = "items" | "diagram" | "maps" | "kinds";
 const TABS: { id: Tab; label: string }[] = [
@@ -272,7 +272,8 @@ export function NewPlace({ data, world, save, onMade, inside, autoFocus, noPlace
   // of its new siblings have.
   const [kind, setKind] = useState(kinds.length === 1 ? kinds[0].key : inside ? usualKindInside(data.items, world, inside) : "");
   const [parent, setParentKey] = useState(inside ?? "");
-  const places = thingsIn(data.items, world).sort((a, b) => a.name.localeCompare(b.name));
+  const tree = worldOf(data.items, world)?.tree ?? "";
+  const places = thingsIn(data.items, world).filter((t) => !misfit(data.items, world, tree, "to", t.key)).sort((a, b) => a.name.localeCompare(b.name));
   const make = async () => {
     if (!name.trim()) return;
     const key = newKey(data.items, world, "thing", name);

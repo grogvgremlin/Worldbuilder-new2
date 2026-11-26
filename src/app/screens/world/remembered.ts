@@ -36,3 +36,8 @@ export function useKept<T>(key: string, start: T): [T, (value: T) => void] {
   };
   return [value, set];
 }
+
+// Sets a remembered view from outside its screen (the trail's Items · Diagram · Maps).
+export function remember<T>(key: string, value: T): void {
+  memory.set(key, value);
+}

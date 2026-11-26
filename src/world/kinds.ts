@@ -5,7 +5,7 @@
 // blocks; link kinds declare what they expect at each end). Flavours are the owner's addition: see
 // the build log, 26 Nov, "Questions for design".
 
-import type { Item, KindField, ThingKind } from "../items/items";
+import type { Item, KindField, LinkKind, Thing, ThingKind } from "../items/items";
 import { thingKindsIn } from "./world";
 
 // A kind and the kinds it's a flavour of, from itself up: Free city, City, Place.
@@ -70,4 +70,24 @@ export function kindTree(items: Item[], world: string): { kind: ThingKind; depth
   };
   walk(undefined, 0);
   return out;
+}
+
+// Why an item can't go at one end of a link kind, or null if it can (owner, 26 Nov: "places
+// shouldn't be able to nest people"; "in terrain shouldn't have people, just places"). Read from the
+// link kind's Expects: nothing expected means anything goes. A kind's flavours always fit.
+export function misfit(items: Item[], world: string, linkKind: string, end: "from" | "to", thing: string): string | null {
+  const kind = items.find((i): i is LinkKind => i.kind === "link-kind" && i.key === linkKind);
+  const item = items.find((i): i is Thing => i.kind === "thing" && i.key === thing);
+  if (!kind || !item) return null;
+  const expected = end === "from" ? kind.expectsFrom : kind.expectsTo;
+  if (fitsExpected(items, world, item.kinds, expected)) return null;
+  const names = (expected ?? []).map((k) => thingKindsIn(items, world).find((t) => t.key === k)?.name ?? k);
+  return `"${kind.name}" takes ${names.join(" or ")} ${end === "from" ? "inside" : "as the container"}; ${item.name} isn't one`;
+}
+
+// Whether an item belongs in a tree at all: it fits one end or the other (a Place in "in terrain";
+// never a Person).
+export function fitsTree(items: Item[], world: string, tree: string | undefined, thing: string): boolean {
+  if (!tree) return true;
+  return misfit(items, world, tree, "from", thing) === null || misfit(items, world, tree, "to", thing) === null;
 }

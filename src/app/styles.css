@@ -355,3 +355,18 @@ label.stack { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8p
 .map-screen .map-tools { gap: 4px; }
 .map-screen .map-tools button { padding: 6px 10px; }
 .diagram-hint { height: 2.8em; overflow: hidden; }
+.fold-toggle { cursor: pointer; }
+.fold-toggle circle { fill: var(--panel); stroke: var(--muted); stroke-width: 1.5; }
+.fold-toggle text { font-size: 11px; font-weight: 700; text-anchor: middle; fill: var(--muted); pointer-events: none; }
+.fold-toggle.folded circle { fill: var(--ink); stroke: var(--ink); } .fold-toggle.folded text { fill: var(--ground); }
+.trail { display: flex; flex-direction: column; gap: 2px; font-size: .85rem; color: var(--muted); margin: 0 0 8px; padding-bottom: 6px; border-bottom: 1px dashed var(--line); }
+.trail-tabs { display: flex; gap: 14px; }
+.trail-steps { overflow-x: auto; white-space: nowrap; }
+.trail-sep { color: var(--muted); }
+.tree-chips { margin: 4px 0; } .tree-chips button { padding: 4px 10px; font-size: .85rem; }
+.menu-section > summary { cursor: pointer; padding: 4px 0; }
+.area.other .group-fill { opacity: .06; }
+.area.other .group-edge { fill: none; opacity: .9; }
+.area.other.tree-0 .group-fill, .area.other.tree-0 .group-edge { stroke: #2f6f8f; fill: #2f6f8f; } .area.other.tree-0 .group-edge { fill: none; } .area.other.tree-0 text { fill: #2f6f8f; }
+.area.other.tree-1 .group-fill, .area.other.tree-1 .group-edge { stroke: #6b8f2f; fill: #6b8f2f; } .area.other.tree-1 .group-edge { fill: none; } .area.other.tree-1 text { fill: #4f6b20; }
+.area.other.tree-2 .group-fill, .area.other.tree-2 .group-edge { stroke: #8f2f5e; fill: #8f2f5e; } .area.other.tree-2 .group-edge { fill: none; } .area.other.tree-2 text { fill: #8f2f5e; }

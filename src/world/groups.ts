@@ -9,6 +9,7 @@
 
 import type { Item, Link, LinkKind, Thing } from "../items/items";
 import { linkKindsIn, linksIn, newLink, thingsIn, worldOf } from "./world";
+import { misfit } from "./kinds";
 
 export type Membership = { link: Link; linkKind: LinkKind; thing: Thing };
 
@@ -77,6 +78,8 @@ export function addToGroup(items: Item[], world: string, member: string, linkKin
   const already = linksIn(items, world).some((l) => l.linkKind === linkKind && l.from === member && l.to === group);
   if (already) return { items, problem: "it's in that group already" };
   if (withinGroup(items, world, member, linkKind).has(group)) return { items, problem: "that group is inside this one already" };
+  const wrong = misfit(items, world, linkKind, "from", member) ?? misfit(items, world, linkKind, "to", group);
+  if (wrong) return { items, problem: wrong };
   return { items: [...items, newLink(items, world, member, linkKind, group)] };
 }
 

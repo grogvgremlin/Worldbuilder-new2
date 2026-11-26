@@ -16,19 +16,23 @@ export const NODE_H = 34;
 const ACROSS = { depthStep: 168, leafStep: 44 }; // across: depth runs right, leaves run down
 const DOWN = { depthStep: 84, leafStep: NODE_W + 14 }; // down: depth runs down, leaves run right
 
-// A box: its top-left corner, and the box above it in the tree.
-export type Box = { key: string; thing: Thing | null; parent: string | null; x: number; y: number };
+// A box: its top-left corner, the box above it in the tree, and how many items it holds (any depth)
+// and, folded, how many of those are hidden (owner, 26 Nov: "a collapse button on a container").
+export type Box = { key: string; thing: Thing | null; parent: string | null; x: number; y: number; holds: number; hidden: number };
 
 // Leaves one step apart; a parent centred on its children.
-export function autoLayout(items: Item[], world: string, tree: string | undefined, direction: Direction): Box[] {
+export function autoLayout(items: Item[], world: string, tree: string | undefined, direction: Direction, folded: Set<string> = new Set()): Box[] {
   const step = direction === "across" ? ACROSS : DOWN;
   const boxes: Box[] = [];
   let leaf = 0;
   const place = (thing: Thing | null, key: string, depth: number, parent: string | null, children: Thing[]): number => {
-    const spots = children.map((c) => place(c, c.key, depth + 1, key, childrenOf(items, world, c.key, tree)));
+    const holds = thing ? descendantsOf(items, world, key, tree).length : 0;
+    const shown = folded.has(key) ? [] : children; // a folded box hides its branch
+    const spots = shown.map((c) => place(c, c.key, depth + 1, key, childrenOf(items, world, c.key, tree)));
     const spot = spots.length ? (spots[0] + spots[spots.length - 1]) / 2 : leaf++ * step.leafStep;
     const along = depth * step.depthStep;
-    boxes.push(direction === "across" ? { key, thing, parent, x: along, y: spot } : { key, thing, parent, x: spot, y: along });
+    const hidden = folded.has(key) ? holds : 0;
+    boxes.push(direction === "across" ? { key, thing, parent, x: along, y: spot, holds, hidden } : { key, thing, parent, x: spot, y: along, holds, hidden });
     return spot;
   };
   const tops = topPlaces(items, world, tree).filter((t) => !isOnlyAGroup(items, world, t.key));
@@ -41,9 +45,9 @@ function savedFor(items: Item[], world: string, tree: string | undefined, direct
 }
 
 // The boxes as drawn: where the owner put them, else where the layout puts them.
-export function arrangedLayout(items: Item[], world: string, tree: string | undefined, direction: Direction): Box[] {
+export function arrangedLayout(items: Item[], world: string, tree: string | undefined, direction: Direction, folded: Set<string> = new Set()): Box[] {
   const saved = new Map((savedFor(items, world, tree, direction)?.positions ?? []).map((p) => [p.thing, p]));
-  return autoLayout(items, world, tree, direction).map((b) => {
+  return autoLayout(items, world, tree, direction, folded).map((b) => {
     const p = saved.get(b.key);
     return p ? { ...b, x: p.x, y: p.y } : b;
   });

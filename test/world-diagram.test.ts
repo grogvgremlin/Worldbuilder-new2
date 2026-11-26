@@ -64,3 +64,15 @@ describe("arranging by hand", () => {
     expect(worldOf(tidied, W)!.diagrams).toBeUndefined();
   });
 });
+
+describe("folding a container (owner, 26 Nov)", () => {
+  it("a folded box hides its branch and says how many are hidden", () => {
+    const items = sample();
+    const averland = key(items, "Averland");
+    const open = autoLayout(items, W, tree(items), "down");
+    const folded = autoLayout(items, W, tree(items), "down", new Set([averland]));
+    expect(folded.length).toBe(open.length - 6);
+    expect(at(folded, averland)).toMatchObject({ holds: 6, hidden: 6 });
+    expect(at(open, averland)).toMatchObject({ holds: 6, hidden: 0 });
+  });
+});

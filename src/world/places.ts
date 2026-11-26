@@ -8,6 +8,7 @@
 
 import type { Item, Link, LinkKind, Thing } from "../items/items";
 import { linkKindsIn, linksIn, newLink, thingsIn, worldOf } from "./world";
+import { fitsTree, misfit } from "./kinds";
 
 // The world's trees: its link kinds declared "one parent", the main one first.
 export function treeKinds(items: Item[], world: string): LinkKind[] {
@@ -69,10 +70,12 @@ export function pathOf(items: Item[], world: string, thing: string, tree?: strin
   return path;
 }
 
-// The items with no parent in this tree: they sit straight in the world.
+// The items with no parent in this tree: they sit straight in the world. Items that don't belong in
+// the tree at all (a Person in "in terrain": its Expects) are left out.
 export function topPlaces(items: Item[], world: string, tree?: string): Thing[] {
+  const kind = treeOrMain(items, world, tree);
   const hasParent = new Set(treeLinks(items, world, tree).map((l) => l.from));
-  return byName(thingsIn(items, world).filter((t) => !hasParent.has(t.key)));
+  return byName(thingsIn(items, world).filter((t) => !hasParent.has(t.key) && fitsTree(items, world, kind, t.key)));
 }
 
 // How deep an item sits: 0 at the top.
@@ -94,6 +97,8 @@ export function setParent(items: Item[], world: string, thing: string, parent: s
   if (!kind) return { items, problem: "this world has no tree link kind (World → Kinds)" };
   if (parent === thing) return { items, problem: "an item can't be inside itself" };
   if (parent && descendantsOf(items, world, thing, kind).some((d) => d.key === parent)) return { items, problem: "that item is inside this one already" };
+  const wrong = parent ? misfit(items, world, kind, "from", thing) ?? misfit(items, world, kind, "to", parent) : null;
+  if (wrong) return { items, problem: wrong };
   const kept = items.filter((i) => !(i.kind === "link" && i.world === world && i.linkKind === kind && i.from === thing));
   if (!parent) return { items: kept };
   return { items: [...kept, newLink(kept, world, thing, kind, parent)] };

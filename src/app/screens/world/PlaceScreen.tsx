@@ -15,7 +15,7 @@ import type { Nav } from "../../App";
 import { NewPlace } from "./WorldScreen";
 import { TextBox } from "./text-box";
 import { SwipeRow } from "../../swipe";
-import { kindLine, kindTree } from "../../../world/kinds";
+import { fitsTree, kindLine, kindTree, misfit } from "../../../world/kinds";
 
 export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; thingKey: string }) {
   const [editing, setEditing] = useState(false);
@@ -43,7 +43,7 @@ export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; 
       </div>
 
       <Kinds data={data} thing={thing} editing={editing} change={change} />
-      <Parents data={data} thing={thing} editing={editing} save={save} />
+      <Parents data={data} nav={nav} thing={thing} editing={editing} save={save} />
 
       {editing ? (
         <>
@@ -151,27 +151,41 @@ function Kinds({ data, thing, editing, change }: { data: AppData; thing: Thing; 
 
 // Where it is, in each of the world's trees (owner, 25 Nov: by province, by terrain …): any item but
 // itself and what it holds there.
-function Parents({ data, thing, editing, save }: { data: AppData; thing: Thing; editing: boolean; save: (items: Item[]) => Promise<void> }) {
+function Parents({ data, nav, thing, editing, save }: { data: AppData; nav: Nav; thing: Thing; editing: boolean; save: (items: Item[]) => Promise<void> }) {
   const trees = treeKinds(data.items, thing.world);
   const main = worldOf(data.items, thing.world)?.tree;
   if (trees.length === 0) return editing ? <p className="sub">This world has no tree link kind (World → Kinds).</p> : null;
   // Read: the main tree is the trail under the name; other trees each get a line.
-  const shown = editing ? trees : trees.filter((k) => k.key !== main && pathOf(data.items, thing.world, thing.key, k.key).length > 1);
+  const belongs = trees.filter((k) => fitsTree(data.items, thing.world, k.key, thing.key)); // not "in terrain" for a Person
+  const shown = editing ? belongs : belongs.filter((k) => k.key !== main && pathOf(data.items, thing.world, thing.key, k.key).length > 1);
   if (shown.length === 0) return null;
   return (
     <div className="parents">
-      {shown.map((k) => <TreeParent key={k.key} data={data} thing={thing} tree={k.key} label={k.name} editing={editing} save={save} />)}
+      {shown.map((k) => <TreeParent key={k.key} data={data} nav={nav} thing={thing} tree={k.key} label={k.name} editing={editing} save={save} />)}
     </div>
   );
 }
 
-function TreeParent({ data, thing, tree, label, editing, save }: { data: AppData; thing: Thing; tree: string; label: string; editing: boolean; save: (items: Item[]) => Promise<void> }) {
+function TreeParent({ data, nav, thing, tree, label, editing, save }: { data: AppData; nav: Nav; thing: Thing; tree: string; label: string; editing: boolean; save: (items: Item[]) => Promise<void> }) {
   const world = thing.world;
   const path = pathOf(data.items, world, thing.key, tree).slice(0, -1);
   const current = path[path.length - 1]?.key ?? "";
-  if (!editing) return <div className="breadcrumb">{label} {path.map((t) => t.name).join(" › ")}</div>;
+  if (!editing) {
+    // Each step of the chain opens (owner, 26 Nov: "the other available chains … a clickable view").
+    return (
+      <div className="breadcrumb">
+        {label}{" "}
+        {path.map((t, n) => (
+          <span key={t.key}>
+            {n > 0 && " › "}
+            <button className="link" onClick={() => nav.open({ name: "place", key: t.key })}>{t.name}</button>
+          </span>
+        ))}
+      </div>
+    );
+  }
   const inside = new Set(descendantsOf(data.items, world, thing.key, tree).map((t) => t.key));
-  const choices = thingsIn(data.items, world).filter((t) => t.key !== thing.key && !inside.has(t.key));
+  const choices = thingsIn(data.items, world).filter((t) => t.key !== thing.key && !inside.has(t.key) && !misfit(data.items, world, tree, "to", t.key));
   const name = (t: Thing) => pathOf(data.items, world, t.key, tree).map((p) => p.name).join(" › ");
   const move = async (to: string) => {
     const result = setParent(data.items, world, thing.key, to || null, tree);
@@ -281,8 +295,12 @@ function Contents({ data, nav, thing, editing, save }: { data: AppData; nav: Nav
   const world = thing.world;
   const children = childrenOf(data.items, world, thing.key);
   const above = new Set(pathOf(data.items, world, thing.key).map((t) => t.key));
-  const movable = thingsIn(data.items, world).filter((t) => !above.has(t.key) && !children.some((c) => c.key === t.key)).sort((a, b) => a.name.localeCompare(b.name));
-  if (!editing && children.length === 0) return null;
+  const tree = worldOf(data.items, world)?.tree ?? "";
+  const canHold = !misfit(data.items, world, tree, "to", thing.key); // a Person holds nothing by "in"
+  const movable = thingsIn(data.items, world)
+    .filter((t) => !above.has(t.key) && !children.some((c) => c.key === t.key) && !misfit(data.items, world, tree, "from", t.key))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  if ((!editing || !canHold) && children.length === 0) return null;
   const bringIn = async (key: string) => {
     const result = setParent(data.items, world, key, thing.key);
     if (result.problem) return alert(result.problem);
@@ -307,7 +325,7 @@ function Contents({ data, nav, thing, editing, save }: { data: AppData; nav: Nav
           </li>
         ))}
       </ul>
-      {editing && (
+      {editing && canHold && (
         <>
           <label className="stack">
             <span className="sub">Move an item in here</span>
@@ -338,9 +356,10 @@ function InGroups({ data, nav, thing, editing, save }: GroupPart) {
   const world = thing.world;
   const kinds = groupLinkKinds(data.items, world);
   const groups = groupsOf(data.items, world, thing.key);
-  if (kinds.length === 0 || (!editing && groups.length === 0)) return null;
+  const canJoin = kinds.length > 0 && !misfit(data.items, world, kinds[0].key, "from", thing.key);
+  if (kinds.length === 0 || ((!editing || !canJoin) && groups.length === 0)) return null;
   const offered = [...groupsIn(data.items, world), ...thingsIn(data.items, world).filter((t) => !groupsIn(data.items, world).some((g) => g.key === t.key))]
-    .filter((t) => t.key !== thing.key && !groups.some((g) => g.thing.key === t.key));
+    .filter((t) => t.key !== thing.key && !groups.some((g) => g.thing.key === t.key) && !misfit(data.items, world, kinds[0].key, "to", t.key));
   const join = async (group: string) => {
     const result = addToGroup(data.items, world, thing.key, kinds[0].key, group);
     if (result.problem) return alert(result.problem);
@@ -378,9 +397,10 @@ function Members({ data, nav, thing, editing, save }: GroupPart) {
   const world = thing.world;
   const kinds = groupLinkKinds(data.items, world);
   const members = membersOf(data.items, world, thing.key);
-  if (kinds.length === 0 || (!editing && members.length === 0)) return null;
+  const canGroup = kinds.length > 0 && !misfit(data.items, world, kinds[0].key, "to", thing.key);
+  if (kinds.length === 0 || ((!editing || !canGroup) && members.length === 0)) return null;
   const offered = thingsIn(data.items, world)
-    .filter((t) => t.key !== thing.key && !members.some((m) => m.thing.key === t.key))
+    .filter((t) => t.key !== thing.key && !members.some((m) => m.thing.key === t.key) && !misfit(data.items, world, kinds[0].key, "from", t.key))
     .sort((a, b) => a.name.localeCompare(b.name));
   const add = async (member: string) => {
     const result = addToGroup(data.items, world, member, kinds[0].key, thing.key);

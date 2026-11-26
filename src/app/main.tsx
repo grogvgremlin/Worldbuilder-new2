@@ -12,7 +12,7 @@ const root = createRoot(document.getElementById("root")!);
 
 async function start() {
   registerSW({ immediate: true });
-  const data = new AppData(await IndexedDbStore.open());
+  const data = new AppData(await IndexedDbStore.openForApp());
   await data.load();
   askForPersistentStorage();
   root.render(

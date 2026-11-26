@@ -152,10 +152,13 @@ export function removeThing(items: Item[], key: string): Item[] {
     .map((i) => (i.kind === "map" ? { ...i, pins: i.pins.filter((p) => p.thing !== key) } : i));
 }
 
-// A thing kind goes from every thing that has it; their fields filled under it become one-offs.
+// A thing kind goes from every thing that has it; their fields filled under it become one-offs; its
+// flavours become flavours of its own parent (or of nothing).
 export function removeThingKind(items: Item[], key: string): Item[] {
+  const parent = items.find((i): i is ThingKind => i.kind === "thing-kind" && i.key === key)?.flavourOf;
   return items
     .filter((i) => i.key !== key)
+    .map((i) => (i.kind === "thing-kind" && i.flavourOf === key ? { ...i, flavourOf: parent } : i))
     .map((i) => (i.kind === "thing" && i.kinds.includes(key) ? { ...i, kinds: i.kinds.filter((k) => k !== key), fields: i.fields.map((f) => (f.of === key ? { field: f.field, value: f.value } : f)) } : i));
 }
 

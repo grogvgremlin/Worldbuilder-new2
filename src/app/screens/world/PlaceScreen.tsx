@@ -15,6 +15,7 @@ import type { Nav } from "../../App";
 import { NewPlace } from "./WorldScreen";
 import { TextBox } from "./text-box";
 import { SwipeRow } from "../../swipe";
+import { kindLine, kindTree } from "../../../world/kinds";
 
 export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; thingKey: string }) {
   const [editing, setEditing] = useState(false);
@@ -128,9 +129,9 @@ function Breadcrumb({ nav, path }: { nav: Nav; path: Thing[] }) {
   );
 }
 
-// Kinds as chips; editing, every kind of the world to switch on or off.
+// Kinds as chips; editing, every kind of the world to switch on or off, flavours after their kind.
 function Kinds({ data, thing, editing, change }: { data: AppData; thing: Thing; editing: boolean; change: (p: Partial<Thing>) => void }) {
-  const kinds = thingKindsIn(data.items, thing.world);
+  const kinds = kindTree(data.items, thing.world).map((k) => k.kind);
   if (kinds.length <= 1) return null; // one generic kind: nothing to show or choose
   const shown = editing ? kinds : kinds.filter((k) => thing.kinds.includes(k.key));
   if (shown.length === 0) return null;
@@ -191,7 +192,8 @@ function TreeParent({ data, thing, tree, label, editing, save }: { data: AppData
 // Fields, under each of its kinds (fields are named per kind), then its one-offs.
 function Fields({ data, thing, editing, change }: { data: AppData; thing: Thing; editing: boolean; change: (p: Partial<Thing>) => void }) {
   const [newField, setNewField] = useState("");
-  const kinds = thingKindsIn(data.items, thing.world).filter((k) => thing.kinds.includes(k.key));
+  // Its kinds and the kinds they're flavours of, each once, parents first: their fields, by kind.
+  const kinds = [...new Map(thing.kinds.flatMap((k) => kindLine(data.items, thing.world, k).reverse()).map((k) => [k.key, k])).values()];
   const valueOf = (of: string | undefined, field: string) => thing.fields.find((f) => f.of === of && f.field === field)?.value ?? "";
   const setValue = (of: string | undefined, field: string, value: string) => {
     const rest = thing.fields.filter((f) => !(f.of === of && f.field === field));

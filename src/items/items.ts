@@ -542,6 +542,9 @@ export const ThingKind = z.strictObject({
   ...common,
   kind: z.literal("thing-kind"),
   world: z.string(),
+  // A flavour of another kind (owner, 26 Nov: City and Fortress as flavours of Place): it has the
+  // parent's fields too, and whatever expects the parent accepts it, even one added later.
+  flavourOf: z.string().optional(), // the parent kind's key
   icon: z.string().optional(), // a symbol or emoji, shown on pins and in lists
   fields: z.array(KindField), // the fields offered on a thing of this kind
   about: z.string().optional(),

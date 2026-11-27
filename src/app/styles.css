@@ -460,3 +460,4 @@ main:has(.map-screen), main:has(.diagram-wrap) { max-width: none; }
 .link-line.picked .link-stroke { filter: drop-shadow(0 0 2px var(--accent)); }
 .link-heading { font-size: 1.3rem; line-height: 1.4; }
 .link-heading .link-word { font-weight: normal; }
+.link-field-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; }

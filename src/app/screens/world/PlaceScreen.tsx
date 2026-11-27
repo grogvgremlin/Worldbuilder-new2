@@ -18,7 +18,7 @@ import { SwipeRow } from "../../swipe";
 import { useChosenTree } from "./tree-picker";
 import { recalled, rememberAll, useRemembered } from "./remembered";
 import { fitsTree, kindLine, kindTree, refusal } from "../../../world/kinds";
-import { carried, join, linksFrom, offersFor, removeLink, type Offer } from "../../../world/links";
+import { fieldSummary, join, linksFrom, offersFor, removeLink, type Offer } from "../../../world/links";
 import { JoinChoices } from "./JoinPopup";
 
 export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; thingKey: string }) {
@@ -596,7 +596,7 @@ function Connections({ data, nav, thing, editing, save }: { data: AppData; nav: 
             <SwipeRow action="Remove" onAction={() => save(removeLink(data.items, r.link.key))}>
               <button onClick={() => nav.open({ name: "link", key: r.link.key })}>
                 <span className="title"><span className="link-word">{r.word}</span> {names.get(r.other) ?? r.other}</span>
-                {(r.link.value || r.link.start || r.link.end) && <span className="sub">{[r.link.value && `${carried(r.kind) ?? "value"} ${r.link.value}`, dates(r.link)].filter(Boolean).join(" · ")}</span>}
+                {(r.link.fields?.length || r.link.start || r.link.end) && <span className="sub">{[fieldSummary(data.items, r.link, thing.key), dates(r.link)].filter(Boolean).join(" · ")}</span>}
               </button>
             </SwipeRow>
           </li>

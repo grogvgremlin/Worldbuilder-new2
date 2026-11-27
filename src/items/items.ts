@@ -554,6 +554,24 @@ export const ThingKind = z.strictObject({
 });
 export type ThingKind = z.infer<typeof ThingKind>;
 
+// A field a link kind offers on its links: the same both ways (distance), or one value each way
+// (speed: 4 uphill, 7 down).
+export const LinkField = z.strictObject({
+  name: z.string(), // "distance"
+  about: z.string().optional(),
+  byDirection: z.boolean().optional(), // true: a value from → to and one to → from
+});
+export type LinkField = z.infer<typeof LinkField>;
+
+// A field filled in on a link. `direction` only for a field kept each way: "from to" is travelling
+// from the link's from end to its to end, "to from" the other way.
+export const LinkValue = z.strictObject({
+  field: z.string(),
+  value: z.string(),
+  direction: z.enum(["from to", "to from"]).optional(),
+});
+export type LinkValue = z.infer<typeof LinkValue>;
+
 // A kind of link, declared once (§3): which way it runs, whether it makes a tree, what it expects.
 export const LinkKind = z.strictObject({
   ...common,
@@ -575,10 +593,13 @@ export const LinkKind = z.strictObject({
   // hidden here by hand (owner, 26 Nov: a dynasty of Nuln's rulers without everyone else).
   loose: z.enum(["show", "hide"]).optional(), // absent: show
   hiddenHere: z.array(z.string()).optional(), // thing keys
-  // What a link of this kind carries (§3): nothing, or a value (loyalty +2, 40 miles), named here
-  // (owner, 27 Nov). "A kind" (fear, kinship type) comes later. Absent: nothing.
+  // What its links carry: named fields, offered on each link (owner, 27 Nov: "links may carry multiple
+  // values … and those values may be asymmetrical"). §3's "carries a value"; speed by direction (§4),
+  // conductance by direction (§6). "A kind" (fear, kinship type) comes later.
+  fields: z.array(LinkField).optional(),
+  // Earlier (27 Nov, one day): a single value. Upgraded on read into `fields` (race-dimensions.ts).
   carries: z.enum(["nothing", "value"]).optional(),
-  valueName: z.string().optional(), // what the value is called on its links ("loyalty"); blank: "value"
+  valueName: z.string().optional(),
   // How its links are drawn on maps and the Diagram (owner, 27 Nov). Absent: worked out from its
   // place in the world's order; a link can override colour and line.
   colour: z.string().optional(), // "#2f6f8f"
@@ -633,7 +654,8 @@ export const Link = z.strictObject({
   from: z.string(), // thing key
   linkKind: z.string(), // link-kind key
   to: z.string(), // thing key
-  value: z.string().optional(), // what it carries, where its kind carries one (loyalty +2)
+  fields: z.array(LinkValue).optional(), // what it carries: its link kind's fields, and any of its own
+  value: z.string().optional(), // earlier (27 Nov, one day): a single value; upgraded on read into `fields`
   // A group membership can bring more than the member itself (owner, 26 Nov: "a container brings its
   // items with it"): its contents in one tree, or, for a group, its members. Worked out each time,
   // so what's added there later is in the group too.

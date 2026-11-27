@@ -103,8 +103,8 @@ export function linkKindOf(items: Item[], key: string): LinkKind | undefined {
   return items.find((i): i is LinkKind => i.kind === "link-kind" && i.key === key);
 }
 
-// Changes one link: anything but its ends and kind (value, dates, note, colour, line).
-export function changeLink(items: Item[], key: string, change: Partial<Pick<Link, "value" | "start" | "end" | "note" | "colour" | "line">>): Item[] {
+// Changes one link: anything but its ends and kind (dates, note, colour, line). Fields: setLinkValue.
+export function changeLink(items: Item[], key: string, change: Partial<Pick<Link, "start" | "end" | "note" | "colour" | "line">>): Item[] {
   return items.map((i) => (i.kind === "link" && i.key === key ? clean({ ...i, ...change }) : i));
 }
 
@@ -213,9 +213,64 @@ export function linkStyle(items: Item[], world: string, link: Link): LinkStyle {
   return { colour: link.colour ?? base.colour, line: link.line ?? base.line, arrow: base.arrow };
 }
 
-// The name for what a link of this kind carries ("loyalty"), or null if it carries nothing.
-export function carried(kind: LinkKind | undefined): string | null {
-  return kind?.carries === "value" ? kind.valueName || "value" : null;
+// --- What a link carries: fields (owner, 27 Nov) ---------------------------------------------------
+// A link kind offers named fields; each is the same both ways (distance) or kept each way (speed:
+// 4 from → to, 7 to → from). A link can also carry fields of its own, as an item can.
+
+export type LinkDirection = "from to" | "to from";
+
+// The fields a link shows: its kind's, then any of its own, each with whether it's kept each way.
+export function fieldsOfLink(items: Item[], link: Link): { name: string; byDirection: boolean; offered: boolean; about?: string }[] {
+  const offered = (linkKindOf(items, link.linkKind)?.fields ?? []).map((f) => ({ name: f.name, byDirection: !!f.byDirection, offered: true, about: f.about }));
+  const own = [...new Set((link.fields ?? []).map((f) => f.field))]
+    .filter((name) => !offered.some((o) => o.name === name))
+    .map((name) => ({ name, byDirection: (link.fields ?? []).some((f) => f.field === name && f.direction), offered: false }));
+  return [...offered, ...own];
+}
+
+// One field's value (one way, for a field kept each way); "" if not set.
+export function linkValue(link: Link, field: string, direction?: LinkDirection): string {
+  return (link.fields ?? []).find((f) => f.field === field && f.direction === direction)?.value ?? "";
+}
+
+// Sets one field's value (one way, for a field kept each way); blank takes it off.
+export function setLinkValue(items: Item[], key: string, field: string, value: string, direction?: LinkDirection): Item[] {
+  return items.map((i) => {
+    if (i.kind !== "link" || i.key !== key) return i;
+    const kept = (i.fields ?? []).filter((f) => !(f.field === field && f.direction === direction));
+    const fields = value.trim() ? [...kept, { field, value: value.trim(), ...(direction ? { direction } : {}) }] : kept;
+    const { fields: _old, ...rest } = i;
+    return fields.length ? { ...rest, fields } : rest;
+  });
+}
+
+// Takes a field off a link altogether (both ways).
+export function removeLinkField(items: Item[], key: string, field: string): Item[] {
+  return items.map((i) => {
+    if (i.kind !== "link" || i.key !== key) return i;
+    const fields = (i.fields ?? []).filter((f) => f.field !== field);
+    const { fields: _old, ...rest } = i;
+    return fields.length ? { ...rest, fields } : rest;
+  });
+}
+
+// What a link carries, in a line: "distance 40 · speed → 4, ← 7". Read from one end (`from`), the
+// arrows are as seen from there: → leaving it.
+export function fieldSummary(items: Item[], link: Link, from?: string): string {
+  const reversed = from !== undefined && from === link.to;
+  const out: string[] = [];
+  for (const f of fieldsOfLink(items, link)) {
+    if (!f.byDirection) {
+      const v = linkValue(link, f.name);
+      if (v) out.push(`${f.name} ${v}`);
+      continue;
+    }
+    const [away, back] = reversed ? ["to from", "from to"] : ["from to", "to from"];
+    const there = linkValue(link, f.name, away as LinkDirection);
+    const home = linkValue(link, f.name, back as LinkDirection);
+    if (there || home) out.push(`${f.name} ${[there && `→ ${there}`, home && `← ${home}`].filter(Boolean).join(", ")}`);
+  }
+  return out.join(" · ");
 }
 
 function nameOf(items: Item[], key: string): string {
@@ -225,6 +280,6 @@ function nameOf(items: Item[], key: string): string {
 // Blank optional fields dropped, so the stored link reads cleanly.
 function clean(link: Link): Link {
   const out = { ...link } as Record<string, unknown>;
-  for (const f of ["value", "start", "end", "note", "colour", "line"]) if (out[f] === "" || out[f] === undefined) delete out[f];
+  for (const f of ["start", "end", "note", "colour", "line"]) if (out[f] === "" || out[f] === undefined) delete out[f];
   return out as Link;
 }

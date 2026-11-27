@@ -9,7 +9,8 @@ import { cloneLinkKind, fieldsOffered, flavoursOf, hasKind, kindTree, misfitLink
 import { MisfitList } from "./WorldScreen";
 import type { AppData } from "../../app-data";
 import { firstTree } from "../../../world/places";
-import { linkKindStyle, linkTitle } from "../../../world/links";
+import { fieldSummary, linkKindStyle, linkTitle } from "../../../world/links";
+import { SwipeRow } from "../../swipe";
 import type { Nav } from "../../App";
 import { TextBox } from "./text-box";
 import { useFoldAll } from "./fold-all";
@@ -147,19 +148,7 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
       </div>
       {/* What its links carry, and how they're drawn (owner, 27 Nov: configurable on the link kind,
           and on each link). */}
-      <div className="field">
-        <span className="label">Carries</span>
-        <select value={kind.carries ?? "nothing"} onChange={(e) => change({ carries: e.target.value === "value" ? "value" : undefined })}>
-          <option value="nothing">nothing</option>
-          <option value="value">a value (loyalty +2, 40 miles)</option>
-        </select>
-      </div>
-      {kind.carries === "value" && (
-        <div className="field">
-          <span className="label">Called</span>
-          <TextBox className="field-box" value={kind.valueName ?? ""} placeholder="e.g. loyalty, distance (blank: value)" onSave={(v) => change({ valueName: v || undefined })} />
-        </div>
-      )}
+      <LinkFields kind={kind} change={change} />
       {kind.hierarchy === "none" ? (
         <DrawnAs data={data} kind={kind} change={change} />
       ) : (
@@ -221,7 +210,7 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
             <li key={l.key}>
               <button onClick={() => nav.open({ name: "link", key: l.key })}>
                 <span className="title">{linkTitle(data.items, l)}</span>
-                {(l.value || l.start || l.end) && <span className="sub">{[l.value, [l.start, l.end].filter(Boolean).join("–")].filter(Boolean).join(" · ")}</span>}
+                {(l.fields?.length || l.start || l.end) && <span className="sub">{[fieldSummary(data.items, l), [l.start, l.end].filter(Boolean).join("–")].filter(Boolean).join(" · ")}</span>}
               </button>
             </li>
           ))}
@@ -245,6 +234,43 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
         }}>Remove this link kind</button>
       </div>
     </article>
+  );
+}
+
+// The fields its links carry (owner, 27 Nov: "links may carry multiple values … asymmetrical"): each
+// the same both ways (distance) or kept each way (speed: uphill and down). Swipe one left to remove
+// it from the kind; values already on links stay, as fields of their own.
+function LinkFields({ kind, change }: { kind: LinkKind; change: (patch: Partial<LinkKind>) => Promise<void> }) {
+  const [name, setName] = useState("");
+  const fields = kind.fields ?? [];
+  const set = (next: LinkKind["fields"]) => change({ fields: next && next.length ? next : undefined });
+  const add = () => {
+    const n = name.trim();
+    if (!n || fields.some((f) => f.name.toLowerCase() === n.toLowerCase())) return;
+    set([...fields, { name: n }]);
+    setName("");
+  };
+  return (
+    <>
+      <h2>What its links carry</h2>
+      {fields.length === 0 && <p className="sub">Nothing yet. Add a field (distance, loyalty, toll); tick "each way" for one that differs by direction (speed uphill and down).</p>}
+      <ul className="list">
+        {fields.map((f, n) => (
+          <li key={f.name}>
+            <SwipeRow action="Remove" onAction={() => set(fields.filter((_, i) => i !== n))}>
+              <div className="link-field-row">
+                <span className="title">{f.name}</span>
+                <label className="choice"><input type="checkbox" checked={!!f.byDirection} onChange={() => set(fields.map((g, i) => (i === n ? { ...g, byDirection: g.byDirection ? undefined : true } : g)))} /> each way</label>
+              </div>
+            </SwipeRow>
+          </li>
+        ))}
+      </ul>
+      <div className="inline-add">
+        <input className="filter" placeholder="A field (e.g. distance)" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />
+        <button onClick={add}>Add</button>
+      </div>
+    </>
   );
 }
 
@@ -304,7 +330,7 @@ function whatItDoes(kind: LinkKind, isMain: boolean): string[] {
     lines.push("A connection: it joins two items and contains nothing (a road, an alliance).");
     lines.push("Join two items with it from the map or the Diagram (select two, Join…) or an item's card (Connections). Its links are drawn on both, switched under Layers ▾ → Links, and listed under Connections on each item's page.");
   }
-  if (kind.carries === "value") lines.push(`Each link carries a value${kind.valueName ? ` (${kind.valueName})` : ""}, set on the link's card.`);
+  if (kind.fields?.length) lines.push(`Each link carries ${kind.fields.map((f) => (f.byDirection ? `${f.name} (each way)` : f.name)).join(", ")}, filled in on the link's card.`);
   lines.push(kind.direction === "both ways" ? "Both ways: it reads the same from either end." : `One way: from the other end it reads "${kind.reverseName ?? `${kind.name} (from)`}".`);
   lines.push(kind.strictness === "warn" ? "What it takes (below) is a warning: misfits are allowed and flagged." : "What it takes (below) is enforced: misfits are refused.");
   return lines;

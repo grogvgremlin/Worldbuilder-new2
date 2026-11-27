@@ -17,8 +17,8 @@ import { TextBox } from "./text-box";
 import { SwipeRow } from "../../swipe";
 import { useChosenTree } from "./tree-picker";
 import { recalled, rememberAll, useRemembered } from "./remembered";
-import { fitsTree, kindLine, kindTree, refusal } from "../../../world/kinds";
-import { linkStoodFor, linkTitle, plainLinks, setPartOf, stretchesOf } from "../../../world/links";
+import { fitsTree, isStrict, kindLine, kindTree, refusal } from "../../../world/kinds";
+import { alongRoad, linkStoodFor, linkTitle, partOfMisfit, plainLinks, setPartOf } from "../../../world/links";
 import { fieldSummary, join, linksFrom, offersFor, removeLink, type Offer } from "../../../world/links";
 import { JoinChoices } from "./JoinPopup";
 
@@ -570,10 +570,21 @@ function AddMember({ data, world, group, linkKind, treesOf, save }: { data: AppD
 // an item that stands for a link, which link.
 function Stretches({ data, nav, thing, editing, save }: { data: AppData; nav: Nav; thing: Thing; editing: boolean; save: (items: Item[]) => Promise<void> }) {
   const world = thing.world;
-  const parts = stretchesOf(data.items, world, thing.key);
+  const along = alongRoad(data.items, world, thing.key);
+  const parts = along.pieces.flatMap((p) => p.runs.flatMap((r) => r.links));
   const stood = linkStoodFor(data.items, thing.key);
-  const free = plainLinks(data.items, world).filter((l) => !l.partOf && l.asThing !== thing.key);
-  if (parts.length === 0 && !stood && !editing) return null;
+  const free = plainLinks(data.items, world).filter((l) => !l.partOf && l.asThing !== thing.key && !partOfRefused(l.key));
+  // Offered while editing where it could hold stretches: some link kind's links can be part of it (or
+  // no link kind limits what its links are part of).
+  function partOfRefused(link: string): boolean {
+    const l = data.items.find((i): i is Link => i.kind === "link" && i.key === link);
+    return !!l && isStrict(data.items, l.linkKind) && !!partOfMisfit(data.items, world, link, thing.key);
+  }
+  const canHold = free.length > 0;
+  if (parts.length === 0 && !stood && !(editing && canHold)) return null;
+  const name = (key: string) => data.items.find((i) => i.key === key)?.name ?? key;
+  const ends = along.pieces.flatMap((p) => p.runs.flatMap((r) => [r.points[0], r.points[r.points.length - 1]]));
+  const points = [...new Set(along.pieces.flatMap((p) => p.runs.flatMap((r) => r.points)))];
   return (
     <>
       {stood && (
@@ -581,20 +592,56 @@ function Stretches({ data, nav, thing, editing, save }: { data: AppData; nav: Na
           Stands for the link <button className="link" onClick={() => nav.open({ name: "link", key: stood.key })}>{linkTitle(data.items, stood)}</button>.
         </p>
       )}
-      {(parts.length > 0 || editing) && (
+      {parts.length > 0 && (
+        // Along it (owner, 27 Nov): worked out from its stretches; where it meets other roads; gaps.
+        <Fold id="along" title="Along it">
+          {along.pieces.length > 1 && <p className="sub warn">⚠ In {along.pieces.length} pieces: nothing joins them. Add the missing stretch, or leave it if the road really breaks (a ferry, a ford).</p>}
+          {along.pieces.map((piece, n) => (
+            <div key={n} className="along-piece">
+              {along.pieces.length > 1 && <div className="sub field-group">Piece {n + 1}</div>}
+              {piece.runs.map((run, r) => (
+                <p key={r} className="link-list">
+                  {r > 0 && <span className="sub">branch: </span>}
+                  {run.points.map((k, p) => (
+                    <span key={`${k}${p}`}>
+                      {p > 0 && " → "}
+                      <button className="link" onClick={() => nav.open({ name: "place", key: k })}>{name(k)}</button>
+                      {along.meets.get(k) && <span className="sub"> (meets {along.meets.get(k)!.map((t) => t.name).join(", ")})</span>}
+                    </span>
+                  ))}
+                </p>
+              ))}
+            </div>
+          ))}
+          {editing && (
+            <label className="stack">
+              <span className="sub">Reads from</span>
+              <select value={thing.startsAt && points.includes(thing.startsAt) ? thing.startsAt : ""} onChange={(e) => save(data.items.map((i) => (i.key === thing.key ? { ...thing, startsAt: e.target.value || undefined } : i)))}>
+                <option value="">(an end, by name)</option>
+                {[...new Set([...ends, ...points])].map((k) => <option key={k} value={k}>{name(k)}{ends.includes(k) ? "" : " (partway)"}</option>)}
+              </select>
+            </label>
+          )}
+        </Fold>
+      )}
+      {(parts.length > 0 || (editing && canHold)) && (
         <Fold id="stretches" title={`Stretches${parts.length ? ` (${parts.length})` : ""}`}>
-          {editing && free.length > 0 && (
-            <select className="tree-select" value="" onChange={(e) => e.target.value && save(setPartOf(data.items, e.target.value, thing.key))}>
+          {editing && canHold && (
+            <select className="tree-select" value="" onChange={(e) => {
+              if (!e.target.value) return;
+              const result = setPartOf(data.items, e.target.value, thing.key);
+              return result.problem ? alert(result.problem) : save(result.items);
+            }}>
               <option value="">Add a stretch (a link, as part of this)…</option>
-              {free.map((l) => <option key={l.key} value={l.key}>{linkTitle(data.items, l)}</option>)}
+              {free.map((l) => <option key={l.key} value={l.key}>{linkTitle(data.items, l)}{partOfMisfit(data.items, world, l.key, thing.key) ? " ⚠" : ""}</option>)}
             </select>
           )}
           <ul className="list">
             {parts.map((l) => (
               <li key={l.key}>
-                <SwipeRow action="Take out" onAction={() => save(setPartOf(data.items, l.key, null))}>
+                <SwipeRow action="Take out" onAction={() => save(setPartOf(data.items, l.key, null).items)}>
                   <button onClick={() => nav.open({ name: "link", key: l.key })}>
-                    <span className="title">{linkTitle(data.items, l)}</span>
+                    <span className="title">{linkTitle(data.items, l)}{partOfMisfit(data.items, world, l.key, thing.key) ? " ⚠" : ""}</span>
                     {(l.fields?.length || l.start || l.end) && <span className="sub">{[fieldSummary(data.items, l), dates(l)].filter(Boolean).join(" · ")}</span>}
                   </button>
                 </SwipeRow>

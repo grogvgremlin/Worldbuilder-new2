@@ -8,8 +8,8 @@
 // spec/authoring/authoring-v2.md §1.1 (ends first; misfits greyed with the reason). Strict by default
 // is the owner's (build log, 26 Nov, "Questions for design").
 
-import type { Item, Link, LinkKind, Thing } from "../items/items";
-import { inOrder, isStrict, misfit } from "./kinds";
+import type { Item, Link, LinkKind, Thing, WorldMap } from "../items/items";
+import { inOrder, isStrict, itemFits, misfit } from "./kinds";
 import { addToGroup } from "./groups";
 import { descendantsOf, hiddenByHand, hideHere, parentOf, setParent } from "./places";
 import { linkKindsIn, linksIn, newKey, newLink } from "./world";
@@ -294,43 +294,151 @@ function clean(link: Link): Link {
 // Design: design/world-structure.md §3 ("a link that needs links of its own becomes a thing"), §4
 // (transit networks: segments, part of, routes with speed by direction).
 
-// Marks a link as a stretch of an item (or of nothing). An item can't be part of a road it's an end of
-// only by accident: that's allowed (a road ending at a town is fine).
-export function setPartOf(items: Item[], key: string, whole: string | null): Item[] {
-  return items.map((i) => {
-    if (i.kind !== "link" || i.key !== key) return i;
-    const { partOf, ...rest } = i;
-    return whole ? { ...rest, partOf: whole } : rest;
-  });
+// Why a link can't be (or, Warn only, shouldn't be) a stretch of an item: its link kind lists what its
+// links can be part of, and the item has none of those kinds. Null if it fits.
+export function partOfMisfit(items: Item[], world: string, key: string, whole: string): string | null {
+  const link = linkOf(items, key);
+  const kind = link ? linkKindOf(items, link.linkKind) : undefined;
+  const item = items.find((i): i is Thing => i.kind === "thing" && i.key === whole);
+  if (!kind || !item || !kind.partOfTakes?.length) return null;
+  if (itemFits(items, world, item.kinds, { take: kind.partOfTakes, leave: [] })) return null;
+  const name = (k: string) => items.find((i) => i.key === k)?.name ?? k;
+  return `"${kind.name}" links can be part of ${kind.partOfTakes.map(name).join(" or ")}; ${item.name} isn't`;
 }
 
-// The links that are stretches of an item, in the order they join up where they can (end to end),
-// else by title.
+// Marks a link as a stretch of an item (or of nothing). Refused if its link kind is Strict and
+// doesn't take that item as a whole.
+export function setPartOf(items: Item[], key: string, whole: string | null): { items: Item[]; problem?: string } {
+  const link = linkOf(items, key);
+  if (!link) return { items, problem: "that link isn't there" };
+  const wrong = whole ? partOfMisfit(items, link.world, key, whole) : null;
+  if (wrong && isStrict(items, link.linkKind)) return { items, problem: wrong };
+  return {
+    items: items.map((i) => {
+      if (i.kind !== "link" || i.key !== key) return i;
+      const { partOf, ...rest } = i;
+      return whole ? { ...rest, partOf: whole } : rest;
+    }),
+  };
+}
+
+// The links that are stretches of an item, along the road (see `alongRoad`).
 export function stretchesOf(items: Item[], world: string, whole: string): Link[] {
-  const parts = linksIn(items, world).filter((l) => l.partOf === whole);
-  return inRoadOrder(items, parts);
+  return alongRoad(items, world, whole).pieces.flatMap((p) => p.runs.flatMap((r) => r.links));
 }
 
-// End to end: start from a stretch whose first end no other stretch reaches, and follow on.
-function inRoadOrder(items: Item[], parts: Link[]): Link[] {
-  const left = [...parts].sort((a, b) => linkTitle(items, a).localeCompare(linkTitle(items, b)));
-  const out: Link[] = [];
-  const ends = (l: Link) => [l.from, l.to];
+// Along a road (owner, 27 Nov), worked out from its stretches, never stored:
+//   - pieces: stretches that join up; more than one piece means a gap (flagged, not refused);
+//   - each piece's runs: walked end to end from its start; a fork's other branch is a further run;
+//   - each run's points: the items along it, in order (towns, crossroads: where stretches end);
+//   - meets: at each point, the other roads with a stretch ending there (junctions).
+// The road reads from its chosen start (`startsAt`) where that's on it, else from an end.
+export type Run = { links: Link[]; points: string[] };
+export type Along = { pieces: { runs: Run[] }[]; meets: Map<string, Thing[]> };
+
+export function alongRoad(items: Item[], world: string, whole: string): Along {
+  const parts = linksIn(items, world).filter((l) => l.partOf === whole);
+  const start = items.find((i): i is Thing => i.kind === "thing" && i.key === whole)?.startsAt;
+  const pieces = joinedPieces(parts).map((piece) => ({ runs: walk(items, piece, start) }));
+  // The piece holding the chosen start first; then the longest.
+  pieces.sort((a, b) => Number(hasPoint(b, start)) - Number(hasPoint(a, start)) || count(b) - count(a));
+  const meets = new Map<string, Thing[]>();
+  for (const point of new Set(parts.flatMap((l) => [l.from, l.to]))) {
+    const others = new Set(linksIn(items, world).filter((l) => l.partOf && l.partOf !== whole && (l.from === point || l.to === point)).map((l) => l.partOf!));
+    const roads = [...others].map((k) => items.find((i): i is Thing => i.kind === "thing" && i.key === k)).filter((t): t is Thing => !!t);
+    if (roads.length) meets.set(point, roads);
+  }
+  return { pieces, meets };
+}
+
+const count = (p: { runs: Run[] }) => p.runs.reduce((n, r) => n + r.links.length, 0);
+const hasPoint = (p: { runs: Run[] }, k?: string) => !!k && p.runs.some((r) => r.points.includes(k));
+
+// Stretches split into groups that join up (share an end, directly or through others).
+function joinedPieces(parts: Link[]): Link[][] {
+  const left = [...parts];
+  const out: Link[][] = [];
   while (left.length) {
-    const count = (k: string) => left.filter((l) => ends(l).includes(k)).length;
-    const start = left.find((l) => count(l.from) === 1) ?? left.find((l) => count(l.to) === 1) ?? left[0];
-    let at = count(start.from) === 1 ? start.to : start.from;
-    out.push(start);
-    left.splice(left.indexOf(start), 1);
-    for (;;) {
-      const next = left.find((l) => ends(l).includes(at));
-      if (!next) break;
-      out.push(next);
-      left.splice(left.indexOf(next), 1);
-      at = next.from === at ? next.to : next.from;
+    const piece = [left.shift()!];
+    const points = new Set([piece[0].from, piece[0].to]);
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const l of [...left]) {
+        if (!points.has(l.from) && !points.has(l.to)) continue;
+        piece.push(l);
+        points.add(l.from);
+        points.add(l.to);
+        left.splice(left.indexOf(l), 1);
+        grew = true;
+      }
     }
+    out.push(piece);
   }
   return out;
+}
+
+// One piece walked end to end: from the chosen start if it's here, else from an end (an item only one
+// stretch reaches; by name), else anywhere (a ring road). Branches left over are walked as further
+// runs, each from where it leaves what's walked already.
+function walk(items: Item[], piece: Link[], start?: string): Run[] {
+  const left = [...piece].sort((a, b) => linkTitle(items, a).localeCompare(linkTitle(items, b)));
+  const degree = (k: string) => left.filter((l) => l.from === k || l.to === k).length;
+  const points = [...new Set(piece.flatMap((l) => [l.from, l.to]))];
+  const ends = points.filter((k) => degree(k) === 1).sort((a, b) => nameOf(items, a).localeCompare(nameOf(items, b)));
+  let from = start && points.includes(start) ? start : ends[0] ?? points[0];
+  const seen = new Set<string>();
+  const runs: Run[] = [];
+  while (left.length) {
+    const run: Run = { links: [], points: [from] };
+    let at = from;
+    seen.add(at);
+    for (;;) {
+      const next = left.find((l) => l.from === at || l.to === at);
+      if (!next) break;
+      left.splice(left.indexOf(next), 1);
+      at = next.from === at ? next.to : next.from;
+      run.links.push(next);
+      run.points.push(at);
+      seen.add(at);
+    }
+    if (run.links.length) runs.push(run);
+    const branch = left.find((l) => seen.has(l.from) || seen.has(l.to));
+    if (!branch) break;
+    from = seen.has(branch.from) ? branch.from : branch.to;
+  }
+  return runs;
+}
+
+// Splits a link in two at an item (owner, 27 Nov: "splitting an existing link into two pieces and
+// inserting an item"): A–B becomes A–X (keeping the link's key, so its card and its world item stay
+// with it) and X–B, both with the same kind, road, fields, dates, note and look. Each half's fields
+// (a distance) are then corrected on its card. On each map with both ends pinned and X not, X is
+// pinned halfway. Refused if X is an end already, or a Strict link kind doesn't take it.
+export function splitLink(items: Item[], world: string, key: string, at: string): { items: Item[]; second?: string; problem?: string } {
+  const link = linkOf(items, key);
+  if (!link) return { items, problem: "that link isn't there" };
+  if (at === link.from || at === link.to) return { items, problem: "that item is an end of this link already" };
+  if (isStrict(items, link.linkKind)) {
+    const wrong = ends(items, world, link.linkKind, link.from, at) ?? ends(items, world, link.linkKind, at, link.to);
+    if (wrong) return { items, problem: wrong };
+  }
+  const first: Link = { ...link, to: at };
+  const { asThing, ...copied } = link;
+  const second: Link = { ...copied, key: newKey(items, world, "link", `${at.split(".").pop()}-${link.linkKind.split(".").pop()}-${link.to.split(".").pop()}`), from: at };
+  const out: Item[] = [];
+  for (const i of items) {
+    if (i.key === key) out.push(first, second);
+    else if (i.kind === "map") out.push(pinHalfway(i, link.from, link.to, at));
+    else out.push(i);
+  }
+  return { items: hideHere(out, link.linkKind, at, false), second: second.key };
+}
+
+function pinHalfway(map: WorldMap, a: string, b: string, at: string): WorldMap {
+  const pa = map.pins.find((p) => p.thing === a);
+  const pb = map.pins.find((p) => p.thing === b);
+  if (!pa || !pb || map.pins.some((p) => p.thing === at)) return map;
+  return { ...map, pins: [...map.pins, { thing: at, x: Math.round((pa.x + pb.x) / 2), y: Math.round((pa.y + pb.y) / 2) }] };
 }
 
 // Makes a world item stand for a link (a stretch with its own name, entry and links). Named from the

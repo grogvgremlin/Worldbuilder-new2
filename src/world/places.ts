@@ -116,7 +116,8 @@ export function depthOf(items: Item[], world: string, thing: string, tree?: stri
 // nothing. Worked out from the links, never stored (owner, 25 Nov: filter by containers / base items).
 export function isContainer(items: Item[], world: string, thing: string): boolean {
   const hierarchical = new Set(linkKindsIn(items, world).filter((k) => k.hierarchy !== "none").map((k) => k.key));
-  return linksIn(items, world).some((l) => l.to === thing && hierarchical.has(l.linkKind));
+  // A road holds its stretches (owner, 27 Nov), so it's a container too.
+  return linksIn(items, world).some((l) => (l.to === thing && hierarchical.has(l.linkKind)) || l.partOf === thing);
 }
 
 // Puts an item inside another (or at the top, with null), in one tree. Refused if it would make a

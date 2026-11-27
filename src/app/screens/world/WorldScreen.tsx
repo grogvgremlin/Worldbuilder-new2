@@ -245,10 +245,12 @@ function Containers({ data, world, row }: { data: AppData; world: string; row: (
   const sections = [
     ...treeKinds(data.items, world).map((k) => ({ id: k.key, title: `In the tree "${k.name}"`, list: thingsIn(data.items, world).filter((t) => childrenOf(data.items, world, t.key, k.key).length > 0) })),
     { id: "groups", title: "Groups", list: groupsIn(data.items, world) },
-  ];
+    // Roads and the like hold their stretches (owner, 27 Nov).
+    { id: "roads", title: "Roads (made of stretches)", list: thingsIn(data.items, world).filter((t) => linksIn(data.items, world).some((l) => l.partOf === t.key)) },
+  ].filter((sec) => sec.id !== "roads" || sec.list.length > 0);
   return (
     <>
-      <p className="sub">Containers hold something: in a tree (one at a time), or as a group (many at once). {folds.controls}</p>
+      <p className="sub">Containers hold something: in a tree (one at a time), as a group (many at once), or as a road (its stretches). {folds.controls}</p>
       {sections.map((sec) => (
         <details key={`${sec.id}|${folds.epoch}`} className="fold" open={folds.openFor(true)}>
           <summary>{sec.title} ({sec.list.length})</summary>

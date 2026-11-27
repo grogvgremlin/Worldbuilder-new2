@@ -6,9 +6,9 @@
 import { useState } from "react";
 import type { Item, Link, Thing } from "../../../items/items";
 import { changeEnd, fieldsOfLink, linkValue, removeLinkField, setLinkValue, type LinkDirection, changeLink, changeLinkKind, linkKindOf, linkKindStyle, linkKindsInOrder, linkStyle, removeLink, swapEnds } from "../../../world/links";
-import { misfit } from "../../../world/kinds";
+import { isStrict, misfit } from "../../../world/kinds";
 import { newKey, thingKindsIn, thingsIn } from "../../../world/world";
-import { makeLinkAThing, setPartOf, unlinkThing } from "../../../world/links";
+import { linkTitle, makeLinkAThing, partOfMisfit, setPartOf, splitLink, unlinkThing } from "../../../world/links";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { TextBox } from "./text-box";
@@ -174,14 +174,21 @@ function AsAThing({ data, nav, link, things, save }: { data: AppData; nav: Nav; 
   const world = link.world;
   const kinds = thingKindsIn(data.items, world);
   const [name, setName] = useState("");
-  const [kind, setKind] = useState(kinds.find((k) => /road|river|route/i.test(k.name))?.key ?? "");
+  // A new road starts as the first kind the link kind's links can be part of, else a kind named like a road.
+  const takes = linkKindOf(data.items, link.linkKind)?.partOfTakes ?? [];
+  const [kind, setKind] = useState(takes[0] ?? kinds.find((k) => /road|river|route/i.test(k.name))?.key ?? "");
+  const strict = isStrict(data.items, link.linkKind);
+  const misfitFor = (key: string) => partOfMisfit(data.items, world, link.key, key);
+  const wrong = link.partOf ? misfitFor(link.partOf) : null;
   const whole = things.find((t) => t.key === link.partOf);
   const stood = things.find((t) => t.key === link.asThing);
   const makeWhole = async () => {
     if (!name.trim()) return;
     const key = newKey(data.items, world, "thing", name);
     const thing: Thing = { key, kind: "thing", world, name: name.trim(), kinds: kind ? [kind] : [], fields: [] };
-    await save(setPartOf([...data.items, thing], link.key, key));
+    const result = setPartOf([...data.items, thing], link.key, key);
+    if (result.problem) return alert(result.problem);
+    await save(result.items);
     setName("");
   };
   return (
@@ -190,11 +197,15 @@ function AsAThing({ data, nav, link, things, save }: { data: AppData; nav: Nav; 
       <p className="sub">A road, river or route this is a stretch of: a world item with its own name, entry and links.</p>
       <div className="field">
         <span className="label">Part of</span>
-        <select value={link.partOf ?? ""} onChange={(e) => save(setPartOf(data.items, link.key, e.target.value || null))}>
+        <select value={link.partOf ?? ""} onChange={(e) => {
+          const result = setPartOf(data.items, link.key, e.target.value || null);
+          return result.problem ? alert(result.problem) : save(result.items);
+        }}>
           <option value="">(nothing)</option>
-          {things.filter((t) => t.key !== link.asThing).map((t) => <option key={t.key} value={t.key}>{t.name}</option>)}
+          {things.filter((t) => t.key !== link.asThing && (!strict || !misfitFor(t.key) || t.key === link.partOf)).map((t) => <option key={t.key} value={t.key}>{t.name}{misfitFor(t.key) ? " ⚠" : ""}</option>)}
         </select>
       </div>
+      {wrong && <p className="sub warn">⚠ {wrong} · <button className="link" onClick={() => nav.open({ name: "link-kind", key: link.linkKind })}>Change what its links can be part of</button></p>}
       {whole && <p className="sub"><button className="link" onClick={() => nav.open({ name: "place", key: whole.key })}>Open {whole.name}</button>: its stretches, in order.</p>}
       {!whole && (
         <div className="inline-add">
@@ -206,6 +217,8 @@ function AsAThing({ data, nav, link, things, save }: { data: AppData; nav: Nav; 
           <button onClick={makeWhole}>Make</button>
         </div>
       )}
+
+      <SplitAt data={data} nav={nav} link={link} things={things} save={save} />
 
       <h2>As a world item</h2>
       {stood ? (
@@ -224,6 +237,61 @@ function AsAThing({ data, nav, link, things, save }: { data: AppData; nav: Nav; 
           }}>Make this link a world item</button>
         </>
       )}
+    </>
+  );
+}
+
+// Split this link at an item (owner, 27 Nov: "splitting an existing link into two pieces and inserting
+// an item"): A–B becomes A–X and X–B, both with this link's road, fields and dates (correct each
+// half's distance after). An existing item, or a new one made here. The new item is pinned halfway on
+// maps showing both ends.
+function SplitAt({ data, nav, link, things, save }: { data: AppData; nav: Nav; link: Link; things: Thing[]; save: (items: Item[]) => Promise<void> }) {
+  const world = link.world;
+  const kinds = thingKindsIn(data.items, world);
+  const ends = [link.from, link.to];
+  const endKinds = things.find((t) => t.key === link.from)?.kinds ?? [];
+  const [name, setName] = useState("");
+  const [kind, setKind] = useState(endKinds[0] ?? "");
+  const [done, setDone] = useState<string | null>(null); // the second half, once split
+  const strict = isStrict(data.items, link.linkKind);
+  const fits = (key: string) => !misfit(data.items, world, link.linkKind, "from", key) && !misfit(data.items, world, link.linkKind, "to", key);
+  const split = async (items: Item[], at: string) => {
+    const result = splitLink(items, world, link.key, at);
+    if (result.problem) return alert(result.problem);
+    await save(result.items);
+    setDone(result.second!);
+  };
+  const splitNew = async () => {
+    if (!name.trim()) return;
+    const key = newKey(data.items, world, "thing", name);
+    const thing: Thing = { key, kind: "thing", world, name: name.trim(), kinds: kind ? [kind] : [], fields: [] };
+    await split([...data.items, thing], key);
+    setName("");
+  };
+  const second = done ? data.items.find((i): i is Link => i.kind === "link" && i.key === done) : undefined;
+  return (
+    <>
+      <h2>Split</h2>
+      {second ? (
+        <p className="sub">
+          Split in two: this link now ends at {things.find((t) => t.key === link.to)?.name}, and{" "}
+          <button className="link" onClick={() => nav.open({ name: "link", key: second.key })}>{linkTitle(data.items, second)}</button> carries on. Both kept this link's fields: check each half's (a distance).
+        </p>
+      ) : (
+        <p className="sub">Put an item partway along (an inn, a crossroads, a ford): this link becomes two, through it.</p>
+      )}
+      <select className="tree-select" value="" onChange={(e) => e.target.value && split(data.items, e.target.value)}>
+        <option value="">Split at an item…</option>
+        {things.filter((t) => !ends.includes(t.key) && (!strict || fits(t.key))).map((t) => <option key={t.key} value={t.key}>{t.name}{fits(t.key) ? "" : " ⚠"}</option>)}
+      </select>
+      <div className="inline-add">
+        <input className="filter" placeholder="Or a new item (e.g. The Red Moon inn)" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && splitNew()} />
+        <select value={kind} onChange={(e) => setKind(e.target.value)}>
+          <option value="">no kind</option>
+          {kinds.map((k) => <option key={k.key} value={k.key}>{k.name}</option>)}
+        </select>
+        <button onClick={splitNew}>Split</button>
+      </div>
     </>
   );
 }

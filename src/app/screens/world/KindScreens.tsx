@@ -149,6 +149,10 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
       {/* What its links carry, and how they're drawn (owner, 27 Nov: configurable on the link kind,
           and on each link). */}
       <LinkFields kind={kind} change={change} />
+      {kind.hierarchy === "none" && (
+        // What its links can be stretches of (owner, 27 Nov: road links only part of Road items).
+        <KindChips label="Its links can be part of" hint="Nothing ticked: any item. Strict or Warn only, as below." kinds={thingKinds} on={kind.partOfTakes} onToggle={(k) => change({ partOfTakes: toggle(kind.partOfTakes, k) })} />
+      )}
       {kind.hierarchy === "none" ? (
         <DrawnAs data={data} kind={kind} change={change} />
       ) : (

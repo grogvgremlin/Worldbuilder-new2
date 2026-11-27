@@ -1,11 +1,11 @@
-// World: roads (owner, 27 Nov). A road is a world item; its stretches are links part of it. Along it:
+// World: link containers (owner, 27 Nov): a world item made of links (e.g. a road). Along it:
 // its items in order, where it meets other roads, gaps flagged as pieces, read from a chosen start.
 // A link kind can say what its links can be part of. A link can be split at an item.
 // Design: design/world-structure.md §3–4 (segments, points, part of; crossings and interchanges).
 import { describe, expect, it } from "vitest";
 import type { Item, LinkKind, Thing, WorldMap } from "../src/items/items";
 import { linkKindsIn, newWorld, thingKindsIn } from "../src/world/world";
-import { alongRoad, join, linkOf, partOfMisfit, setPartOf, splitLink } from "../src/world/links";
+import { alongLinks, join, linkOf, partOfMisfit, setPartOf, splitLink } from "../src/world/links";
 import { isContainer } from "../src/world/places";
 
 const W = "mine";
@@ -37,7 +37,7 @@ const names = (items: Item[], keys: string[]) => keys.map((k) => items.find((i) 
 describe("along a road", () => {
   it("lists its items in order, from an end", () => {
     const { items } = world();
-    const along = alongRoad(items, W, key("north"));
+    const along = alongLinks(items, W, key("north"));
     expect(along.pieces).toHaveLength(1);
     expect(names(items, along.pieces[0].runs[0].points)).toEqual(["altdorf", "delberz", "crossroads", "middenheim"]);
   });
@@ -45,12 +45,12 @@ describe("along a road", () => {
   it("reads from the chosen start", () => {
     const { items } = world();
     const fromMiddenheim = items.map((i) => (i.key === key("north") ? { ...(i as Thing), startsAt: key("middenheim") } : i));
-    expect(names(items, alongRoad(fromMiddenheim, W, key("north")).pieces[0].runs[0].points)).toEqual(["middenheim", "crossroads", "delberz", "altdorf"]);
+    expect(names(items, alongLinks(fromMiddenheim, W, key("north")).pieces[0].runs[0].points)).toEqual(["middenheim", "crossroads", "delberz", "altdorf"]);
   });
 
   it("says where it meets other roads", () => {
     const { items } = world();
-    const meets = alongRoad(items, W, key("north")).meets;
+    const meets = alongLinks(items, W, key("north")).meets;
     expect([...meets.keys()]).toEqual([key("crossroads")]);
     expect(meets.get(key("crossroads"))!.map((t) => t.name)).toEqual(["forest"]);
   });
@@ -59,7 +59,7 @@ describe("along a road", () => {
     const { items, road } = world();
     const made = join(items, W, key("far-a"), road, key("far-b"));
     const gapped = setPartOf(made.items, made.link!, key("north")).items;
-    expect(alongRoad(gapped, W, key("north")).pieces).toHaveLength(2);
+    expect(alongLinks(gapped, W, key("north")).pieces).toHaveLength(2);
   });
 
   it("a road with stretches is a container", () => {
@@ -90,7 +90,7 @@ describe("splitting a link", () => {
     const second = linkOf(split.items, split.second!)!;
     expect([first.from, first.to, second.from, second.to]).toEqual([key("altdorf"), key("inn"), key("inn"), key("delberz")]);
     expect([first.partOf, second.partOf, second.fields]).toEqual([key("north"), key("north"), [{ field: "distance", value: "60" }]]);
-    expect(names(split.items, alongRoad(split.items, W, key("north")).pieces[0].runs[0].points)).toEqual(["altdorf", "inn", "delberz", "crossroads", "middenheim"]);
+    expect(names(split.items, alongLinks(split.items, W, key("north")).pieces[0].runs[0].points)).toEqual(["altdorf", "inn", "delberz", "crossroads", "middenheim"]);
   });
 
   it("pins the item halfway on a map with both ends pinned", () => {

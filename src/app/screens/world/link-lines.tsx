@@ -7,7 +7,7 @@
 // it, swap its ends, remove it.
 // Design: design/world-structure.md §3 (topics are display groupings of link kinds, toggled like map
 // layers); spec/authoring/authoring-v2.md §1. Core: src/world/links.ts.
-import type { Item, Link } from "../../../items/items";
+import type { Item, Link, Thing } from "../../../items/items";
 import { linkKindStyle, linkKindsInOrder, linkStyle, linkTitle, removeLink, swapEnds, type LinkStyle } from "../../../world/links";
 import type { OverlayRow, OverlaySet } from "./overlays";
 import type { AppData } from "../../app-data";
@@ -119,5 +119,66 @@ export function LinkBar({ data, world, linkKey, onOpen, apply, onClose }: { data
         <button onClick={async () => (await apply(removeLink(data.items, linkKey)), onClose())}>Remove</button>
       </div>
     </>
+  );
+}
+
+// --- Link containers (owner, 27 Nov: "I don't see the containers of stretches on the diagram or map …
+// this isn't explicitly about roads … it's about link containers") --------------------------------
+// A world item made of links (its links are `partOf` it: a road, a river, a border, a trade route,
+// whatever the world has) drawn as a wide band in its colour under its links, its name along the
+// middle one; a "Made of links" set in the same filter menu and side list, a row per item.
+
+export const LINK_CONTAINERS_SET = "link-containers";
+export const containerRowId = (container: string) => `link-container|${container}`;
+export const CONTAINER_COLOURS = ["#8a6d3b", "#3b6d8a", "#6d8a3b", "#8a3b6d"];
+
+export type ContainerBand = { container: Thing; colour: string; links: { a: Point; b: Point }[] };
+
+// The world items that links are part of, in name order.
+export function linkContainersIn(items: Item[], world: string): Thing[] {
+  const wholes = new Set(items.filter((i): i is Link => i.kind === "link" && i.world === world && !!i.partOf).map((l) => l.partOf!));
+  return items.filter((i): i is Thing => i.kind === "thing" && wholes.has(i.key)).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function containerColour(items: Item[], world: string, container: Thing): string {
+  return container.colour ?? CONTAINER_COLOURS[Math.max(0, linkContainersIn(items, world).findIndex((r) => r.key === container.key)) % CONTAINER_COLOURS.length];
+}
+
+export function linkContainerSet(items: Item[], world: string, on: boolean, isOn: (container: string) => boolean): OverlaySet {
+  const rows: OverlayRow[] = linkContainersIn(items, world).map((r) => ({ id: containerRowId(r.key), name: r.name, key: r.key, opens: "place", depth: 0, on: on && isOn(r.key), colour: containerColour(items, world, r), line: "solid" }));
+  return { id: LINK_CONTAINERS_SET, title: "Made of links", on, rows };
+}
+
+// Bands for the containers shown, from where each link's ends are drawn (`at`); a link with an end
+// not drawn is left out.
+export function containerBands(items: Item[], world: string, containers: Thing[], at: (thing: string) => { p: Point } | null): ContainerBand[] {
+  return containers.map((container) => ({
+    container,
+    colour: containerColour(items, world, container),
+    links: items
+      .filter((i): i is Link => i.kind === "link" && i.world === world && i.partOf === container.key)
+      .map((l) => ({ a: at(l.from)?.p, b: at(l.to)?.p }))
+      .filter((s): s is { a: Point; b: Point } => !!s.a && !!s.b),
+  })).filter((r) => r.links.length > 0);
+}
+
+// Drawn under the links: the same bow as the links (`bulge`), so a band follows its line.
+export function ContainerBands({ bands, k, bulge }: { bands: ContainerBand[]; k: number; bulge?: Point }) {
+  return (
+    <g className="container-bands">
+      {bands.map((band) => {
+        const middle = band.links[Math.floor(band.links.length / 2)];
+        const label = bend(middle.a, middle.b, 0, bulge).point;
+        return (
+          <g key={band.container.key} style={{ color: band.colour }}>
+            {band.links.map((s, n) => {
+              const c = bend(s.a, s.b, 0, bulge).control;
+              return <path key={n} className="container-band" d={`M${s.a.x} ${s.a.y} Q${c.x} ${c.y} ${s.b.x} ${s.b.y}`} style={{ strokeWidth: 12 / k }} />;
+            })}
+            <text className="container-name" x={label.x} y={label.y - 9 / k} style={{ fontSize: 10.5 / k }}>{band.container.name}</text>
+          </g>
+        );
+      })}
+    </g>
   );
 }

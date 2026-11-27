@@ -287,8 +287,10 @@ function clean(link: Link): Link {
   return out as Link;
 }
 
-// --- Roads and links that become things (owner, 27 Nov) --------------------------------------------
-// A road (the Great North Road) is a world item with its own name, entry, fields and links (ruled by,
+// --- Link containers, and links that become things (owner, 27 Nov) --------------------------------
+// Nothing here is about roads: any world item can be made of links (a road, a river, a border, a trade
+// route); what a link kind's links can be part of is the world's own setting (partOfTakes).
+// For example, the Great North Road is a world item with its own name, entry, fields and links (ruled by,
 // sacred to). Its stretches are links, each marked as part of it, carrying distance and speed each
 // way. A stretch that needs links of its own is made a thing: a world item that stands for the link.
 // Design: design/world-structure.md §3 ("a link that needs links of its own becomes a thing"), §4
@@ -322,21 +324,21 @@ export function setPartOf(items: Item[], key: string, whole: string | null): { i
   };
 }
 
-// The links that are stretches of an item, along the road (see `alongRoad`).
-export function stretchesOf(items: Item[], world: string, whole: string): Link[] {
-  return alongRoad(items, world, whole).pieces.flatMap((p) => p.runs.flatMap((r) => r.links));
+// The links that are part of an item, in order along it (see `alongLinks`).
+export function linksPartOf(items: Item[], world: string, whole: string): Link[] {
+  return alongLinks(items, world, whole).pieces.flatMap((p) => p.runs.flatMap((r) => r.links));
 }
 
-// Along a road (owner, 27 Nov), worked out from its stretches, never stored:
+// Along an item made of links (owner, 27 Nov), worked out from its links, never stored:
 //   - pieces: stretches that join up; more than one piece means a gap (flagged, not refused);
 //   - each piece's runs: walked end to end from its start; a fork's other branch is a further run;
 //   - each run's points: the items along it, in order (towns, crossroads: where stretches end);
-//   - meets: at each point, the other roads with a stretch ending there (junctions).
-// The road reads from its chosen start (`startsAt`) where that's on it, else from an end.
+//   - meets: at each point, the other link containers with a link ending there (junctions).
+// It reads from its chosen start (`startsAt`) where that's on it, else from an end.
 export type Run = { links: Link[]; points: string[] };
 export type Along = { pieces: { runs: Run[] }[]; meets: Map<string, Thing[]> };
 
-export function alongRoad(items: Item[], world: string, whole: string): Along {
+export function alongLinks(items: Item[], world: string, whole: string): Along {
   const parts = linksIn(items, world).filter((l) => l.partOf === whole);
   const start = items.find((i): i is Thing => i.kind === "thing" && i.key === whole)?.startsAt;
   const pieces = joinedPieces(parts).map((piece) => ({ runs: walk(items, piece, start) }));
@@ -345,8 +347,8 @@ export function alongRoad(items: Item[], world: string, whole: string): Along {
   const meets = new Map<string, Thing[]>();
   for (const point of new Set(parts.flatMap((l) => [l.from, l.to]))) {
     const others = new Set(linksIn(items, world).filter((l) => l.partOf && l.partOf !== whole && (l.from === point || l.to === point)).map((l) => l.partOf!));
-    const roads = [...others].map((k) => items.find((i): i is Thing => i.kind === "thing" && i.key === k)).filter((t): t is Thing => !!t);
-    if (roads.length) meets.set(point, roads);
+    const containers = [...others].map((k) => items.find((i): i is Thing => i.kind === "thing" && i.key === k)).filter((t): t is Thing => !!t);
+    if (containers.length) meets.set(point, containers);
   }
   return { pieces, meets };
 }

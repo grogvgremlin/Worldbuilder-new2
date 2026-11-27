@@ -220,7 +220,7 @@ describe("what a link carries: fields (owner, 27 Nov)", () => {
 
 describe("roads and links that become things (owner, 27 Nov)", () => {
   it("a road is a world item; its stretches are links marked part of it, in order end to end", async () => {
-    const { setPartOf, stretchesOf } = await import("../src/world/links");
+    const { setPartOf, linksPartOf } = await import("../src/world/links");
     const { items, kinds } = setUp();
     const road: Thing = { key: key("north-road"), kind: "thing", world: W, name: "The Great North Road", kinds: [], fields: [] };
     const town = { ...(items.find((i) => i.key === key("nuln")) as Thing), key: key("wurtbad"), name: "wurtbad" };
@@ -229,7 +229,7 @@ describe("roads and links that become things (owner, 27 Nov)", () => {
     const a = join(next, W, key("nuln"), adj, key("wurtbad"));
     const b = join(a.items, W, key("averland"), adj, key("nuln"));
     next = setPartOf(setPartOf(b.items, b.link!, road.key).items, a.link!, road.key).items;
-    expect(stretchesOf(next, W, road.key).map((l) => linkTitle(next, l))).toEqual(["averland — adjacent to — nuln", "nuln — adjacent to — wurtbad"]);
+    expect(linksPartOf(next, W, road.key).map((l) => linkTitle(next, l))).toEqual(["averland — adjacent to — nuln", "nuln — adjacent to — wurtbad"]);
     expect(linkOf(setPartOf(next, a.link!, null).items, a.link!)!.partOf).toBeUndefined();
   });
 

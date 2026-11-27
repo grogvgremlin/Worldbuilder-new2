@@ -469,3 +469,6 @@ main:has(.map-screen), main:has(.diagram-wrap) { max-width: none; }
 /* Allowed values beside a field on a kind's card (owner, 27 Nov). */
 .kind-field { flex-wrap: wrap; } .kind-field > .field-box { flex: 1 1 90px; min-width: 0; } .kind-field > .row-buttons { order: 2; } .kind-field > .choices-box { order: 3; flex: 1 1 100%; }
 .link-field-row { flex-wrap: wrap; gap: 8px; } .link-field-row .choices-box { flex: 1 1 140px; }
+/* Items: the type row wraps on a phone rather than running off the screen (owner, 27 Nov). */
+.segments.items-types { flex-wrap: wrap; max-width: 100%; } .segments.items-types button { white-space: nowrap; flex: 0 0 auto; }
+.tree-select.which { margin: 6px 0; }

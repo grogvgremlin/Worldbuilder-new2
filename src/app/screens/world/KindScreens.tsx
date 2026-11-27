@@ -9,6 +9,7 @@ import { cloneLinkKind, fieldsOffered, flavoursOf, hasKind, kindTree, misfitLink
 import { MisfitList } from "./WorldScreen";
 import type { AppData } from "../../app-data";
 import { firstTree } from "../../../world/places";
+import { linkKindStyle, linkTitle } from "../../../world/links";
 import type { Nav } from "../../App";
 import { TextBox } from "./text-box";
 import { useFoldAll } from "./fold-all";
@@ -142,6 +143,22 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
           <option value="several parents">several parents, no loops</option>
         </select>
       </div>
+      {/* What its links carry, and how they're drawn (owner, 27 Nov: configurable on the link kind,
+          and on each link). */}
+      <div className="field">
+        <span className="label">Carries</span>
+        <select value={kind.carries ?? "nothing"} onChange={(e) => change({ carries: e.target.value === "value" ? "value" : undefined })}>
+          <option value="nothing">nothing</option>
+          <option value="value">a value (loyalty +2, 40 miles)</option>
+        </select>
+      </div>
+      {kind.carries === "value" && (
+        <div className="field">
+          <span className="label">Called</span>
+          <TextBox className="field-box" value={kind.valueName ?? ""} placeholder="e.g. loyalty, distance (blank: value)" onSave={(v) => change({ valueName: v || undefined })} />
+        </div>
+      )}
+      {kind.hierarchy === "none" && <DrawnAs data={data} kind={kind} change={change} />}
       <h2>What this does here</h2>
       <ul className="plain does">{whatItDoes(kind, isTree).map((line) => <li key={line}>{line}</li>)}</ul>
       <h2>What it takes</h2>
@@ -187,6 +204,18 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
         </>
       )}
       <p className="sub">{count} link{count === 1 ? "" : "s"} of this kind.</p>
+      {kind.hierarchy === "none" && count > 0 && (
+        <ul className="list">
+          {linksIn(data.items, kind.world).filter((l) => l.linkKind === kind.key).map((l) => (
+            <li key={l.key}>
+              <button onClick={() => nav.open({ name: "link", key: l.key })}>
+                <span className="title">{linkTitle(data.items, l)}</span>
+                {(l.value || l.start || l.end) && <span className="sub">{[l.value, [l.start, l.end].filter(Boolean).join("–")].filter(Boolean).join(" · ")}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       {/* Links that no longer fit, after a change to what it takes: flagged, strict or warn. */}
       <MisfitList data={data} nav={nav} misfits={misfitLinks(data.items, kind.world).filter((m) => m.link.linkKind === kind.key)} save={async (items) => (await data.setItems(items), setChanged((n) => n + 1))} />
       <div className="buttons">
@@ -205,6 +234,33 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
         }}>Remove this link kind</button>
       </div>
     </article>
+  );
+}
+
+// How links of this kind are drawn on maps and the Diagram: colour, line, arrows (one way). A link can
+// override the colour and line on its own card.
+function DrawnAs({ data, kind, change }: { data: AppData; kind: LinkKind; change: (patch: Partial<LinkKind>) => Promise<void> }) {
+  const style = linkKindStyle(data.items, kind.world, kind);
+  return (
+    <>
+      <h2>How its links are drawn</h2>
+      <label className="colour-row">
+        <span className="sub">Colour</span>
+        <input type="color" value={style.colour} onChange={(e) => change({ colour: e.target.value })} />
+        {kind.colour && <button className="link" onClick={() => change({ colour: undefined })}>Use the default</button>}
+      </label>
+      <div className="field">
+        <span className="label">Line</span>
+        <select value={kind.line ?? "solid"} onChange={(e) => change({ line: e.target.value === "solid" ? undefined : (e.target.value as LinkKind["line"]) })}>
+          <option value="solid">Solid</option>
+          <option value="dashed">Dashed</option>
+          <option value="dotted">Dotted</option>
+        </select>
+      </div>
+      {kind.direction === "one-way" && (
+        <label className="choice"><input type="checkbox" checked={kind.arrows !== false} onChange={() => change({ arrows: kind.arrows === false ? undefined : false })} /> An arrow on each link, pointing from → to</label>
+      )}
+    </>
   );
 }
 
@@ -228,15 +284,16 @@ function whatItDoes(kind: LinkKind, isMain: boolean): string[] {
   const lines: string[] = [];
   if (kind.hierarchy === "one parent") {
     lines.push("A tree: an item is in at most one at a time, so containers of this kind don't overlap.");
-    lines.push("Shown under Items → Tree and in the Diagram (choose the tree there), as a line on each item's page, and as areas on maps (Areas ▾ → Tree).");
+    lines.push("Shown under Items → Tree and in the Diagram (choose the tree there), as a line on each item's page, and as areas on maps (Layers ▾ → the tree).");
     if (isMain) lines.push("First in the order (Kinds tab, ↑ ↓): shown first, and used wherever no tree is chosen.");
   } else if (kind.hierarchy === "several parents") {
     lines.push("Groups: an item can be in many at once, and groups can overlap.");
     lines.push("Shown under Items → Groups, as Groups and members on each item's page, and as dashed areas on maps.");
   } else {
     lines.push("A connection: it joins two items and contains nothing (a road, an alliance).");
-    lines.push("Drawing connections comes next: until then links of this kind are listed under Links on an item's page.");
+    lines.push("Join two items with it from the map or the Diagram (select two, Join…) or an item's card (Connections). Its links are drawn on both, switched under Layers ▾ → Links, and listed under Connections on each item's page.");
   }
+  if (kind.carries === "value") lines.push(`Each link carries a value${kind.valueName ? ` (${kind.valueName})` : ""}, set on the link's card.`);
   lines.push(kind.direction === "both ways" ? "Both ways: it reads the same from either end." : `One way: from the other end it reads "${kind.reverseName ?? `${kind.name} (from)`}".`);
   lines.push(kind.strictness === "warn" ? "What it takes (below) is a warning: misfits are allowed and flagged." : "What it takes (below) is enforced: misfits are refused.");
   return lines;

@@ -116,6 +116,13 @@ export function swapEnds(items: Item[], world: string, key: string): { items: It
   return relink(items, world, link, link.to, link.linkKind, link.from);
 }
 
+// Changes one end of a link to another item, through the same check as joining.
+export function changeEnd(items: Item[], world: string, key: string, end: "from" | "to", thing: string): { items: Item[]; problem?: string } {
+  const link = linkOf(items, key);
+  if (!link) return { items, problem: "that link isn't there" };
+  return end === "from" ? relink(items, world, link, thing, link.linkKind, link.to) : relink(items, world, link, link.from, link.linkKind, thing);
+}
+
 // Changes a link's kind, its ends kept, through the same check as joining.
 export function changeLinkKind(items: Item[], world: string, key: string, linkKind: string): { items: Item[]; problem?: string } {
   const link = linkOf(items, key);

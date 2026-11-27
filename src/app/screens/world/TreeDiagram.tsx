@@ -12,7 +12,7 @@
 // is refused), §5 (abstract views laid out by containment); spec/session-20-notes-3.md §0.1 (a
 // canvas as another view on the same structure). Layout: src/world/diagram.ts.
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from "react";
-import { descendantsOf, hideHere, looseIn, setParent, treeKinds } from "../../../world/places";
+import { descendantsOf, hideHere, looseIn, pathOf, setParent, treeKinds } from "../../../world/places";
 import { groupOutlines, treeOutlines, type Outline } from "../../../world/outlines";
 import { colourOf } from "./area-colours";
 import { OverlayList, OverlayMenu, type OverlayRow, type OverlaySet } from "./overlays";
@@ -26,6 +26,8 @@ import { HiddenNote, NewPlace, type Part } from "./WorldScreen";
 import { useUndo } from "./undo";
 import { GroupPopup } from "./GroupPopup";
 import { JoinPopup } from "./JoinPopup";
+import { LinkBar, LinkLines, linkLines, linkRowId, LINKS_SET, linkSet } from "./link-lines";
+import { plainLinks } from "../../../world/links";
 import { DOUBLE_TAP_MS, swallowNextClick, tapSlop } from "./gestures";
 
 
@@ -37,6 +39,7 @@ type Gesture =
   | { kind: "box"; key: string; start: Point; moved: boolean }
   | { kind: "fold"; key: string; start: Point; from: View; moved: boolean }
   | { kind: "pinch"; startDistance: number; startCentre: Point; from: View }
+  | { kind: "link"; link: string; start: Point; from: View; moved: boolean }
   | null;
 // A drag under way: the boxes dragged, those drawn moving (with their branches, if they follow), by
 // how much, and (Move inside) the box it would drop into, or one it's over that can't take it.
@@ -53,6 +56,8 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const [selected, setSelected] = useState<string[]>([]);
   const [grouping, setGrouping] = useState(false);
   const [joining, setJoining] = useState(false); // two selected: join them (owner, 27 Nov)
+  const [pickedLink, setPickedLink] = useState<string | null>(null); // a link tapped on the Diagram
+  const [linksShown, setLinksShown] = useKept(`diagram-links|${world}`, true); // the Links set
   const flagged = itemsWithMisfits(data.items, world, tree); // in one of this tree's links that doesn't fit
   const looseKeys = new Set(looseIn(data.items, world, tree).map((t) => t.key));
   const looseSelected = selected.filter((k) => looseKeys.has(k));
@@ -93,11 +98,28 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   };
   const outlineColour = (o: Outline) => colourOf(o.thing, o.by, o.by === "group" ? 0 : otherTrees.findIndex((k) => k.key === o.tree) + 1, 0);
   // The sets for the shared filter menu and key: groups, then each other tree (as on maps).
-  const outlineRow = (o: Outline): OverlayRow => ({ id: outlineId(o), thing: o.thing, depth: 0, on: drawnOutlines.includes(o), colour: outlineColour(o), line: o.by === "group" ? "dashed" : "dotted" });
+  const outlineRow = (o: Outline): OverlayRow => ({ id: outlineId(o), name: o.thing.name, key: o.thing.key, opens: "place", depth: 0, on: drawnOutlines.includes(o), colour: outlineColour(o), line: o.by === "group" ? "dashed" : "dotted" });
   const outlineSets: OverlaySet[] = [
     { id: "groups", title: "Groups", on: outlined.includes("groups"), rows: everyOutline.filter((o) => o.by === "group").map(outlineRow) },
     ...otherTrees.map((k) => ({ id: k.key, title: k.name, on: outlined.includes(k.key), rows: everyOutline.filter((o) => o.tree === k.key).map(outlineRow) })),
   ];
+  // Links (owner, 27 Nov): a set in the same menu and key, a row per plain link kind; switched off one
+  // by one with the outlines' list of single ones off.
+  const linksOn = outlinesAll && linksShown;
+  outlineSets.push(linkSet(data.items, world, linksShown, (kind) => !hiddenOutlines.includes(linkRowId(kind))));
+  const toggleLinkKind = (id: string) => {
+    if (linksOn && !hiddenOutlines.includes(id)) return setHiddenOutlines([...hiddenOutlines, id]);
+    const quiet = linksOn ? [] : outlineSets.find((x) => x.id === LINKS_SET)!.rows.map((r) => r.id).filter((r) => r !== id);
+    setHiddenOutlines([...hiddenOutlines.filter((h) => h !== id && !quiet.includes(h)), ...quiet]);
+    if (!outlinesAll) setOutlinesAll(true);
+    if (!linksShown) setLinksShown(true);
+  };
+  const pickSet = (id: string) => (id === LINKS_SET ? setLinksShown(!linksShown) : toggleOutline(id));
+  const pickRow = (row: OverlayRow) => {
+    if (row.opens === "link-kind") return toggleLinkKind(row.id);
+    const o = outlineByRow(row);
+    if (o) toggleOne(o);
+  };
   const outlineByRow = (row: OverlayRow) => everyOutline.find((o) => outlineId(o) === row.id);
   const byKey = new Map(boxes.map((b) => [b.key, b]));
 
@@ -163,6 +185,11 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       return;
     }
     const node = (e.target as Element).closest("[data-node]")?.getAttribute("data-node");
+    const link = (e.target as Element).closest("[data-link]")?.getAttribute("data-link");
+    if (link && !node) {
+      gesture.current = { kind: "link", link, start: local(e), from: view, moved: false }; // a drag pans
+      return;
+    }
     gesture.current = node && node !== ROOT ? { kind: "box", key: node, start: local(e), moved: false } : { kind: "pan", start: local(e), from: view, moved: false };
   };
 
@@ -177,7 +204,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       const anchor = toDiagram(g.startCentre, g.from);
       const centre = middle(a, b);
       setView({ k, tx: centre.x - anchor.x * k, ty: centre.y - anchor.y * k });
-    } else if (g?.kind === "pan" || g?.kind === "fold") {
+    } else if (g?.kind === "pan" || g?.kind === "fold" || g?.kind === "link") {
       if (!g.moved && distance(at, g.start) < tapSlop(e.pointerType)) return;
       g.moved = true;
       setView({ k: g.from.k, tx: g.from.tx + at.x - g.start.x, ty: g.from.ty + at.y - g.start.y });
@@ -205,6 +232,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
     gesture.current = null;
     if (g?.kind === "pan" && !g.moved && view) return tapSpace(toDiagram(local(e), view));
     if (g?.kind === "fold" && !g.moved) return toggleFold(g.key);
+    if (g?.kind === "link" && !g.moved) return tapLink(g.link);
     if (g?.kind !== "box") return;
     if (!g.moved) return tapBox(g.key);
     const done = drag;
@@ -221,6 +249,19 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
     setSelected([]); // a move is done: start afresh (owner, 26 Nov)
   };
 
+  // A tap on a link's line selects it (and nothing else); a second soon after opens its card.
+  const tapLink = (key: string) => {
+    const before = lastTap.current;
+    if (before && before.key === `link:${key}` && Date.now() - before.time < DOUBLE_TAP_MS) {
+      lastTap.current = null;
+      swallowNextClick();
+      return nav.open({ name: "link", key });
+    }
+    lastTap.current = { key: `link:${key}`, time: Date.now(), before: selected };
+    setSelected([]);
+    setPickedLink(pickedLink === key ? null : key);
+  };
+
   // One tap selects or unselects; a second on the same box soon after opens it.
   const tapBox = (key: string) => {
     const before = lastTap.current;
@@ -231,6 +272,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       return nav.open({ name: "place", key });
     }
     lastTap.current = { key, time: Date.now(), before: selected };
+    setPickedLink(null);
     setSelected(selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key]);
   };
 
@@ -244,6 +286,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       return setNewAt(at);
     }
     lastTap.current = { key: "", time: Date.now(), before: selected };
+    setPickedLink(null);
     setSelected([]);
   };
 
@@ -277,6 +320,17 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
     const [x1, y1, x2, y2] = [parent.x + NODE_W / 2, parent.y + NODE_H, child.x + NODE_W / 2, child.y];
     return `M${x1} ${y1} C${x1} ${(y1 + y2) / 2}, ${x2} ${(y1 + y2) / 2}, ${x2} ${y2}`;
   };
+  // Where a link's end is drawn: its box, else the nearest box above it that's showing (its branch is
+  // folded: the line is marked "via"); not in this tree at all: not drawn (owner, 27 Nov).
+  const endAt = (thing: string) => {
+    const box = byKey.get(thing);
+    // From the box's outer side (right, across; bottom, down), the lines bowing out that way.
+    const centre = (b: Box) => (direction === "across" ? { x: drawnAt(b).x + NODE_W, y: drawnAt(b).y + NODE_H / 2 } : { x: drawnAt(b).x + NODE_W / 2, y: drawnAt(b).y + NODE_H });
+    if (box) return { p: centre(box) };
+    const above = pathOf(data.items, world, thing, tree).slice(0, -1).reverse().find((t) => byKey.has(t.key));
+    return above ? { p: centre(byKey.get(above.key)!), via: true } : null;
+  };
+  const lines = linksOn ? linkLines(data.items, world, plainLinks(data.items, world).filter((l) => !hiddenOutlines.includes(linkRowId(l.linkKind))), endAt) : [];
   const worldName = worldOf(data.items, world)?.name ?? "World";
   const label = (b: Box) => (b.thing ? `${iconOf(data.items, b.thing)} ${b.thing.name}` : worldName);
   const handPlaced = hasHandPlacing(data.items, world, tree, direction);
@@ -295,9 +349,9 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
         <label className="choice"><input type="checkbox" checked={withBranch} onChange={() => setWithBranch(!withBranch)} /> Branch follows</label>
         <TreePicker data={data} world={world} tree={tree} onChoose={setTree} />
         <span className="map-tools outlines-menu">
-          <button className={outlined.length ? "tool on" : "tool"} onClick={() => setOutlineMenu(!outlineMenu)}>Outlines ▾</button>
+          <button className={outlined.length || linksOn ? "tool on" : "tool"} onClick={() => setOutlineMenu(!outlineMenu)}>Layers ▾</button>
           {outlineMenu && (
-            <OverlayMenu label="outlines" master={outlinesAll} onMaster={() => setOutlinesAll(!outlinesAll)} sets={outlineSets} onSet={toggleOutline} onRow={(row) => { const o = outlineByRow(row); if (o) toggleOne(o); }} onClose={() => setOutlineMenu(false)} />
+            <OverlayMenu label="outlines and links" master={outlinesAll} onMaster={() => setOutlinesAll(!outlinesAll)} sets={outlineSets} onSet={pickSet} onRow={pickRow} onClose={() => setOutlineMenu(false)} />
           )}
         </span>
         <span className="map-tools">
@@ -311,7 +365,9 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       {/* What's selected, in a bar of its own that keeps its height (owner, 26 Nov: the Group button
           was cut off in the hint line until something else changed). */}
       <div className="selection-bar diagram-selection">
-        {selected.length > 0 ? (
+        {pickedLink && selected.length === 0 ? (
+          <LinkBar data={data} world={world} linkKey={pickedLink} onOpen={() => nav.open({ name: "link", key: pickedLink })} apply={(items) => undo.apply(items)} onClose={() => setPickedLink(null)} />
+        ) : selected.length > 0 ? (
           <>
             <div className="title">{selected.length} selected <span className="sub">· drag one to move them all</span></div>
             <div className="selection-buttons">
@@ -330,8 +386,8 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
           </>
         ) : (
           <span className="sub">
-            Tap to select (two to join, more for a bulk move) · double-tap to open · double-tap empty space for a new item ·{" "}
-            {mode === "arrange" ? (withBranch ? "branches follow" : "boxes move on their own") : "drop on a box to move inside, elsewhere to arrange"}
+            Tap: select (two to join) · a line: its link · double-tap: open, or a new item ·{" "}
+            {mode === "arrange" ? (withBranch ? "branches follow" : "boxes move on their own") : "drop on a box: inside"}
           </span>
         )}
       </div>
@@ -359,6 +415,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
               {boxes.filter((b) => b.parent).map((b) => (
                 <path key={`edge-${b.key}`} className="diagram-edge" d={edge(drawnAt(byKey.get(b.parent!)!), drawnAt(b))} />
               ))}
+              <LinkLines lines={lines} k={1} picked={pickedLink} gap={14} bulge={direction === "across" ? { x: 1, y: 0 } : { x: 0, y: 1 }} />
               {boxes.map((b) => {
                 const p = drawnAt(b);
                 const classes = ["diagram-node", b.key === ROOT ? "root" : "", flagged.has(b.key) ? "misfit" : "", selected.includes(b.key) ? "selected" : "", drag?.moving.includes(b.key) ? "moving" : "", drag?.over === b.key ? "target" : "", drag?.refused === b.key ? "refused" : ""];
@@ -380,7 +437,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
           </svg>
         )}
       </div>
-      <OverlayList heading="Key" sets={outlineSets} picked={outlineHover} onRow={(row) => { const o = outlineByRow(row); if (o) toggleOne(o); }} onHover={setOutlineHover} onOpen={(key) => nav.open({ name: "place", key })} />
+      <OverlayList heading="Key" sets={outlineSets} picked={outlineHover} onRow={pickRow} onHover={setOutlineHover} onOpen={(row) => nav.open({ name: row.opens, key: row.key })} />
       </div>
       {joining && selected.length === 2 && (
         <JoinPopup

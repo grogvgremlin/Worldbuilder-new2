@@ -164,3 +164,13 @@ describe("hidden from a tree (owner, 27 Nov)", () => {
     expect(hiddenIn(out, W, tree, key("nuln"))).toBeNull(); // taken out again, it's loose, not hidden
   });
 });
+
+describe("changing an end", () => {
+  it("goes through the same check as joining", async () => {
+    const { changeEnd } = await import("../src/world/links");
+    const { items, kinds } = setUp();
+    const made = join(items, W, key("countess"), kinds.get("rules")!, key("nuln"));
+    expect(linkOf(changeEnd(made.items, W, made.link!, "to", key("averland")).items, made.link!)!.to).toBe(key("averland"));
+    expect(changeEnd(made.items, W, made.link!, "to", key("count")).problem).toMatch(/doesn't fit/);
+  });
+});

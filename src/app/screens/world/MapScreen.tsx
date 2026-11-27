@@ -9,7 +9,7 @@
 // the kind; labels from names; in-tool drawing minimal); session-20 notes 3 §0 (world leads on
 // desktop, works on the phone).
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent } from "react";
-import type { Thing, WorldMap } from "../../../items/items";
+import type { Item, Thing, WorldMap } from "../../../items/items";
 import { areasOn, groupAreasOn, iconOf, sheetOf, notOnMap, placePin, removePin, type Area } from "../../../world/maps";
 import { pathOf } from "../../../world/places";
 import { thingsIn } from "../../../world/world";
@@ -21,6 +21,8 @@ import { treeKinds } from "../../../world/places";
 import { useUndo } from "./undo";
 import { GroupPopup } from "./GroupPopup";
 import { JoinPopup } from "./JoinPopup";
+import { LinkBar, LinkLines, linkLines, linkRowId, LINKS_SET, linkSet } from "./link-lines";
+import { plainLinks } from "../../../world/links";
 import { colourOf } from "./area-colours";
 import { OverlayList, OverlayMenu, type OverlayRow, type OverlaySet } from "./overlays";
 import { DOUBLE_TAP_MS, DOUBLE_TAP_PX, swallowNextClick, tapSlop } from "./gestures";
@@ -34,6 +36,7 @@ type Gesture =
   | { kind: "pin"; thing: string; start: Point; moved: boolean; moving: string[]; from: Map<string, Point> }
   | { kind: "area"; thing: string; start: Point; from: View; moved: boolean; moving: Map<string, Point> }
   | { kind: "pinch"; startDistance: number; startCentre: Point; from: View }
+  | { kind: "link"; link: string; start: Point; from: View; moved: boolean }
   | null;
 
 const MIN_ZOOM = 0.1;
@@ -52,6 +55,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
   const [hover, setHover] = useState<string | null>(null); // with a mouse: the area under the pointer
   const [grouping, setGrouping] = useState(false);
   const [joining, setJoining] = useState(false); // two selected: join them (owner, 27 Nov)
+  const [pickedLink, setPickedLink] = useState<string | null>(null); // a link tapped on the map
   const [areasMenu, setAreasMenu] = useState(false);
   const showArea = (next: AreasShown) => (setShown(next), saveAreasShown(mapKey, next));
   const [locked, setLocked] = useState(false);
@@ -110,7 +114,10 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
     }
     const pin = (e.target as Element).closest("[data-pin]")?.getAttribute("data-pin");
     const area = (e.target as Element).closest("[data-area]")?.getAttribute("data-area");
-    if (pin && !placing) {
+    const link = (e.target as Element).closest("[data-link]")?.getAttribute("data-link");
+    if (link && !pin && !area && !placing) {
+      gesture.current = { kind: "link", link, start: local(e), from: view, moved: false }; // a drag pans
+    } else if (pin && !placing) {
       // A selected pin brings the rest of the selected pins with it.
       const moving = selected.includes(pin) ? selected.filter((k) => map?.pins.some((p) => p.thing === k)) : [pin];
       const from = new Map((map?.pins ?? []).filter((p) => moving.includes(p.thing)).map((p) => [p.thing, { x: p.x, y: p.y }]));
@@ -142,7 +149,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
       const anchor = toMap(g.startCentre, g.from);
       const centre = middle(a, b);
       setView({ k, tx: centre.x - anchor.x * k, ty: centre.y - anchor.y * k });
-    } else if (g?.kind === "pan") {
+    } else if (g?.kind === "pan" || g?.kind === "link") {
       if (!g.moved && distance(at, g.start) < tapSlop(e.pointerType)) return;
       g.moved = true;
       setView({ k: g.from.k, tx: g.from.tx + at.x - g.start.x, ty: g.from.ty + at.y - g.start.y });
@@ -195,6 +202,8 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
     } else if (g?.kind === "area") {
       if (g.moved) await save(map);
       else tap(g.thing.slice(g.thing.indexOf(":") + 1), local(e));
+    } else if (g?.kind === "link" && !g.moved) {
+      tapLink(g.link, local(e));
     } else if (g?.kind === "pan" && !g.moved) {
       if (placing) {
         const p = toMap(local(e), view);
@@ -203,6 +212,19 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
         setPlacing(null);
       } else tap("", local(e));
     }
+  };
+
+  // A tap on a link's line selects it (and nothing else); a second soon after opens its card.
+  const tapLink = (key: string, at: Point) => {
+    const before = lastTap.current;
+    if (before && before.key === `link:${key}` && Date.now() - before.time < DOUBLE_TAP_MS && distance(at, before.at) < DOUBLE_TAP_PX) {
+      lastTap.current = null;
+      swallowNextClick();
+      return nav.open({ name: "link", key });
+    }
+    lastTap.current = { key: `link:${key}`, at, time: Date.now(), before: selected };
+    setSelected([]);
+    setPickedLink(pickedLink === key ? null : key);
   };
 
   // One tap selects or unselects a pin or area (empty space: clears); a second soon after, close
@@ -218,6 +240,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
       return;
     }
     lastTap.current = { key, at, time: Date.now(), before: selected };
+    setPickedLink(null);
     if (!key && view) setLit(areaAt(toMap(at, view))); // an empty tap picks out the area there (or none)
     if (!key) setSelected([]);
     else setSelected(selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key]);
@@ -260,18 +283,39 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
     showArea({ ...shown, all: true, groups: groupOff ? true : shown.groups, hidden: [...shown.hidden.filter((h) => h !== id && !others.includes(h)), ...others], trees: trees2 });
   };
 
-  // The sets for the shared filter menu and side list: each tree, then groups.
+  // Links (owner, 27 Nov): a set like each tree, a row per plain link kind. Turning a row on when links
+  // (or everything) were off shows only that link kind.
+  const linksOn = shown.links !== false;
+  const linkRows = linkKindsWithLinks(data.items, map.world).map(linkRowId);
+  const toggleLinkKind = (id: string) => {
+    const on = shown.all && linksOn && !shown.hidden.includes(id);
+    if (on) return showArea({ ...shown, hidden: [...shown.hidden, id] });
+    const quietAreas = shown.all ? [] : everyArea.map(areaId);
+    const quietLinks = shown.all && linksOn ? [] : linkRows.filter((r) => r !== id);
+    showArea({ ...shown, all: true, links: true, hidden: [...shown.hidden.filter((h) => h !== id && !quietLinks.includes(h)), ...quietAreas, ...quietLinks] });
+  };
+  const lines = shown.all && linksOn
+    ? linkLines(data.items, map.world, plainLinks(data.items, map.world).filter((l) => !shown.hidden.includes(linkRowId(l.linkKind))), (thing) => {
+        const pin = map.pins.find((p) => p.thing === thing);
+        return pin ? { p: { x: pin.x, y: pin.y } } : null;
+      })
+    : [];
+
+  // The sets for the shared filter menu and side list: each tree, then groups, then links.
   const colourFor = (a: Area) => colourOf(a.thing, a.by === "group" ? "group" : "tree", treeStyle(a.tree), a.depth);
-  const rowOf = (a: Area): OverlayRow => ({ id: areaId(a), thing: a.thing, depth: a.depth, on: drawn.some((d) => areaId(d) === areaId(a)), colour: colourFor(a), line: a.by === "group" ? "dashed" : treeStyle(a.tree) > 0 ? "dotted" : "solid" });
+  const rowOf = (a: Area): OverlayRow => ({ id: areaId(a), name: a.thing.name, key: a.thing.key, opens: "place", depth: a.depth, on: drawn.some((d) => areaId(d) === areaId(a)), colour: colourFor(a), line: a.by === "group" ? "dashed" : treeStyle(a.tree) > 0 ? "dotted" : "solid" });
   const sets: OverlaySet[] = [
     ...trees.map((t) => ({ id: t.key, title: t.name, on: treesShown.includes(t.key), rows: everyArea.filter((a) => a.by === "containment" && a.tree === t.key).map(rowOf) })),
     { id: "groups", title: "Groups", on: groupsOn, rows: everyArea.filter((a) => a.by === "group").map(rowOf) },
+    linkSet(data.items, map.world, linksOn, (kind) => !shown.hidden.includes(linkRowId(kind))),
   ];
   const toggleSet = (id: string) => {
+    if (id === LINKS_SET) return showArea({ ...shown, links: !linksOn });
     if (id === "groups") return showArea({ ...shown, groups: !groupsOn });
     showArea({ ...shown, trees: treesShown.includes(id) ? treesShown.filter((k) => k !== id) : [...treesShown, id] });
   };
   const toggleRow = (row: OverlayRow) => {
+    if (row.opens === "link-kind") return toggleLinkKind(row.id);
     const area = everyArea.find((a) => areaId(a) === row.id);
     if (area) toggleArea(area);
   };
@@ -306,9 +350,9 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
         <span className="map-tools">
           <button className="primary" onClick={() => setAdding(true)}>+ Item</button>
           <span className="areas-menu">
-            <button className={shown.all ? "tool on" : "tool"} onClick={() => setAreasMenu(!areasMenu)}>Areas ▾</button>
+            <button className={shown.all ? "tool on" : "tool"} onClick={() => setAreasMenu(!areasMenu)}>Layers ▾</button>
             {areasMenu && (
-              <OverlayMenu label="areas" master={shown.all} onMaster={() => showArea({ ...shown, all: !shown.all })} sets={sets} onSet={toggleSet} onRow={toggleRow} onClose={() => setAreasMenu(false)} />
+              <OverlayMenu label="areas and links" master={shown.all} onMaster={() => showArea({ ...shown, all: !shown.all })} sets={sets} onSet={toggleSet} onRow={toggleRow} onClose={() => setAreasMenu(false)} />
             )}
           </span>
           <button className={locked ? "tool on" : "tool"} onClick={() => setLocked(!locked)}>{locked ? "Locked" : "Lock"}</button>
@@ -322,8 +366,12 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
           Tap the map to place <b>{placingThing.name}</b> <button className="link" onClick={() => setPlacing(null)}>Cancel</button>
         </div>
       )}
-      {selected.length === 0 ? (
-        <div className="selection-bar empty sub">Tap to select (two to join, more for a bulk move) · double-tap to open · double-tap empty space for a new item.</div>
+      {pickedLink && selected.length === 0 ? (
+        <div className="selection-bar">
+          <LinkBar data={data} world={map.world} linkKey={pickedLink} onOpen={() => nav.open({ name: "link", key: pickedLink })} apply={(items) => undo.apply(items)} onClose={() => setPickedLink(null)} />
+        </div>
+      ) : selected.length === 0 ? (
+        <div className="selection-bar empty sub">Tap: select (two to join, more to move) · a line: its link · double-tap: open · on empty space: a new item</div>
       ) : (
         <SelectionCard
           data={data}
@@ -349,6 +397,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
             <g transform={`translate(${view.tx} ${view.ty}) scale(${view.k})`}>
               <rect className="map-sheet" x={sheet.x} y={sheet.y} width={sheet.width} height={sheet.height} rx={8 / view.k} />
               <Areas areas={toDraw} k={view.k} selected={selected} treeStyle={treeStyle} lit={picked} />
+              <LinkLines lines={lines} k={view.k} picked={pickedLink} />
               {map.pins.map((p) => {
                 const thing = things.get(p.thing);
                 if (!thing) return null;
@@ -364,7 +413,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
           </svg>
         )}
       </div>
-      <OverlayList heading="Areas" sets={sets} picked={picked} onRow={toggleRow} onHover={setHover} onOpen={(key) => nav.open({ name: "place", key })} />
+      <OverlayList heading="Areas and links" sets={sets} picked={picked} onRow={toggleRow} onHover={setHover} onOpen={(row) => nav.open({ name: row.opens, key: row.key })} />
       </div>
       {joining && selected.length === 2 && (
         <JoinPopup
@@ -510,7 +559,13 @@ function areaId(a: Area): string {
 
 // Which areas a map shows: all of them on or off, and single ones hidden. A view setting kept on this
 // device (world-structure §5: view presets are display settings, not world data).
-type AreasShown = { all: boolean; hidden: string[]; trees?: string[]; groups?: boolean }; // trees: whose areas show; groups: false hides them
+// trees: whose areas show; groups / links: false hides them; hidden: single areas and link kinds off
+type AreasShown = { all: boolean; hidden: string[]; trees?: string[]; groups?: boolean; links?: boolean };
+
+// Plain link kinds with at least one link in the world.
+function linkKindsWithLinks(items: Item[], world: string): string[] {
+  return [...new Set(plainLinks(items, world).map((l) => l.linkKind))];
+}
 
 function readAreasShown(mapKey: string): AreasShown {
   try {

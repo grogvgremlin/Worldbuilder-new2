@@ -41,6 +41,8 @@ export function upgradeItem(item: Record<string, any>): Record<string, any> {
     const { race, tree, rank, ...rest } = o;
     return { rest, profile };
   };
+  // A link from before 27 Nov evening: part of one item (a key), now of several (a list).
+  if (item.kind === "link" && typeof item.partOf === "string") return { ...item, partOf: [item.partOf] };
   // A link kind from before 26 Nov with lists per end: those ends differ (one list or the other now).
   if (item.kind === "link-kind" && item.endsDiffer === undefined && (item.expectsFrom?.length || item.expectsTo?.length) && !item.scope?.length) {
     return { ...item, endsDiffer: true };
@@ -58,10 +60,43 @@ export function upgradeItem(item: Record<string, any>): Record<string, any> {
   return item;
 }
 
+// Link containers became a container kind (owner, 27 Nov): a connection kind's "its links can be part
+// of" becomes a link container kind holding those links in items of those kinds; a world with links
+// already part of something that no link container kind covers gets one that takes anything.
+function upgradeLinkContainers(items: Item[]): Item[] {
+  const out: Item[] = [];
+  const made: Item[] = [];
+  for (const i of items) {
+    if (i.kind === "link-kind" && i.partOfTakes !== undefined) {
+      const { partOfTakes, ...rest } = i;
+      out.push(rest);
+      if (partOfTakes.length) made.push({ key: freeKey(items, `${i.world}.link-kind.made-of-${i.key.split(".").pop()}`), kind: "link-kind", world: i.world, name: `made of ${i.name}`, reverseName: "part of", direction: "one-way", hierarchy: "links", endsDiffer: true, expectsFrom: [i.key], expectsTo: partOfTakes, strictness: i.strictness });
+    } else out.push(i);
+  }
+  const all = [...out, ...made];
+  const worlds = new Set(all.filter((i) => i.kind === "link" && i.partOf?.length).map((i) => (i as { world: string }).world));
+  for (const world of worlds) {
+    if (all.some((i) => i.kind === "link-kind" && i.world === world && i.hierarchy === "links")) continue;
+    all.push({ key: freeKey(all, `${world}.link-kind.made-of-links`), kind: "link-kind", world, name: "made of links", reverseName: "part of", direction: "one-way", hierarchy: "links" });
+  }
+  return all;
+}
+
+function freeKey(items: Item[], base: string): string {
+  const taken = new Set(items.map((i) => i.key));
+  let key = base;
+  for (let n = 2; taken.has(key); n++) key = `${base}-${n}`;
+  return key;
+}
+
 // Upgrades that need more than the item itself. A link's single value (27 Nov, one day) becomes a
 // field named as its link kind named it ("Distance"); the link kind's "carries a value" becomes that
 // field, offered on its links.
 export function upgradeItems(items: Item[]): Item[] {
+  return upgradeLinkContainers(upgradeLinkValues(items));
+}
+
+function upgradeLinkValues(items: Item[]): Item[] {
   const named = new Map<string, string>();
   for (const i of items) if (i.kind === "link-kind" && i.carries === "value") named.set(i.key, i.valueName || "value");
   return items.map((i) => {

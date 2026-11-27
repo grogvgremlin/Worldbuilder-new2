@@ -25,7 +25,7 @@ import { useBackSwipe } from "./swipe";
 import { PresetScreen } from "./screens/config/PresetScreen";
 import { SettingScreen } from "./screens/config/SettingScreen";
 import { WorldsScreen } from "./screens/world/WorldsScreen";
-import { WorldScreen } from "./screens/world/WorldScreen";
+import { NewKindScreen, WorldScreen, type NewKindWhat } from "./screens/world/WorldScreen";
 import { PlaceScreen } from "./screens/world/PlaceScreen";
 import { MapScreen } from "./screens/world/MapScreen";
 import { LinkKindScreen, ThingKindScreen } from "./screens/world/KindScreens";
@@ -56,7 +56,8 @@ export type Screen =
   | { name: "map"; key: string; focus?: string; place?: string }
   | { name: "thing-kind"; key: string }
   | { name: "link-kind"; key: string }
-  | { name: "link"; key: string };
+  | { name: "link"; key: string }
+  | { name: "new-kind"; world: string; what: NewKindWhat };
 
 export type Nav = { open: (s: Screen) => void; back: () => void; home: () => void; popTo: (index: number) => void };
 
@@ -185,6 +186,8 @@ function render(screen: Screen, data: AppData, nav: Nav, draft: Draft | null, se
       return <MapScreen key={`${screen.key}|${screen.focus}|${screen.place}`} data={data} nav={nav} mapKey={screen.key} focus={screen.focus} place={screen.place} />;
     case "thing-kind":
       return <ThingKindScreen key={screen.key} data={data} nav={nav} kindKey={screen.key} />;
+    case "new-kind":
+      return <NewKindScreen key={screen.what} data={data} nav={nav} world={screen.world} what={screen.what} />;
     case "link":
       return <LinkScreen key={screen.key} data={data} nav={nav} linkKey={screen.key} />;
     case "link-kind":

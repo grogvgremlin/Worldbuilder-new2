@@ -4,12 +4,13 @@
 // direction, hierarchy, what it expects at each end; the app warns, never blocks).
 import { useState } from "react";
 import type { Item, LinkKind, ThingKind } from "../../../items/items";
-import { linksIn, removeThingKind, thingKindsIn, thingsIn, worldOf } from "../../../world/world";
+import { linkKindsIn, linksIn, removeThingKind, thingKindsIn, thingsIn, worldOf } from "../../../world/world";
 import { cloneLinkKind, fieldsOffered, flavoursOf, hasKind, kindTree, misfitLinks, removeLinkKind, setEndsDiffer, setFlavourOf } from "../../../world/kinds";
 import { MisfitList } from "./WorldScreen";
 import type { AppData } from "../../app-data";
 import { firstTree } from "../../../world/places";
-import { fieldSummary, linkKindStyle, linkTitle } from "../../../world/links";
+import { containerKindsFor, fieldSummary, linkKindStyle, linkTitle } from "../../../world/links";
+import { linkContainersIn } from "./link-lines";
 import { SwipeRow } from "../../swipe";
 import type { Nav } from "../../App";
 import { ChoicesBox, TextBox } from "./text-box";
@@ -116,6 +117,9 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
   const isTree = firstTree(data.items, kind.world) === kind.key; // first in the order: shown first
   const strict = (kind.strictness ?? "strict") === "strict";
   const replace = async (next: LinkKind) => (await data.setItems(data.items.map((i) => (i.key === kind.key ? next : i))), setChanged((n) => n + 1));
+  const isConnection = kind.hierarchy === "none";
+  const isLinkContainer = kind.hierarchy === "links";
+  const connectionKinds = linkKindsIn(data.items, kind.world).filter((k) => k.hierarchy === "none");
   const toggle = (list: string[] | undefined, key: string) => {
     const now = list ?? [];
     const next = now.includes(key) ? now.filter((k) => k !== key) : [...now, key];
@@ -130,37 +134,37 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
         <span className="label">Read backwards</span>
         <TextBox className="field-box" value={kind.reverseName ?? ""} placeholder={`e.g. "holds" for "in"`} onSave={(v) => change({ reverseName: v || undefined })} />
       </div>
-      <div className="field">
-        <span className="label">Direction</span>
-        <select value={kind.direction} onChange={(e) => change({ direction: e.target.value as LinkKind["direction"] })}>
-          <option value="one-way">one way (serves, in)</option>
-          <option value="both ways">both ways (allied, feud)</option>
-        </select>
-      </div>
-      <div className="field">
-        {/* Named by what it makes (owner, 27 Nov: "road" was set to several parents and became a group,
-            not a line between two places). */}
-        <span className="label">Makes</span>
-        <select value={kind.hierarchy} onChange={(e) => change({ hierarchy: e.target.value as LinkKind["hierarchy"] })}>
-          <option value="none">connections: a line between two items (a road, an alliance)</option>
-          <option value="one parent">a tree: one container at a time (in, part of)</option>
-          <option value="several parents">groups: many at once, no loops (in area, member of)</option>
-        </select>
-      </div>
-      {/* What its links carry, and how they're drawn (owner, 27 Nov: configurable on the link kind,
-          and on each link). */}
-      <LinkFields kind={kind} change={change} />
-      {kind.hierarchy === "none" && (
-        // What its links can be stretches of (owner, 27 Nov: road links only part of Road items).
-        <KindChips label="Its links can be part of" hint="Nothing ticked: any item. Strict or Warn only, as below." kinds={thingKinds} on={kind.partOfTakes} onToggle={(k) => change({ partOfTakes: toggle(kind.partOfTakes, k) })} />
+      {/* Only a connection runs one way or both; containers are always one way (owner, 27 Nov). */}
+      {isConnection && (
+        <div className="field">
+          <span className="label">Direction</span>
+          <select value={kind.direction} onChange={(e) => change({ direction: e.target.value as LinkKind["direction"] })}>
+            <option value="one-way">one way (serves, rules)</option>
+            <option value="both ways">both ways (allied, feud)</option>
+          </select>
+        </div>
       )}
-      {kind.hierarchy === "none" ? (
+      {/* A container is a tree or a group (switchable); a link container and a connection are what they are. */}
+      {(kind.hierarchy === "one parent" || kind.hierarchy === "several parents") ? (
+        <div className="field">
+          <span className="label">Container</span>
+          <select value={kind.hierarchy} onChange={(e) => change({ hierarchy: e.target.value as LinkKind["hierarchy"] })}>
+            <option value="one parent">a tree: one container at a time (in, part of)</option>
+            <option value="several parents">a group: many at once, no loops (in area, member of)</option>
+          </select>
+        </div>
+      ) : (
+        <p className="sub">{isConnection ? "A connection: joins two items." : "A link container: an item that holds connections (a road made of its stretches, a border, a trade route)."}</p>
+      )}
+      {/* What its links carry, and how they're drawn (owner, 27 Nov): connections only. */}
+      {isConnection && <LinkFields kind={kind} change={change} />}
+      {isConnection ? (
         <DrawnAs data={data} kind={kind} change={change} />
       ) : (
         <>
-          <h2>How its links are drawn</h2>
+          <h2>How it's drawn</h2>
           <p className="sub">
-            {kind.hierarchy === "one parent" ? "As a tree: areas on maps, branches on the Diagram." : "As groups: dashed areas on maps, outlines on the Diagram."} Only connections are drawn as lines (with a colour, line and arrows set here). For a road or an alliance, choose <b>Makes: connections</b> above: its links stay, and become connections.
+            {kind.hierarchy === "one parent" ? "As a tree: areas on maps, branches on the Diagram." : kind.hierarchy === "several parents" ? "As groups: dashed areas on maps, outlines on the Diagram." : "As a band under its links, with its name, on maps and the Diagram (Layers ▾ → Made of links)."}
           </p>
         </>
       )}
@@ -174,6 +178,22 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
       <p className="sub">
         {strict ? "Strict: an item that doesn't fit isn't offered and can't be put in." : "Warn only: anything can be put in; what doesn't fit is flagged on the Items tab."} A kind's flavours count too, even ones added later; the nearest kind decides, so a flavour can be put back after its kind is left out.
       </p>
+      {/* A link container: the connections it holds, and the items that hold them (owner, 27 Nov: "uses
+          the ends space to talk to the link types it can hold"). */}
+      {isLinkContainer ? (
+        <>
+          <div className="kind-chips">
+            <div className="sub">Holds these connections · Nothing ticked: any connection.</div>
+            <div className="chips">
+              {connectionKinds.map((k) => <button key={k.key} className={kind.expectsFrom?.includes(k.key) ? "on" : ""} onClick={() => change({ endsDiffer: true, expectsFrom: toggle(kind.expectsFrom, k.key) })}>{k.name}</button>)}
+            </div>
+          </div>
+          <KindChips label="Held by these kinds of item" hint="Nothing ticked: any item not left out." kinds={thingKinds} on={kind.expectsTo} onToggle={(k) => change({ endsDiffer: true, expectsTo: toggle(kind.expectsTo, k) })} />
+          <KindChips label="Leaves out" hint="Their flavours too, unless ticked to take." kinds={thingKinds} on={kind.exclude} onToggle={(k) => change({ exclude: toggle(kind.exclude, k) })} />
+          <LinkContainersOf data={data} nav={nav} kind={kind} />
+        </>
+      ) : (
+        <>
       {/* One list for both ends, or one per end: never both (owner, 26 Nov). */}
       <nav className="segments small">
         <button className={!kind.endsDiffer ? "on" : ""} onClick={() => replace(setEndsDiffer(kind, false))}>Same at both ends</button>
@@ -188,7 +208,9 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
         <KindChips label="Takes" hint="Nothing ticked: every kind not left out." kinds={thingKinds} on={kind.scope} onToggle={(k) => change({ scope: toggle(kind.scope, k) })} />
       )}
       <KindChips label="Leaves out (both ends)" hint="Their flavours too, unless ticked to take." kinds={thingKinds} on={kind.exclude} onToggle={(k) => change({ exclude: toggle(kind.exclude, k) })} />
-      {kind.hierarchy !== "several parents" && (
+        </>
+      )}
+      {(kind.hierarchy === "one parent" || kind.hierarchy === "none") && (
         <>
           <h2>Loose items in this {kind.hierarchy === "none" ? "network" : "tree"}</h2>
           <p className="sub">
@@ -212,7 +234,7 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
           )}
         </>
       )}
-      <p className="sub">{count} link{count === 1 ? "" : "s"} of this kind.</p>
+      {!isLinkContainer && <p className="sub">{count} link{count === 1 ? "" : "s"} of this kind.</p>}
       {count > 0 && (
         <ul className="list">
           {linksIn(data.items, kind.world).filter((l) => l.linkKind === kind.key).map((l) => (
@@ -311,6 +333,29 @@ function DrawnAs({ data, kind, change }: { data: AppData; kind: LinkKind; change
   );
 }
 
+// The items holding links under a link container kind, each with how many.
+function LinkContainersOf({ data, nav, kind }: { data: AppData; nav: Nav; kind: LinkKind }) {
+  const holding = linkContainersIn(data.items, kind.world)
+    .map((t) => ({ t, links: linksIn(data.items, kind.world).filter((l) => l.partOf?.includes(t.key) && containerKindsFor(data.items, kind.world, l.linkKind, t.key).some((k) => k.key === kind.key)) }))
+    .filter((r) => r.links.length > 0);
+  return (
+    <>
+      <h2>Items of this kind ({holding.length})</h2>
+      {holding.length === 0 && <p className="sub">None yet: on a link's card, Part of puts it in one, or makes a new one.</p>}
+      <ul className="list">
+        {holding.map(({ t, links }) => (
+          <li key={t.key}>
+            <button onClick={() => nav.open({ name: "place", key: t.key })}>
+              <span className="title">{t.name}</span>
+              <span className="sub">{links.length} link{links.length === 1 ? "" : "s"}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 // A row of kinds to tick, flavours indented after their kind.
 function KindChips({ label, hint, kinds, on, onToggle }: { label: string; hint?: string; kinds: { kind: ThingKind; depth: number }[]; on: string[] | undefined; onToggle: (key: string) => void }) {
   return (
@@ -336,6 +381,11 @@ function whatItDoes(kind: LinkKind, isMain: boolean): string[] {
   } else if (kind.hierarchy === "several parents") {
     lines.push("Groups: an item can be in many at once, and groups can overlap.");
     lines.push("Shown under Items → Groups, as Groups and members on each item's page, and as dashed areas on maps.");
+  } else if (kind.hierarchy === "links") {
+    lines.push("A link container: an item of the kinds it's held by holds connections of the kinds it holds, many at once; a connection can be in several.");
+    lines.push("On a link's card, Part of puts it in one (or makes a new one); on the container's card, Made of links lists them in order, with Along it; on maps and the Diagram, Layers ▾ → Made of links.");
+    lines.push(kind.strictness === "warn" ? "What it holds (below) is a warning: misfits are allowed and flagged." : "What it holds (below) is enforced: misfits are refused.");
+    return lines;
   } else {
     lines.push("A connection: it joins two items and contains nothing (a road, an alliance).");
     lines.push("Join two items with it from the map or the Diagram (select two, Join…) or an item's card (Connections). Its links are drawn on both, switched under Layers ▾ → Links, and listed under Connections on each item's page.");

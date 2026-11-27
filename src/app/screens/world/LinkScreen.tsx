@@ -8,7 +8,7 @@ import type { Item, Link, Thing } from "../../../items/items";
 import { changeEnd, fieldsOfLink, linkValue, removeLinkField, setLinkValue, type LinkDirection, changeLink, changeLinkKind, linkKindOf, linkKindStyle, linkKindsInOrder, linkStyle, removeLink, swapEnds } from "../../../world/links";
 import { isStrict, misfit } from "../../../world/kinds";
 import { newKey, thingKindsIn, thingsIn } from "../../../world/world";
-import { linkTitle, makeLinkAThing, partOfMisfit, setPartOf, splitLink, unlinkThing } from "../../../world/links";
+import { addPartOf, canBePartOf, holderKindsFor, linkContainerKinds, linkTitle, makeLinkAThing, partOfMisfit, removePartOf, splitLink, unlinkThing } from "../../../world/links";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { TextBox, ValueBox } from "./text-box";
@@ -174,48 +174,61 @@ function AsAThing({ data, nav, link, things, save }: { data: AppData; nav: Nav; 
   const world = link.world;
   const kinds = thingKindsIn(data.items, world);
   const [name, setName] = useState("");
-  // A new one starts as the first kind the link kind's links can be part of (its settings, not names).
-  const takes = linkKindOf(data.items, link.linkKind)?.partOfTakes ?? [];
-  const [kind, setKind] = useState(takes[0] ?? "");
-  const strict = isStrict(data.items, link.linkKind);
-  const misfitFor = (key: string) => partOfMisfit(data.items, world, link.key, key);
-  const wrong = link.partOf ? misfitFor(link.partOf) : null;
-  const whole = things.find((t) => t.key === link.partOf);
+  // A new one starts as the first kind a link container kind holding this link takes (its settings).
+  const holders = holderKindsFor(data.items, world, link.linkKind);
+  const [kind, setKind] = useState(holders[0] ?? "");
   const stood = things.find((t) => t.key === link.asThing);
+  const inside = (link.partOf ?? []).map((k) => things.find((t) => t.key === k)).filter((t): t is Thing => !!t);
+  const fit = (key: string) => canBePartOf(data.items, world, link.key, key);
+  const choices = things.filter((t) => t.key !== link.asThing && !link.partOf?.includes(t.key) && fit(t.key) !== "no");
+  const add = async (items: Item[], key: string) => {
+    const result = addPartOf(items, link.key, key);
+    if (result.problem) return alert(result.problem);
+    await save(result.items);
+  };
   const makeWhole = async () => {
     if (!name.trim()) return;
     const key = newKey(data.items, world, "thing", name);
     const thing: Thing = { key, kind: "thing", world, name: name.trim(), kinds: kind ? [kind] : [], fields: [] };
-    const result = setPartOf([...data.items, thing], link.key, key);
-    if (result.problem) return alert(result.problem);
-    await save(result.items);
+    await add([...data.items, thing], key);
     setName("");
   };
+  const noKinds = linkContainerKinds(data.items, world).length === 0;
   return (
     <>
       <h2>Part of</h2>
-      <p className="sub">A world item this link is part of, along with other links (a road, a river, a border, a trade route): with its own name, entry and links.</p>
-      <div className="field">
-        <span className="label">Part of</span>
-        <select value={link.partOf ?? ""} onChange={(e) => {
-          const result = setPartOf(data.items, link.key, e.target.value || null);
-          return result.problem ? alert(result.problem) : save(result.items);
-        }}>
-          <option value="">(nothing)</option>
-          {things.filter((t) => t.key !== link.asThing && (!strict || !misfitFor(t.key) || t.key === link.partOf)).map((t) => <option key={t.key} value={t.key}>{t.name}{misfitFor(t.key) ? " ⚠" : ""}</option>)}
-        </select>
-      </div>
-      {wrong && <p className="sub warn">⚠ {wrong} · <button className="link" onClick={() => nav.open({ name: "link-kind", key: link.linkKind })}>Change what its links can be part of</button></p>}
-      {whole && <p className="sub"><button className="link" onClick={() => nav.open({ name: "place", key: whole.key })}>Open {whole.name}</button>: its links, in order.</p>}
-      {!whole && (
-        <div className="inline-add">
-          <input className="filter" placeholder="Or a new one (e.g. The Great North Road)" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && makeWhole()} />
-          <select value={kind} onChange={(e) => setKind(e.target.value)}>
-            <option value="">no kind</option>
-            {kinds.map((k) => <option key={k.key} value={k.key}>{k.name}</option>)}
+      <p className="sub">Link containers this link is in, along with other links (a road, a river, a border): items with their own name, entry and links. It can be in several.</p>
+      {noKinds && <p className="sub warn">No link container kinds yet: add one under Kinds → Containers (a link container), saying which items hold which links.</p>}
+      <ul className="list">
+        {inside.map((t) => {
+          const wrong = partOfMisfit(data.items, world, link.key, t.key);
+          return (
+            <li key={t.key}>
+              <SwipeRow action="Take out" onAction={() => save(removePartOf(data.items, link.key, t.key))}>
+                <button onClick={() => nav.open({ name: "place", key: t.key })}>
+                  <span className="title">{t.name}{wrong ? " ⚠" : ""}</span>
+                  <span className="sub">{wrong ?? "its links, in order"}</span>
+                </button>
+              </SwipeRow>
+            </li>
+          );
+        })}
+      </ul>
+      {!noKinds && (
+        <>
+          <select className="tree-select" value="" onChange={(e) => e.target.value && add(data.items, e.target.value)}>
+            <option value="">Put it in…</option>
+            {choices.map((t) => <option key={t.key} value={t.key}>{t.name}{fit(t.key) === "warn" ? " ⚠" : ""}</option>)}
           </select>
-          <button onClick={makeWhole}>Make</button>
-        </div>
+          <div className="inline-add">
+            <input className="filter" placeholder="Or a new one (e.g. The Great North Road)" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && makeWhole()} />
+            <select value={kind} onChange={(e) => setKind(e.target.value)}>
+              {holders.length === 0 && <option value="">no kind</option>}
+              {(holders.length ? kinds.filter((k) => holders.includes(k.key)) : kinds).map((k) => <option key={k.key} value={k.key}>{k.name}</option>)}
+            </select>
+            <button onClick={makeWhole}>Make</button>
+          </div>
+        </>
       )}
 
       <SplitAt data={data} nav={nav} link={link} things={things} save={save} />

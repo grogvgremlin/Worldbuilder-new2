@@ -117,7 +117,7 @@ export function depthOf(items: Item[], world: string, thing: string, tree?: stri
 export function isContainer(items: Item[], world: string, thing: string): boolean {
   const hierarchical = new Set(linkKindsIn(items, world).filter((k) => k.hierarchy !== "none").map((k) => k.key));
   // An item made of links holds them (a link container, owner, 27 Nov), so it's a container too.
-  return linksIn(items, world).some((l) => (l.to === thing && hierarchical.has(l.linkKind)) || l.partOf === thing);
+  return linksIn(items, world).some((l) => (l.to === thing && hierarchical.has(l.linkKind)) || !!l.partOf?.includes(thing));
 }
 
 // Puts an item inside another (or at the top, with null), in one tree. Refused if it would make a

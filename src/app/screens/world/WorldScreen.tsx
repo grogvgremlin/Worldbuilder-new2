@@ -18,8 +18,10 @@ import { ScopePicks } from "./scope-picks";
 import type { Brings } from "../../../world/groups";
 import { groupKindFor } from "../../../world/bulk";
 import { TreeDiagram } from "./TreeDiagram";
-import { fieldSummary, linkKindsInOrder, linkTitle, plainLinks, removeLink } from "../../../world/links";
-import { ALL, TreePicker, useChosenTree } from "./tree-picker";
+import { containerKindsFor, fieldSummary, linkContainerKinds, linkKindsInOrder, linkTitle, plainLinks, removeLink } from "../../../world/links";
+import { linkContainersIn } from "./link-lines";
+import { networkKinds } from "../../../world/network";
+import { TreePicker, useChosenTree } from "./tree-picker";
 import { hasKind, inOrder, itemsWithMisfits, kindTree, misfitLinks, moveInOrder, refusal, removeLinkKind, setFlavourOf, type Misfit } from "../../../world/kinds";
 
 type Tab = "items" | "diagram" | "maps" | "kinds";
@@ -46,27 +48,37 @@ export function WorldScreen({ data, nav, worldKey }: { data: AppData; nav: Nav; 
 
 export type Part = { data: AppData; nav: Nav; world: string; save: (items: Item[]) => Promise<void> };
 
-// --- Items: the tree or the groups, a filter, and a new item --------------------------------------
+// --- Items (owner, 27 Nov: "the items tab is the one in most need of clean up"): choose what to show
+// (a type), then which one, then the list. Types: all items (by kind), trees, groups, link
+// containers, connections, loose items, and links that don't fit (when there are any). Finding by
+// name works across everything.
 
+type ItemsView = "all" | "trees" | "groups" | "linkContainers" | "connections" | "loose" | "misfits";
 type Shape = "all" | "containers" | "base";
+const ANY = ""; // "which one": every kind of that type
 
 function Items({ data, nav, world, save }: Part) {
-  const [view, setView] = useRemembered<"tree" | "groups" | "loose" | "links" | "misfits">(`${world}|items-view`, "tree");
+  const [stored, setView] = useRemembered<string>(`${world}|items-view`, "trees");
+  // Views stored by the earlier build: "tree" and "links".
+  const view: ItemsView = stored === "tree" ? "trees" : stored === "links" ? "connections" : (stored as ItemsView);
   const [epoch, setEpoch] = useState(0); // bumped by Fold all / Open all: the tree redraws
   const [tree, setTree] = useChosenTree(data, world);
-  const [byKind, setByKind] = useRemembered(`${world}|by-kind`, false); // the tree picker's "All"
+  // Which one, per type (groups, link containers, connections): one remembered map, as the type changes.
+  const [whichBy, setWhichBy] = useRemembered<Record<string, string>>(`${world}|items-which`, {});
+  const which = whichBy[view] ?? ANY;
+  const setWhich = (key: string) => setWhichBy({ ...whichBy, [view]: key });
   const [shape, setShape] = useRemembered<Shape>(`${world}|shape`, "all");
   const [text, setText] = useState("");
   const [kind, setKind] = useState<string | null>(null);
   const kinds = kindTree(data.items, world);
   const warnings = treeWarnings(data.items, world, tree);
   const misfits = misfitLinks(data.items, world);
-  const searching = text.trim() !== "" || kind !== null;
-  const matches = thingsIn(data.items, world)
+  const searching = text.trim() !== "";
+  const allItems = thingsIn(data.items, world)
     .filter((t) => (kind ? hasKind(data.items, world, t.kinds, kind) : true)) // a kind's flavours count
     .filter((t) => shape === "all" || (shape === "containers") === isContainer(data.items, world, t.key))
-    .filter((t) => matchesText(t, text))
     .sort((a, b) => a.name.localeCompare(b.name));
+  const matches = thingsIn(data.items, world).filter((t) => matchesText(t, text)).sort((a, b) => a.name.localeCompare(b.name));
   const worldName = worldOf(data.items, world)?.name ?? "";
   const row = (t: Thing) => (
     <li key={t.key}>
@@ -74,6 +86,21 @@ function Items({ data, nav, world, save }: Part) {
         <PlaceRow data={data} thing={t} withPath onOpen={() => nav.open({ name: "place", key: t.key })} />
       </SwipeRow>
     </li>
+  );
+  const types: { id: ItemsView; label: string; show: boolean }[] = [
+    { id: "all", label: "All items", show: true },
+    { id: "trees", label: "Trees", show: true },
+    { id: "groups", label: "Groups", show: true },
+    { id: "linkContainers", label: "Link containers", show: linkContainerKinds(data.items, world).length > 0 || linkContainersIn(data.items, world).length > 0 },
+    { id: "connections", label: `Connections (${plainLinks(data.items, world).length})`, show: true },
+    { id: "loose", label: `Loose (${looseItems(data.items, world).length})`, show: true },
+    { id: "misfits", label: `⚠ Doesn't fit (${misfits.length})`, show: misfits.length > 0 },
+  ];
+  const pick = (choices: { key: string; name: string }[], anyLabel: string) => (
+    <select className="tree-select which" value={which} onChange={(e) => setWhich(e.target.value)}>
+      <option value={ANY}>{anyLabel}</option>
+      {choices.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}
+    </select>
   );
 
   return (
@@ -86,86 +113,99 @@ function Items({ data, nav, world, save }: Part) {
         )}
       </Fold>
       <input className="filter" placeholder="Find an item (name, other names, summary, tags)" value={text} onChange={(e) => setText(e.target.value)} />
-      {/* Two rows (owner, 26 Nov): which items (one always chosen), then kinds to narrow by. */}
-      <nav className="segments small shape-row">
-        {(["all", "containers", "base"] as Shape[]).map((sh) => (
-          <button key={sh} className={shape === sh ? "on" : ""} onClick={() => setShape(sh)}>{sh === "all" ? "All" : sh === "containers" ? "Containers" : "Base items"}</button>
-        ))}
-      </nav>
-      {kinds.length > 1 && (
-        <div className="chips kind-row">
-          <span className="sub">Kind:</span>
-          {kinds.map(({ kind: k, depth }) => (
-            <button key={k.key} className={kind === k.key ? "on" : ""} onClick={() => setKind(kind === k.key ? null : k.key)}>
-              {depth > 0 ? "↳ " : ""}{k.icon} {k.name}
-            </button>
-          ))}
-        </div>
-      )}
-      {warnings.length > 0 && <ul className="plain problems">{warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
-      {misfits.length > 0 && view !== "misfits" && (
-        <p className="problems-line">⚠ {misfits.length} link{misfits.length === 1 ? " doesn't" : "s don't"} fit what its link kind takes · <button className="link" onClick={() => (setShape("all"), setText(""), setKind(null), setView("misfits"))}>Show</button></p>
-      )}
-      {thingsIn(data.items, world).length === 0 && <p className="hint">No items yet. Add one with + New item above, or double-tap a map or the diagram.</p>}
       {searching ? (
         <ul className="list">{matches.map(row)}</ul>
-      ) : shape === "containers" ? (
-        <Containers data={data} world={world} row={row} />
-      ) : shape === "base" ? (
-        <>
-          <p className="sub">Base items hold nothing.</p>
-          <ul className="list">{matches.map(row)}</ul>
-        </>
       ) : (
         <>
-          <div className="view-row">
-            <nav className="segments small">
-              <button className={view === "tree" ? "on" : ""} onClick={() => setView("tree")}>Tree</button>
-              <button className={view === "groups" ? "on" : ""} onClick={() => setView("groups")}>Groups</button>
-              <button className={view === "loose" ? "on" : ""} onClick={() => setView("loose")}>Loose ({looseItems(data.items, world).length})</button>
-              <button className={view === "links" ? "on" : ""} onClick={() => setView("links")}>Links ({plainLinks(data.items, world).length})</button>
-              {misfits.length > 0 && <button className={view === "misfits" ? "on" : ""} onClick={() => setView("misfits")}>⚠ Doesn't fit ({misfits.length})</button>}
-            </nav>
-            {view === "tree" && <TreePicker data={data} world={world} tree={byKind ? ALL : tree} onChoose={(k) => (k === ALL ? setByKind(true) : (setByKind(false), setTree(k)))} withAll />}
-          </div>
-          {view === "tree" && byKind && <ByKind data={data} world={world} row={row} />}
-          {view === "tree" && !byKind && tree && <HiddenNote data={data} nav={nav} world={world} tree={tree} />}
-          {view === "tree" && !byKind && (
-            <p className="sub">
-              <span className="fold-all">
-                <button className="link" onClick={() => (rememberAll(`${world}|open|${tree}|`, false), setEpoch((n) => n + 1))}>Fold all</button> ·{" "}
-                <button className="link" onClick={() => (rememberAll(`${world}|open|${tree}|`, true), setEpoch((n) => n + 1))}>Open all</button>
-              </span>
-            </p>
+          {/* The type first, then which one (owner, 27 Nov). */}
+          <nav className="segments small shape-row items-types">
+            {types.filter((t) => t.show).map((t) => <button key={t.id} className={view === t.id ? "on" : ""} onClick={() => setView(t.id)}>{t.label}</button>)}
+          </nav>
+          {view === "all" && (
+            <>
+              <select className="tree-select which" value={shape} onChange={(e) => setShape(e.target.value as Shape)}>
+                <option value="all">Every item, by kind</option>
+                <option value="containers">Containers (hold something)</option>
+                <option value="base">Base items (hold nothing)</option>
+              </select>
+              {kinds.length > 1 && (
+                <div className="chips kind-row">
+                  <span className="sub">Kind:</span>
+                  {kinds.map(({ kind: k, depth }) => (
+                    <button key={k.key} className={kind === k.key ? "on" : ""} onClick={() => setKind(kind === k.key ? null : k.key)}>{depth > 0 ? "↳ " : ""}{k.icon} {k.name}</button>
+                  ))}
+                </div>
+              )}
+              {kind ? <ul className="list">{allItems.map(row)}</ul> : <ByKind data={data} world={world} things={allItems} row={row} />}
+            </>
           )}
-          {view === "tree" && !byKind && (
-            <ul className="list tree" key={epoch}>
-              <li className="tree-root">{worldName}</li>
-              {topPlaces(data.items, world, tree)
-                .filter((t) => !isOnlyAGroup(data.items, world, t.key))
-                .map((t) => <Branch key={t.key} data={data} nav={nav} world={world} tree={tree} thing={t} depth={1} save={save} />)}
-            </ul>
+          {view === "trees" && (
+            <>
+              <TreePicker data={data} world={world} tree={tree} onChoose={setTree} always />
+              {warnings.length > 0 && <ul className="plain problems">{warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
+              {tree && <HiddenNote data={data} nav={nav} world={world} tree={tree} />}
+              <p className="sub">
+                <span className="fold-all">
+                  <button className="link" onClick={() => (rememberAll(`${world}|open|${tree}|`, false), setEpoch((n) => n + 1))}>Fold all</button> ·{" "}
+                  <button className="link" onClick={() => (rememberAll(`${world}|open|${tree}|`, true), setEpoch((n) => n + 1))}>Open all</button>
+                </span>
+              </p>
+              <ul className="list tree" key={epoch}>
+                <li className="tree-root">{worldName}</li>
+                {topPlaces(data.items, world, tree)
+                  .filter((t) => !isOnlyAGroup(data.items, world, t.key))
+                  .map((t) => <Branch key={t.key} data={data} nav={nav} world={world} tree={tree} thing={t} depth={1} save={save} />)}
+              </ul>
+            </>
           )}
-          {view === "groups" && <Groups data={data} nav={nav} world={world} save={save} />}
-          {view === "links" && <LinksList data={data} nav={nav} world={world} save={save} />}
-          {view === "misfits" && <MisfitList data={data} nav={nav} misfits={misfits} save={save} />}
+          {view === "groups" && (
+            <>
+              {groupLinkKinds(data.items, world).length > 1 && pick(groupLinkKinds(data.items, world), "Every group")}
+              <Groups data={data} nav={nav} world={world} save={save} only={which || undefined} />
+            </>
+          )}
+          {view === "linkContainers" && (
+            <>
+              {linkContainerKinds(data.items, world).length > 1 && pick(linkContainerKinds(data.items, world), "Every link container")}
+              <LinkContainersList data={data} nav={nav} world={world} only={which || undefined} row={row} />
+            </>
+          )}
+          {view === "connections" && (
+            <>
+              {networkKinds(data.items, world).length > 1 && pick(networkKinds(data.items, world), "Every connection")}
+              <LinksList data={data} nav={nav} world={world} save={save} only={which || undefined} />
+            </>
+          )}
           {view === "loose" && (
             <>
               <p className="sub">In no tree and no group: neither inside anything nor holding anything.</p>
               <ul className="list">{looseItems(data.items, world).map(row)}</ul>
             </>
           )}
+          {view === "misfits" && <MisfitList data={data} nav={nav} misfits={misfits} save={save} />}
+          {misfits.length > 0 && view !== "misfits" && (
+            <p className="problems-line">⚠ {misfits.length} link{misfits.length === 1 ? " doesn't" : "s don't"} fit what its kind takes · <button className="link" onClick={() => setView("misfits")}>Show</button></p>
+          )}
         </>
       )}
+      {thingsIn(data.items, world).length === 0 && <p className="hint">No items yet. Add one with + New item above, or double-tap a map or the diagram.</p>}
     </>
   );
 }
 
+// Items → Link containers: the items that hold links (all, or of one link container kind), each with
+// how many links; tap to open (its card has Made of links and Along it).
+function LinkContainersList({ data, nav, world, only, row }: { data: AppData; nav: Nav; world: string; only?: string; row: (t: Thing) => ReactNode }) {
+  const holding = linkContainersIn(data.items, world).filter((t) => !only || linksIn(data.items, world).some((l) => l.partOf?.includes(t.key) && containerKindsFor(data.items, world, l.linkKind, t.key).some((k) => k.key === only)));
+  if (holding.length === 0) return <p className="sub">No link containers yet. On a link's card, Part of puts it in one (or makes a new one).</p>;
+  return <ul className="list">{holding.map(row)}</ul>;
+}
+
 // Items → Links (owner, 27 Nov: "still don't see links in items anywhere"): every connection, a folding
 // section per link kind in the world's order. Tap a link to open its card; swipe left to remove it.
-function LinksList({ data, nav, world, save }: { data: AppData; nav: Nav; world: string; save: (items: Item[]) => Promise<void> }) {
+function LinksList({ data, nav, world, save, only }: { data: AppData; nav: Nav; world: string; save: (items: Item[]) => Promise<void>; only?: string }) {
   const folds = useFoldAll();
-  const kinds = linkKindsInOrder(data.items, world).filter((k) => k.hierarchy === "none");
+  const kinds = linkKindsInOrder(data.items, world).filter((k) => k.hierarchy === "none" && (!only || k.key === only));
   const links = plainLinks(data.items, world);
   if (kinds.length === 0) return <p className="sub">No connection link kinds yet: add one under Kinds (Makes: connections).</p>;
   if (links.length === 0) return <p className="sub">No links yet. Select two items on a map or the Diagram and Join, or use Join to… on an item's card.</p>;
@@ -262,9 +302,8 @@ function Containers({ data, world, row }: { data: AppData; world: string; row: (
 }
 
 // Every item, by kind and flavour (the tree picker's "All", owner, 26 Nov).
-function ByKind({ data, world, row }: { data: AppData; world: string; row: (t: Thing) => ReactNode }) {
+function ByKind({ data, world, things, row }: { data: AppData; world: string; things: Thing[]; row: (t: Thing) => ReactNode }) {
   const folds = useFoldAll();
-  const things = thingsIn(data.items, world);
   const sections = [
     ...kindTree(data.items, world).map(({ kind, depth }) => ({ id: kind.key, title: `${"↳ ".repeat(depth ? 1 : 0)}${kind.icon ?? ""} ${kind.name}`, depth, list: things.filter((t) => t.kinds.includes(kind.key)) })),
     { id: "none", title: "No kind", depth: 0, list: things.filter((t) => t.kinds.length === 0) },
@@ -296,7 +335,7 @@ function Fold({ title, children }: { title: string; children: ReactNode }) {
 
 // --- Groups: items in several groups at once (area things, world-structure §4) --------------------
 
-function Groups({ data, nav, world, save }: Part) {
+function Groups({ data, nav, world, save, only }: Part & { only?: string }) {
   const [epoch, setEpoch] = useState(0); // bumped by Fold all / Open all
   const kinds = groupLinkKinds(data.items, world);
   if (kinds.length === 0) {
@@ -308,7 +347,7 @@ function Groups({ data, nav, world, save }: Part) {
       </div>
     );
   }
-  const groups = groupsIn(data.items, world);
+  const groups = groupsIn(data.items, world).filter((g) => !only || membersOf(data.items, world, g.key).some((m) => m.linkKind.key === only));
   return (
     <>
       {groups.length === 0 && <p className="hint">No groups yet. A group is an item others are "{kinds[0].name}": make one with + New group above.</p>}

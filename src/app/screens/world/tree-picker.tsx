@@ -19,25 +19,27 @@ export function useChosenTree(data: AppData, world: string, withNetworks = false
 // "All" in the picker on Items: every item, by kind and flavour, instead of one tree (owner, 26 Nov).
 export const ALL = "(all)";
 
-// Several trees: choose which one to show (owner, 25 Nov: by province, by terrain …).
-export function TreePicker({ data, world, tree, onChoose, withAll, withNetworks }: { data: AppData; world: string; tree: string | undefined; onChoose: (key: string) => void; withAll?: boolean; withNetworks?: boolean }) {
+// Choosing what a view shows (owner, 27 Nov: "the type, then which one"): on the Diagram, a tree or
+// a network (a connection link kind), then which; elsewhere, which tree. `always` shows it even with
+// one tree, so the screen says what it's showing.
+export function TreePicker({ data, world, tree, onChoose, withNetworks, always }: { data: AppData; world: string; tree: string | undefined; onChoose: (key: string) => void; withNetworks?: boolean; always?: boolean }) {
   const trees = treeKinds(data.items, world);
   const networks = withNetworks ? networkKinds(data.items, world) : [];
-  if (trees.length + networks.length < (withAll ? 1 : 2)) return null;
+  if (trees.length + networks.length < (always ? 1 : 2)) return null;
+  const isNetwork = networks.some((k) => k.key === tree);
+  const list = isNetwork ? networks : trees;
   return (
-    <label className="tree-picker">
-      <span className="sub">{networks.length ? "Show" : "Tree"}</span>
+    <span className="tree-picker">
+      {networks.length > 0 && (
+        <select value={isNetwork ? "network" : "tree"} onChange={(e) => onChoose((e.target.value === "network" ? networks[0] : trees[0])?.key ?? "")}>
+          <option value="tree">Tree</option>
+          <option value="network">Network</option>
+        </select>
+      )}
+      {networks.length === 0 && <span className="sub">Tree</span>}
       <select value={tree ?? ""} onChange={(e) => onChoose(e.target.value)}>
-        {networks.length > 0 ? (
-          <>
-            <optgroup label="Trees">{trees.map((k) => <option key={k.key} value={k.key}>{k.name}</option>)}</optgroup>
-            <optgroup label="Networks">{networks.map((k) => <option key={k.key} value={k.key}>{k.name}</option>)}</optgroup>
-          </>
-        ) : (
-          trees.map((k) => <option key={k.key} value={k.key}>{k.name}</option>)
-        )}
-        {withAll && <option value={ALL}>All, by kind</option>}
+        {list.map((k) => <option key={k.key} value={k.key}>{k.name}</option>)}
       </select>
-    </label>
+    </span>
   );
 }

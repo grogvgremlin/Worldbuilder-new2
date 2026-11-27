@@ -167,16 +167,16 @@ function Carries({ data, link, name, save }: { data: AppData; link: Link; name: 
   );
 }
 
-// Part of a road (owner, 27 Nov: "the great north road"): the world item this link is a stretch of,
-// chosen or made here. And the link as a world item of its own, once it needs a name, an entry or
+// Part of (owner, 27 Nov): the world item this link is part of (a link container: a road, a river, a
+// border, a trade route …), chosen or made here. And the link as a world item of its own, once it needs a name, an entry or
 // links of its own (design §3: "a link that needs links of its own becomes a thing").
 function AsAThing({ data, nav, link, things, save }: { data: AppData; nav: Nav; link: Link; things: Thing[]; save: (items: Item[]) => Promise<void> }) {
   const world = link.world;
   const kinds = thingKindsIn(data.items, world);
   const [name, setName] = useState("");
-  // A new road starts as the first kind the link kind's links can be part of, else a kind named like a road.
+  // A new one starts as the first kind the link kind's links can be part of (its settings, not names).
   const takes = linkKindOf(data.items, link.linkKind)?.partOfTakes ?? [];
-  const [kind, setKind] = useState(takes[0] ?? kinds.find((k) => /road|river|route/i.test(k.name))?.key ?? "");
+  const [kind, setKind] = useState(takes[0] ?? "");
   const strict = isStrict(data.items, link.linkKind);
   const misfitFor = (key: string) => partOfMisfit(data.items, world, link.key, key);
   const wrong = link.partOf ? misfitFor(link.partOf) : null;
@@ -194,7 +194,7 @@ function AsAThing({ data, nav, link, things, save }: { data: AppData; nav: Nav; 
   return (
     <>
       <h2>Part of</h2>
-      <p className="sub">A road, river or route this is a stretch of: a world item with its own name, entry and links.</p>
+      <p className="sub">A world item this link is part of, along with other links (a road, a river, a border, a trade route): with its own name, entry and links.</p>
       <div className="field">
         <span className="label">Part of</span>
         <select value={link.partOf ?? ""} onChange={(e) => {
@@ -206,7 +206,7 @@ function AsAThing({ data, nav, link, things, save }: { data: AppData; nav: Nav; 
         </select>
       </div>
       {wrong && <p className="sub warn">⚠ {wrong} · <button className="link" onClick={() => nav.open({ name: "link-kind", key: link.linkKind })}>Change what its links can be part of</button></p>}
-      {whole && <p className="sub"><button className="link" onClick={() => nav.open({ name: "place", key: whole.key })}>Open {whole.name}</button>: its stretches, in order.</p>}
+      {whole && <p className="sub"><button className="link" onClick={() => nav.open({ name: "place", key: whole.key })}>Open {whole.name}</button>: its links, in order.</p>}
       {!whole && (
         <div className="inline-add">
           <input className="filter" placeholder="Or a new one (e.g. The Great North Road)" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && makeWhole()} />
@@ -242,7 +242,7 @@ function AsAThing({ data, nav, link, things, save }: { data: AppData; nav: Nav; 
 }
 
 // Split this link at an item (owner, 27 Nov: "splitting an existing link into two pieces and inserting
-// an item"): A–B becomes A–X and X–B, both with this link's road, fields and dates (correct each
+// an item"): A–B becomes A–X and X–B, both with what this link is part of, its fields and dates (correct each
 // half's distance after). An existing item, or a new one made here. The new item is pinned halfway on
 // maps showing both ends.
 function SplitAt({ data, nav, link, things, save }: { data: AppData; nav: Nav; link: Link; things: Thing[]; save: (items: Item[]) => Promise<void> }) {

@@ -29,7 +29,7 @@ import { HiddenNote, NewPlace, type Part } from "./WorldScreen";
 import { useUndo } from "./undo";
 import { GroupPopup } from "./GroupPopup";
 import { JoinPopup } from "./JoinPopup";
-import { LinkBar, LinkLines, linkLines, linkRowId, LINKS_SET, linkSet } from "./link-lines";
+import { ContainerBands, containerBands, containerRowId, LINK_CONTAINERS_SET, linkContainerSet, linkContainersIn, LinkBar, LinkLines, linkLines, linkRowId, LINKS_SET, linkSet } from "./link-lines";
 import { plainLinks } from "../../../world/links";
 import { isNetwork } from "../../../world/network";
 import { DOUBLE_TAP_MS, swallowNextClick, tapSlop } from "./gestures";
@@ -66,6 +66,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const [joining, setJoining] = useState<[string, string] | null>(null); // two items to join, in order (owner, 27 Nov)
   const [pickedLink, setPickedLink] = useState<string | null>(null); // a link tapped on the Diagram
   const [linksShown, setLinksShown] = useKept(`diagram-links|${world}`, true); // the Links set
+  const [containersShown, setContainersShown] = useKept(`diagram-link-containers|${world}`, true); // the Made of links set
   const flagged = itemsWithMisfits(data.items, world, tree); // in one of this tree's links that doesn't fit
   const looseKeys = new Set(looseIn(data.items, world, tree).map((t) => t.key));
   const looseSelected = selected.filter((k) => looseKeys.has(k));
@@ -115,6 +116,15 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   // by one with the outlines' list of single ones off.
   const linksOn = outlinesAll && linksShown;
   outlineSets.push(linkSet(data.items, world, linksShown, (kind) => !hiddenOutlines.includes(linkRowId(kind))));
+  outlineSets.push(linkContainerSet(data.items, world, containersShown, (c) => !hiddenOutlines.includes(containerRowId(c))));
+  const containersOn = outlinesAll && containersShown;
+  const toggleContainer = (id: string) => {
+    if (containersOn && !hiddenOutlines.includes(id)) return setHiddenOutlines([...hiddenOutlines, id]);
+    const quiet = containersOn ? [] : outlineSets.find((x) => x.id === LINK_CONTAINERS_SET)!.rows.map((r) => r.id).filter((r) => r !== id);
+    setHiddenOutlines([...hiddenOutlines.filter((h) => h !== id && !quiet.includes(h)), ...quiet]);
+    if (!outlinesAll) setOutlinesAll(true);
+    if (!containersShown) setContainersShown(true);
+  };
   const toggleLinkKind = (id: string) => {
     if (linksOn && !hiddenOutlines.includes(id)) return setHiddenOutlines([...hiddenOutlines, id]);
     const quiet = linksOn ? [] : outlineSets.find((x) => x.id === LINKS_SET)!.rows.map((r) => r.id).filter((r) => r !== id);
@@ -122,9 +132,10 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
     if (!outlinesAll) setOutlinesAll(true);
     if (!linksShown) setLinksShown(true);
   };
-  const pickSet = (id: string) => (id === LINKS_SET ? setLinksShown(!linksShown) : toggleOutline(id));
+  const pickSet = (id: string) => (id === LINKS_SET ? setLinksShown(!linksShown) : id === LINK_CONTAINERS_SET ? setContainersShown(!containersShown) : toggleOutline(id));
   const pickRow = (row: OverlayRow) => {
     if (row.opens === "link-kind") return toggleLinkKind(row.id);
+    if (row.id.startsWith("link-container|")) return toggleContainer(row.id);
     const o = outlineByRow(row);
     if (o) toggleOne(o);
   };
@@ -344,6 +355,8 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   };
   // The network's own links are always drawn (they are its lines); others as Layers says.
   const lines = linkLines(data.items, world, plainLinks(data.items, world).filter((l) => (network && l.linkKind === tree) || (linksOn && !hiddenOutlines.includes(linkRowId(l.linkKind)))), endAt);
+  const bulge = network ? undefined : direction === "across" ? { x: 1, y: 0 } : { x: 0, y: 1 };
+  const bands = containersOn ? containerBands(data.items, world, linkContainersIn(data.items, world).filter((c) => !hiddenOutlines.includes(containerRowId(c.key))), endAt) : [];
   const worldName = worldOf(data.items, world)?.name ?? "World";
   const label = (b: Box) => (b.thing ? `${iconOf(data.items, b.thing)} ${b.thing.name}` : worldName);
   const handPlaced = hasHandPlacing(data.items, world, tree, direction);
@@ -430,7 +443,8 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
               {boxes.filter((b) => b.parent).map((b) => (
                 <path key={`edge-${b.key}`} className="diagram-edge" d={edge(drawnAt(byKey.get(b.parent!)!), drawnAt(b))} />
               ))}
-              <LinkLines lines={lines} k={1} picked={pickedLink} gap={14} bulge={network ? undefined : direction === "across" ? { x: 1, y: 0 } : { x: 0, y: 1 }} />
+              <ContainerBands bands={bands} k={1} bulge={bulge} />
+              <LinkLines lines={lines} k={1} picked={pickedLink} gap={14} bulge={bulge} />
               {boxes.map((b) => {
                 const p = drawnAt(b);
                 const classes = ["diagram-node", b.key === ROOT ? "root" : "", flagged.has(b.key) ? "misfit" : "", selected.includes(b.key) ? "selected" : "", drag?.moving.includes(b.key) ? "moving" : "", drag?.over === b.key ? "target" : "", drag?.refused === b.key ? "refused" : ""];

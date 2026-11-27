@@ -461,3 +461,7 @@ main:has(.map-screen), main:has(.diagram-wrap) { max-width: none; }
 .link-heading { font-size: 1.3rem; line-height: 1.4; }
 .link-heading .link-word { font-weight: normal; }
 .link-field-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; }
+
+/* Link containers (items made of links) drawn as bands under their links (owner, 27 Nov). */
+.container-band { fill: none; stroke: currentColor; stroke-opacity: .35; stroke-linecap: round; pointer-events: none; }
+.container-name { fill: currentColor; text-anchor: middle; font-weight: 600; pointer-events: none; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; }

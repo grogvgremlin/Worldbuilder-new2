@@ -18,7 +18,7 @@ import { SwipeRow } from "../../swipe";
 import { useChosenTree } from "./tree-picker";
 import { recalled, rememberAll, useRemembered } from "./remembered";
 import { fitsTree, isStrict, kindLine, kindTree, refusal } from "../../../world/kinds";
-import { alongRoad, linkStoodFor, linkTitle, partOfMisfit, plainLinks, setPartOf } from "../../../world/links";
+import { alongLinks, linkStoodFor, linkTitle, partOfMisfit, plainLinks, setPartOf } from "../../../world/links";
 import { fieldSummary, join, linksFrom, offersFor, removeLink, type Offer } from "../../../world/links";
 import { JoinChoices } from "./JoinPopup";
 
@@ -104,7 +104,7 @@ export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; 
       <Fold id="where" title="Where it sits" big>
         <WhereItSits data={data} nav={nav} thing={thing} editing={editing} save={save} />
         <Connections data={data} nav={nav} thing={thing} editing={editing} save={save} />
-        <Stretches data={data} nav={nav} thing={thing} editing={editing} save={save} />
+        <PartsOfIt data={data} nav={nav} thing={thing} editing={editing} save={save} />
         <OnMaps data={data} nav={nav} thing={thing} />
       </Fold>
 
@@ -565,16 +565,16 @@ function AddMember({ data, world, group, linkKind, treesOf, save }: { data: AppD
   );
 }
 
-// Stretches (owner, 27 Nov: a road as a world item): the links that are part of it, end to end, each
+// Made of links (owner, 27 Nov: a link container): the links that are part of it, end to end, each
 // with what it carries; editing, add one of the world's connections not yet part of anything. And, for
 // an item that stands for a link, which link.
-function Stretches({ data, nav, thing, editing, save }: { data: AppData; nav: Nav; thing: Thing; editing: boolean; save: (items: Item[]) => Promise<void> }) {
+function PartsOfIt({ data, nav, thing, editing, save }: { data: AppData; nav: Nav; thing: Thing; editing: boolean; save: (items: Item[]) => Promise<void> }) {
   const world = thing.world;
-  const along = alongRoad(data.items, world, thing.key);
+  const along = alongLinks(data.items, world, thing.key);
   const parts = along.pieces.flatMap((p) => p.runs.flatMap((r) => r.links));
   const stood = linkStoodFor(data.items, thing.key);
   const free = plainLinks(data.items, world).filter((l) => !l.partOf && l.asThing !== thing.key && !partOfRefused(l.key));
-  // Offered while editing where it could hold stretches: some link kind's links can be part of it (or
+  // Offered while editing where links could be part of it: some link kind's links can be part of it (or
   // no link kind limits what its links are part of).
   function partOfRefused(link: string): boolean {
     const l = data.items.find((i): i is Link => i.kind === "link" && i.key === link);
@@ -593,9 +593,9 @@ function Stretches({ data, nav, thing, editing, save }: { data: AppData; nav: Na
         </p>
       )}
       {parts.length > 0 && (
-        // Along it (owner, 27 Nov): worked out from its stretches; where it meets other roads; gaps.
+        // Along it (owner, 27 Nov): worked out from its links; where it meets other link containers; gaps.
         <Fold id="along" title="Along it">
-          {along.pieces.length > 1 && <p className="sub warn">⚠ In {along.pieces.length} pieces: nothing joins them. Add the missing stretch, or leave it if the road really breaks (a ferry, a ford).</p>}
+          {along.pieces.length > 1 && <p className="sub warn">⚠ In {along.pieces.length} pieces: nothing joins them. Add the missing link, or leave it if there really is a break.</p>}
           {along.pieces.map((piece, n) => (
             <div key={n} className="along-piece">
               {along.pieces.length > 1 && <div className="sub field-group">Piece {n + 1}</div>}
@@ -625,14 +625,14 @@ function Stretches({ data, nav, thing, editing, save }: { data: AppData; nav: Na
         </Fold>
       )}
       {(parts.length > 0 || (editing && canHold)) && (
-        <Fold id="stretches" title={`Stretches${parts.length ? ` (${parts.length})` : ""}`}>
+        <Fold id="stretches" title={`Made of links${parts.length ? ` (${parts.length})` : ""}`}>
           {editing && canHold && (
             <select className="tree-select" value="" onChange={(e) => {
               if (!e.target.value) return;
               const result = setPartOf(data.items, e.target.value, thing.key);
               return result.problem ? alert(result.problem) : save(result.items);
             }}>
-              <option value="">Add a stretch (a link, as part of this)…</option>
+              <option value="">Add a link to it…</option>
               {free.map((l) => <option key={l.key} value={l.key}>{linkTitle(data.items, l)}{partOfMisfit(data.items, world, l.key, thing.key) ? " ⚠" : ""}</option>)}
             </select>
           )}
@@ -648,7 +648,7 @@ function Stretches({ data, nav, thing, editing, save }: { data: AppData; nav: Na
               </li>
             ))}
           </ul>
-          {parts.length === 0 && <p className="sub">No stretches yet. A link's card can also say it's part of this.</p>}
+          {parts.length === 0 && <p className="sub">No links in it yet. A link's card can also say it's part of this (Part of).</p>}
         </Fold>
       )}
     </>

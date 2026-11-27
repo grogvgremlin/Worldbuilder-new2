@@ -21,7 +21,7 @@ import { treeKinds } from "../../../world/places";
 import { useUndo } from "./undo";
 import { GroupPopup } from "./GroupPopup";
 import { JoinPopup } from "./JoinPopup";
-import { LinkBar, LinkLines, linkLines, linkRowId, LINKS_SET, linkSet } from "./link-lines";
+import { ContainerBands, containerBands, containerRowId, LINK_CONTAINERS_SET, linkContainerSet, linkContainersIn, LinkBar, LinkLines, linkLines, linkRowId, LINKS_SET, linkSet } from "./link-lines";
 import { plainLinks } from "../../../world/links";
 import { colourOf } from "./area-colours";
 import { OverlayList, OverlayMenu, type OverlayRow, type OverlaySet } from "./overlays";
@@ -294,6 +294,21 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
     const quietLinks = shown.all && linksOn ? [] : linkRows.filter((r) => r !== id);
     showArea({ ...shown, all: true, links: true, hidden: [...shown.hidden.filter((h) => h !== id && !quietLinks.includes(h)), ...quietAreas, ...quietLinks] });
   };
+  // Items made of links (owner, 27 Nov): a set like links, a row per item; drawn as bands under their links.
+  const containersOn = shown.linkContainers !== false;
+  const containerRows = linkContainersIn(data.items, map.world).map((c) => containerRowId(c.key));
+  const toggleContainer = (id: string) => {
+    const on = shown.all && containersOn && !shown.hidden.includes(id);
+    if (on) return showArea({ ...shown, hidden: [...shown.hidden, id] });
+    const quietAreas = shown.all ? [] : everyArea.map(areaId);
+    const quiet = shown.all && containersOn ? [] : containerRows.filter((r) => r !== id);
+    showArea({ ...shown, all: true, linkContainers: true, hidden: [...shown.hidden.filter((h) => h !== id && !quiet.includes(h)), ...quietAreas, ...quiet] });
+  };
+  const pinAt = (thing: string) => {
+    const pin = map.pins.find((p) => p.thing === thing);
+    return pin ? { p: { x: pin.x, y: pin.y } } : null;
+  };
+  const bands = shown.all && containersOn ? containerBands(data.items, map.world, linkContainersIn(data.items, map.world).filter((c) => !shown.hidden.includes(containerRowId(c.key))), pinAt) : [];
   const lines = shown.all && linksOn
     ? linkLines(data.items, map.world, plainLinks(data.items, map.world).filter((l) => !shown.hidden.includes(linkRowId(l.linkKind))), (thing) => {
         const pin = map.pins.find((p) => p.thing === thing);
@@ -308,14 +323,17 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
     ...trees.map((t) => ({ id: t.key, title: t.name, on: treesShown.includes(t.key), rows: everyArea.filter((a) => a.by === "containment" && a.tree === t.key).map(rowOf) })),
     { id: "groups", title: "Groups", on: groupsOn, rows: everyArea.filter((a) => a.by === "group").map(rowOf) },
     linkSet(data.items, map.world, linksOn, (kind) => !shown.hidden.includes(linkRowId(kind))),
+    linkContainerSet(data.items, map.world, containersOn, (c) => !shown.hidden.includes(containerRowId(c))),
   ];
   const toggleSet = (id: string) => {
     if (id === LINKS_SET) return showArea({ ...shown, links: !linksOn });
+    if (id === LINK_CONTAINERS_SET) return showArea({ ...shown, linkContainers: !containersOn });
     if (id === "groups") return showArea({ ...shown, groups: !groupsOn });
     showArea({ ...shown, trees: treesShown.includes(id) ? treesShown.filter((k) => k !== id) : [...treesShown, id] });
   };
   const toggleRow = (row: OverlayRow) => {
     if (row.opens === "link-kind") return toggleLinkKind(row.id);
+    if (row.id.startsWith("link-container|")) return toggleContainer(row.id);
     const area = everyArea.find((a) => areaId(a) === row.id);
     if (area) toggleArea(area);
   };
@@ -397,6 +415,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
             <g transform={`translate(${view.tx} ${view.ty}) scale(${view.k})`}>
               <rect className="map-sheet" x={sheet.x} y={sheet.y} width={sheet.width} height={sheet.height} rx={8 / view.k} />
               <Areas areas={toDraw} k={view.k} selected={selected} treeStyle={treeStyle} lit={picked} />
+              <ContainerBands bands={bands} k={view.k} />
               <LinkLines lines={lines} k={view.k} picked={pickedLink} />
               {map.pins.map((p) => {
                 const thing = things.get(p.thing);
@@ -560,7 +579,7 @@ function areaId(a: Area): string {
 // Which areas a map shows: all of them on or off, and single ones hidden. A view setting kept on this
 // device (world-structure §5: view presets are display settings, not world data).
 // trees: whose areas show; groups / links: false hides them; hidden: single areas and link kinds off
-type AreasShown = { all: boolean; hidden: string[]; trees?: string[]; groups?: boolean; links?: boolean };
+type AreasShown = { all: boolean; hidden: string[]; trees?: string[]; groups?: boolean; links?: boolean; linkContainers?: boolean };
 
 // Plain link kinds with at least one link in the world.
 function linkKindsWithLinks(items: Item[], world: string): string[] {

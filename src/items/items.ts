@@ -579,7 +579,11 @@ export const LinkKind = z.strictObject({
   world: z.string(),
   reverseName: z.string().optional(), // read from the other end: "in" → "holds"
   direction: z.enum(["one-way", "both ways"]),
-  hierarchy: z.enum(["none", "one parent", "several parents"]), // one parent: a tree, one at a time
+  // What it makes: none = connections (links between two items); one parent = a tree (one at a time);
+  // several parents = groups (many at once); links = a link container (owner, 27 Nov): an item that
+  // holds connections, not items. For a link container, expectsTo is the holder's item kinds and
+  // expectsFrom the connection kinds (link-kind keys) it holds. Containers are always one-way.
+  hierarchy: z.enum(["none", "one parent", "several parents", "links"]),
   // Which kinds of item it takes (owner, 26 Nov). Thing-kind keys, flavours counting; the nearest
   // kind in an item's line decides, so a flavour can be put back after its kind is excluded.
   // Either one list for both ends (scope), or a list per end (endsDiffer), never both (owner, 26 Nov).
@@ -597,8 +601,7 @@ export const LinkKind = z.strictObject({
   // values … and those values may be asymmetrical"). §3's "carries a value"; speed by direction (§4),
   // conductance by direction (§6). "A kind" (fear, kinship type) comes later.
   fields: z.array(LinkField).optional(),
-  // What its links can be part of (owner, 27 Nov: e.g. road links only part of Road items): thing-kind
-  // keys, flavours counting; Strict or Warn as for its ends. Nothing listed: anything.
+  // Earlier (27 Nov): what its links could be part of. Upgraded on read into a link container kind.
   partOfTakes: z.array(z.string()).optional(),
   // Earlier (27 Nov, one day): a single value. Upgraded on read into `fields` (race-dimensions.ts).
   carries: z.enum(["nothing", "value"]).optional(),
@@ -671,7 +674,7 @@ export const Link = z.strictObject({
   // Roads and the like (owner, 27 Nov; design §3–4): the world item this link is a stretch of (the
   // Great North Road: a thing with its own name, entry and links), and the world item that stands for
   // this link itself, once it needs links of its own ("a link that needs links becomes a thing").
-  partOf: z.string().optional(), // thing key
+  partOf: z.array(z.string()).optional(), // thing keys: the link containers it's in (several allowed, as groups)
   asThing: z.string().optional(), // thing key
   colour: z.string().optional(), // drawn in this colour, not its link kind's
   line: z.enum(["solid", "dashed", "dotted"]).optional(), // drawn with this line, not its link kind's

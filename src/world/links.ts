@@ -27,7 +27,7 @@ export function linkKindsInOrder(items: Item[], world: string): LinkKind[] {
 // Every link kind, for A then B: those that fit first, then the reversed ones, then the rest; each
 // group in the world's order.
 export function offersFor(items: Item[], world: string, from: string, to: string): Offer[] {
-  const offers = linkKindsInOrder(items, world).map((kind) => offerOne(items, world, kind, from, to));
+  const offers = linkKindsInOrder(items, world).filter((k) => k.hierarchy !== "links").map((kind) => offerOne(items, world, kind, from, to));
   const rank = (o: Offer) => (o.fits === "yes" && o.canPick ? 0 : o.fits === "reversed" && o.canPick ? 1 : o.canPick ? 2 : 3);
   return offers.map((o, n) => ({ o, n })).sort((a, b) => rank(a.o) - rank(b.o) || a.n - b.n).map(({ o }) => o);
 }
@@ -288,40 +288,81 @@ function clean(link: Link): Link {
 }
 
 // --- Link containers, and links that become things (owner, 27 Nov) --------------------------------
-// Nothing here is about roads: any world item can be made of links (a road, a river, a border, a trade
-// route); what a link kind's links can be part of is the world's own setting (partOfTakes).
-// For example, the Great North Road is a world item with its own name, entry, fields and links (ruled by,
-// sacred to). Its stretches are links, each marked as part of it, carrying distance and speed each
-// way. A stretch that needs links of its own is made a thing: a world item that stands for the link.
+// Nothing here is about roads: any world item can hold links (a road, a river, a border, a trade
+// route). What may hold what is the world's own setting: a link container kind (a container kind
+// that holds connections), set up under Kinds → Containers. A link can be in several link containers,
+// as an item can be in several groups.
+// For example, the Great North Road is a world item with its own name, entry, fields and links (ruled
+// by, sacred to). Its links are each part of it, carrying distance and speed each way. A link that
+// needs links of its own is made a thing: a world item that stands for the link.
 // Design: design/world-structure.md §3 ("a link that needs links of its own becomes a thing"), §4
 // (transit networks: segments, part of, routes with speed by direction).
 
-// Why a link can't be (or, Warn only, shouldn't be) a stretch of an item: its link kind lists what its
-// links can be part of, and the item has none of those kinds. Null if it fits.
-export function partOfMisfit(items: Item[], world: string, key: string, whole: string): string | null {
-  const link = linkOf(items, key);
-  const kind = link ? linkKindOf(items, link.linkKind) : undefined;
-  const item = items.find((i): i is Thing => i.kind === "thing" && i.key === whole);
-  if (!kind || !item || !kind.partOfTakes?.length) return null;
-  if (itemFits(items, world, item.kinds, { take: kind.partOfTakes, leave: [] })) return null;
-  const name = (k: string) => items.find((i) => i.key === k)?.name ?? k;
-  return `"${kind.name}" links can be part of ${kind.partOfTakes.map(name).join(" or ")}; ${item.name} isn't`;
+// The world's link container kinds, in its order.
+export function linkContainerKinds(items: Item[], world: string): LinkKind[] {
+  return linkKindsInOrder(items, world).filter((k) => k.hierarchy === "links");
 }
 
-// Marks a link as a stretch of an item (or of nothing). Refused if its link kind is Strict and
-// doesn't take that item as a whole.
-export function setPartOf(items: Item[], key: string, whole: string | null): { items: Item[]; problem?: string } {
+// The link container kinds that would take this link in this item: the link's kind among what it holds
+// (nothing listed: any), the item among its holders' kinds (nothing listed: any).
+export function containerKindsFor(items: Item[], world: string, linkKind: string, whole: string): LinkKind[] {
+  const item = items.find((i): i is Thing => i.kind === "thing" && i.key === whole);
+  if (!item) return [];
+  return linkContainerKinds(items, world).filter((k) => {
+    const holds = k.expectsFrom ?? [];
+    return (holds.length === 0 || holds.includes(linkKind)) && itemFits(items, world, item.kinds, { take: k.expectsTo ?? [], leave: k.exclude ?? [] });
+  });
+}
+
+// Why a link can't be part of an item (no link container kind takes it there), or null if one does.
+export function partOfMisfit(items: Item[], world: string, key: string, whole: string): string | null {
+  const link = linkOf(items, key);
+  const item = items.find((i): i is Thing => i.kind === "thing" && i.key === whole);
+  if (!link || !item) return null;
+  if (containerKindsFor(items, world, link.linkKind, whole).length) return null;
+  const kindName = linkKindOf(items, link.linkKind)?.name ?? link.linkKind;
+  if (!linkContainerKinds(items, world).length) return `no link container kind yet (Kinds → Containers → a link container)`;
+  return `no link container kind holds "${kindName}" links in ${item.name}`;
+}
+
+// Whether a misfit stops it: unless some link container kind holding this kind of link is Warn only.
+function partOfRefused(items: Item[], world: string, linkKind: string): boolean {
+  const holding = linkContainerKinds(items, world).filter((k) => !(k.expectsFrom ?? []).length || (k.expectsFrom ?? []).includes(linkKind));
+  return !holding.some((k) => k.strictness === "warn");
+}
+
+// Whether a link can go in an item: "yes", "warn" (allowed, flagged) or "no".
+export function canBePartOf(items: Item[], world: string, key: string, whole: string): "yes" | "warn" | "no" {
+  const link = linkOf(items, key);
+  if (!link) return "no";
+  if (!partOfMisfit(items, world, key, whole)) return "yes";
+  return partOfRefused(items, world, link.linkKind) ? "no" : "warn";
+}
+
+// The item kinds a new link container for this link could be: the holder kinds of the link container
+// kinds that hold its kind (for the kind picker when making one).
+export function holderKindsFor(items: Item[], world: string, linkKind: string): string[] {
+  return [...new Set(linkContainerKinds(items, world).filter((k) => !(k.expectsFrom ?? []).length || (k.expectsFrom ?? []).includes(linkKind)).flatMap((k) => k.expectsTo ?? []))];
+}
+
+// Puts a link in a link container (an item), or takes it out. Refused where no link container kind
+// takes it there (unless one holding its kind is Warn only).
+export function addPartOf(items: Item[], key: string, whole: string): { items: Item[]; problem?: string } {
   const link = linkOf(items, key);
   if (!link) return { items, problem: "that link isn't there" };
-  const wrong = whole ? partOfMisfit(items, link.world, key, whole) : null;
-  if (wrong && isStrict(items, link.linkKind)) return { items, problem: wrong };
-  return {
-    items: items.map((i) => {
-      if (i.kind !== "link" || i.key !== key) return i;
-      const { partOf, ...rest } = i;
-      return whole ? { ...rest, partOf: whole } : rest;
-    }),
-  };
+  if (link.partOf?.includes(whole)) return { items };
+  const wrong = partOfMisfit(items, link.world, key, whole);
+  if (wrong && partOfRefused(items, link.world, link.linkKind)) return { items, problem: wrong };
+  return { items: items.map((i) => (i.kind === "link" && i.key === key ? { ...i, partOf: [...(i.partOf ?? []), whole] } : i)) };
+}
+
+export function removePartOf(items: Item[], key: string, whole: string): Item[] {
+  return items.map((i) => {
+    if (i.kind !== "link" || i.key !== key) return i;
+    const kept = (i.partOf ?? []).filter((k) => k !== whole);
+    const { partOf, ...rest } = i;
+    return kept.length ? { ...rest, partOf: kept } : rest;
+  });
 }
 
 // The links that are part of an item, in order along it (see `alongLinks`).
@@ -339,14 +380,14 @@ export type Run = { links: Link[]; points: string[] };
 export type Along = { pieces: { runs: Run[] }[]; meets: Map<string, Thing[]> };
 
 export function alongLinks(items: Item[], world: string, whole: string): Along {
-  const parts = linksIn(items, world).filter((l) => l.partOf === whole);
+  const parts = linksIn(items, world).filter((l) => !!l.partOf?.includes(whole));
   const start = items.find((i): i is Thing => i.kind === "thing" && i.key === whole)?.startsAt;
   const pieces = joinedPieces(parts).map((piece) => ({ runs: walk(items, piece, start) }));
   // The piece holding the chosen start first; then the longest.
   pieces.sort((a, b) => Number(hasPoint(b, start)) - Number(hasPoint(a, start)) || count(b) - count(a));
   const meets = new Map<string, Thing[]>();
   for (const point of new Set(parts.flatMap((l) => [l.from, l.to]))) {
-    const others = new Set(linksIn(items, world).filter((l) => l.partOf && l.partOf !== whole && (l.from === point || l.to === point)).map((l) => l.partOf!));
+    const others = new Set(linksIn(items, world).filter((l) => l.from === point || l.to === point).flatMap((l) => (l.partOf ?? []).filter((k) => k !== whole)));
     const containers = [...others].map((k) => items.find((i): i is Thing => i.kind === "thing" && i.key === k)).filter((t): t is Thing => !!t);
     if (containers.length) meets.set(point, containers);
   }

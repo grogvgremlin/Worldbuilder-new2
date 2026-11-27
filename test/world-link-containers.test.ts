@@ -5,7 +5,8 @@
 import { describe, expect, it } from "vitest";
 import type { Item, LinkKind, Thing, WorldMap } from "../src/items/items";
 import { linkKindsIn, newWorld, thingKindsIn } from "../src/world/world";
-import { alongLinks, join, linkOf, partOfMisfit, setPartOf, splitLink } from "../src/world/links";
+import { addPartOf, alongLinks, join, linkOf, partOfMisfit, removePartOf, splitLink } from "../src/world/links";
+import { upgradeItems } from "../src/items/race-dimensions";
 import { isContainer } from "../src/world/places";
 
 const W = "mine";
@@ -18,10 +19,13 @@ function world() {
   const thing = (name: string, kinds = [place]): Thing => ({ key: key(name), kind: "thing", world: W, name, kinds, fields: [] });
   let items: Item[] = [...start, roadKind, ...["altdorf", "delberz", "crossroads", "middenheim", "grunburg", "talabheim", "far-a", "far-b"].map((n) => thing(n)), thing("north", [roadKind.key]), thing("forest", [roadKind.key])];
   const road = linkKindsIn(items, W).find((k) => k.name === "adjacent to")!.key;
+  // A link container kind: Road items hold "adjacent to" links (owner, 27 Nov: set up under Kinds → Containers).
+  const route: LinkKind = { key: `${W}.link-kind.route`, kind: "link-kind", world: W, name: "route", reverseName: "part of", direction: "one-way", hierarchy: "links", endsDiffer: true, expectsFrom: [road], expectsTo: [roadKind.key] };
+  items = [...items, route];
   const links: Record<string, string> = {};
   const add = (a: string, b: string, whole: string) => {
     const made = join(items, W, key(a), road, key(b));
-    items = setPartOf(made.items, made.link!, key(whole)).items;
+    items = addPartOf(made.items, made.link!, key(whole)).items;
     links[`${a}-${b}`] = made.link!;
   };
   add("delberz", "crossroads", "north");
@@ -29,7 +33,7 @@ function world() {
   add("crossroads", "middenheim", "north");
   add("grunburg", "crossroads", "forest");
   add("crossroads", "talabheim", "forest");
-  return { items, road, links, roadKind: roadKind.key };
+  return { items, road, links, roadKind: roadKind.key, route: route.key };
 }
 
 const names = (items: Item[], keys: string[]) => keys.map((k) => items.find((i) => i.key === k)!.name);
@@ -58,7 +62,7 @@ describe("along a road", () => {
   it("a gap makes two pieces (flagged, not refused)", () => {
     const { items, road } = world();
     const made = join(items, W, key("far-a"), road, key("far-b"));
-    const gapped = setPartOf(made.items, made.link!, key("north")).items;
+    const gapped = addPartOf(made.items, made.link!, key("north")).items;
     expect(alongLinks(gapped, W, key("north")).pieces).toHaveLength(2);
   });
 
@@ -68,14 +72,37 @@ describe("along a road", () => {
   });
 });
 
-describe("what a link can be part of", () => {
-  it("is limited by its link kind: strict refuses, warn flags", () => {
-    const { items, road, roadKind, links } = world();
-    const limited = items.map((i) => (i.key === road ? { ...(i as LinkKind), partOfTakes: [roadKind] } : i));
-    expect(partOfMisfit(limited, W, links["altdorf-delberz"], key("north"))).toBeNull();
-    expect(setPartOf(limited, links["altdorf-delberz"], key("talabheim")).problem).toMatch(/can be part of Road; talabheim isn't/);
-    const warn = limited.map((i) => (i.key === road ? { ...(i as LinkKind), strictness: "warn" as const } : i));
-    expect(setPartOf(warn, links["altdorf-delberz"], key("talabheim")).problem).toBeUndefined();
+describe("what a link can be part of: link container kinds (owner, 27 Nov)", () => {
+  it("only an item a link container kind holds it in: strict refuses, warn allows (flagged)", () => {
+    const { items, route, links } = world();
+    expect(partOfMisfit(items, W, links["altdorf-delberz"], key("north"))).toBeNull();
+    expect(addPartOf(items, links["altdorf-delberz"], key("talabheim")).problem).toMatch(/no link container kind holds "adjacent to" links in talabheim/);
+    const warn = items.map((i) => (i.key === route ? { ...(i as LinkKind), strictness: "warn" as const } : i));
+    const allowed = addPartOf(warn, links["altdorf-delberz"], key("talabheim"));
+    expect(allowed.problem).toBeUndefined();
+    expect(partOfMisfit(allowed.items, W, links["altdorf-delberz"], key("talabheim"))).not.toBeNull();
+  });
+
+  it("a link can be in several link containers, and taken out of one", () => {
+    const { items, links } = world();
+    const both = addPartOf(items, links["altdorf-delberz"], key("forest")).items;
+    expect(linkOf(both, links["altdorf-delberz"])!.partOf).toEqual([key("north"), key("forest")]);
+    expect(linkOf(removePartOf(both, links["altdorf-delberz"], key("north")), links["altdorf-delberz"])!.partOf).toEqual([key("forest")]);
+  });
+
+  it("earlier data is upgraded: a connection kind's part-of setting becomes a link container kind", () => {
+    const { items, road, roadKind, route } = world();
+    const old = items.filter((i) => i.key !== route).map((i) => (i.key === road ? { ...(i as LinkKind), partOfTakes: [roadKind] } : i));
+    const up = upgradeItems(old);
+    const made = up.find((i) => i.kind === "link-kind" && i.hierarchy === "links") as LinkKind;
+    expect([made.expectsFrom, made.expectsTo, made.name]).toEqual([[road], [roadKind], "made of adjacent to"]);
+    expect((up.find((i) => i.key === road) as LinkKind).partOfTakes).toBeUndefined();
+  });
+
+  it("links already part of something, with no link container kind, get one that takes anything", () => {
+    const { items, route } = world();
+    const up = upgradeItems(items.filter((i) => i.key !== route));
+    expect(up.filter((i) => i.kind === "link-kind" && i.hierarchy === "links").map((k) => k.name)).toEqual(["made of links"]);
   });
 });
 
@@ -89,7 +116,7 @@ describe("splitting a link", () => {
     const first = linkOf(split.items, links["altdorf-delberz"])!;
     const second = linkOf(split.items, split.second!)!;
     expect([first.from, first.to, second.from, second.to]).toEqual([key("altdorf"), key("inn"), key("inn"), key("delberz")]);
-    expect([first.partOf, second.partOf, second.fields]).toEqual([key("north"), key("north"), [{ field: "distance", value: "60" }]]);
+    expect([first.partOf, second.partOf, second.fields]).toEqual([[key("north")], [key("north")], [{ field: "distance", value: "60" }]]);
     expect(names(split.items, alongLinks(split.items, W, key("north")).pieces[0].runs[0].points)).toEqual(["altdorf", "inn", "delberz", "crossroads", "middenheim"]);
   });
 

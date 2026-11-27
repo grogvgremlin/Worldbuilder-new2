@@ -18,7 +18,7 @@ import { SwipeRow } from "../../swipe";
 import { useChosenTree } from "./tree-picker";
 import { recalled, rememberAll, useRemembered } from "./remembered";
 import { fitsTree, isStrict, kindLine, kindTree, refusal } from "../../../world/kinds";
-import { alongLinks, linkStoodFor, linkTitle, partOfMisfit, plainLinks, setPartOf } from "../../../world/links";
+import { addPartOf, alongLinks, canBePartOf, linkStoodFor, linkTitle, partOfMisfit, plainLinks, removePartOf } from "../../../world/links";
 import { fieldSummary, join, linksFrom, offersFor, removeLink, type Offer } from "../../../world/links";
 import { JoinChoices } from "./JoinPopup";
 
@@ -573,13 +573,8 @@ function PartsOfIt({ data, nav, thing, editing, save }: { data: AppData; nav: Na
   const along = alongLinks(data.items, world, thing.key);
   const parts = along.pieces.flatMap((p) => p.runs.flatMap((r) => r.links));
   const stood = linkStoodFor(data.items, thing.key);
-  const free = plainLinks(data.items, world).filter((l) => !l.partOf && l.asThing !== thing.key && !partOfRefused(l.key));
-  // Offered while editing where links could be part of it: some link kind's links can be part of it (or
-  // no link kind limits what its links are part of).
-  function partOfRefused(link: string): boolean {
-    const l = data.items.find((i): i is Link => i.kind === "link" && i.key === link);
-    return !!l && isStrict(data.items, l.linkKind) && !!partOfMisfit(data.items, world, link, thing.key);
-  }
+  // Offered while editing where a link container kind lets links go in it (owner, 27 Nov).
+  const free = plainLinks(data.items, world).filter((l) => !l.partOf?.includes(thing.key) && l.asThing !== thing.key && canBePartOf(data.items, world, l.key, thing.key) !== "no");
   const canHold = free.length > 0;
   if (parts.length === 0 && !stood && !(editing && canHold)) return null;
   const name = (key: string) => data.items.find((i) => i.key === key)?.name ?? key;
@@ -629,7 +624,7 @@ function PartsOfIt({ data, nav, thing, editing, save }: { data: AppData; nav: Na
           {editing && canHold && (
             <select className="tree-select" value="" onChange={(e) => {
               if (!e.target.value) return;
-              const result = setPartOf(data.items, e.target.value, thing.key);
+              const result = addPartOf(data.items, e.target.value, thing.key);
               return result.problem ? alert(result.problem) : save(result.items);
             }}>
               <option value="">Add a link to it…</option>
@@ -639,7 +634,7 @@ function PartsOfIt({ data, nav, thing, editing, save }: { data: AppData; nav: Na
           <ul className="list">
             {parts.map((l) => (
               <li key={l.key}>
-                <SwipeRow action="Take out" onAction={() => save(setPartOf(data.items, l.key, null).items)}>
+                <SwipeRow action="Take out" onAction={() => save(removePartOf(data.items, l.key, thing.key))}>
                   <button onClick={() => nav.open({ name: "link", key: l.key })}>
                     <span className="title">{linkTitle(data.items, l)}{partOfMisfit(data.items, world, l.key, thing.key) ? " ⚠" : ""}</span>
                     {(l.fields?.length || l.start || l.end) && <span className="sub">{[fieldSummary(data.items, l), dates(l)].filter(Boolean).join(" · ")}</span>}

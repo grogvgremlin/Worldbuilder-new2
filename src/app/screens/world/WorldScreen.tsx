@@ -246,7 +246,7 @@ function Containers({ data, world, row }: { data: AppData; world: string; row: (
     ...treeKinds(data.items, world).map((k) => ({ id: k.key, title: `In the tree "${k.name}"`, list: thingsIn(data.items, world).filter((t) => childrenOf(data.items, world, t.key, k.key).length > 0) })),
     { id: "groups", title: "Groups", list: groupsIn(data.items, world) },
     // Link containers hold the links that are part of them (owner, 27 Nov).
-    { id: "link-containers", title: "Made of links", list: thingsIn(data.items, world).filter((t) => linksIn(data.items, world).some((l) => l.partOf === t.key)) },
+    { id: "link-containers", title: "Made of links", list: thingsIn(data.items, world).filter((t) => linksIn(data.items, world).some((l) => !!l.partOf?.includes(t.key))) },
   ].filter((sec) => sec.id !== "link-containers" || sec.list.length > 0);
   return (
     <>
@@ -554,24 +554,16 @@ function Maps({ data, nav, world, save }: Part) {
 
 // --- Kinds: kinds of item, kinds of link, and the main tree --------------------------------------
 
+// World → Kinds (owner, 27 Nov): three sections, each with an Add button that opens a new kind to name
+// (nothing is saved without a name):
+//   - Items: kinds of item, with flavours and fields;
+//   - Connections: join two items; one way or both;
+//   - Containers: hold things, always one way; the type comes first (a tree, a group, or a link
+//     container: an item that holds connections), then the list split by type.
 function Kinds({ data, nav, world, save }: Part) {
-  const [name, setName] = useState("");
-  const [parentKind, setParentKind] = useState("");
-  const [linkName, setLinkName] = useState("");
-  const w = worldOf(data.items, world)!;
   const thingKinds = kindTree(data.items, world);
   const linkKinds = inOrder(data.items, world, linkKindsIn(data.items, world)); // the owner's display order
-  const containerKinds = linkKinds.filter((k) => k.hierarchy !== "none");
-  const connectionKinds = linkKinds.filter((k) => k.hierarchy === "none");
-  const [containerName, setContainerName] = useState("");
-  const [containerShape, setContainerShape] = useState<"one parent" | "several parents">("one parent");
-  const addContainerKind = async () => {
-    if (!containerName.trim()) return;
-    const key = newKey(data.items, world, "link-kind", containerName);
-    await save([...data.items, { key, kind: "link-kind", world, name: containerName.trim(), direction: "one-way", hierarchy: containerShape }]);
-    setContainerName("");
-    nav.open({ name: "link-kind", key });
-  };
+  const of = (h: LinkKind["hierarchy"]) => linkKinds.filter((k) => k.hierarchy === h);
   const removeKind = async (key: string, name: string) => {
     const count = thingsIn(data.items, world).filter((t) => t.kinds.includes(key)).length;
     if (!confirm(`Remove the kind ${name}?${count ? ` ${count} item${count === 1 ? "" : "s"} lose it; their fields stay as their own.` : ""}`)) return;
@@ -579,28 +571,16 @@ function Kinds({ data, nav, world, save }: Part) {
   };
   const removeLink = async (key: string, name: string) => {
     const count = linksIn(data.items, world).filter((l) => l.linkKind === key).length;
-    if (!confirm(`Remove the link kind ${name}?${count ? ` Its ${count} link${count === 1 ? "" : "s"} go too.` : ""}`)) return;
+    if (!confirm(`Remove the kind ${name}?${count ? ` Its ${count} link${count === 1 ? "" : "s"} go too.` : ""}`)) return;
     await save(removeLinkKind(data.items, world, key));
   };
-  const addKind = async () => {
-    if (!name.trim()) return;
-    const key = newKey(data.items, world, "thing-kind", name);
-    await save(setFlavourOf([...data.items, { key, kind: "thing-kind", world, name: name.trim(), fields: [] }], world, key, parentKind || null).items);
-    setName("");
-    nav.open({ name: "thing-kind", key });
-  };
-  const addLinkKind = async () => {
-    if (!linkName.trim()) return;
-    const key = newKey(data.items, world, "link-kind", linkName);
-    await save([...data.items, { key, kind: "link-kind", world, name: linkName.trim(), direction: "one-way", hierarchy: "none" }]);
-    setLinkName("");
-    nav.open({ name: "link-kind", key });
-  };
+  const add = (what: NewKindWhat) => nav.open({ name: "new-kind", world, what });
 
   return (
     <>
       <p className="sub">A world's kinds are its own: change them freely. Swipe one left to remove it; ↑ ↓ set the order they're shown in.</p>
-      <h2>Kinds of item</h2>
+      <h2>Items</h2>
+      <p className="sub">Kinds of item, each with its fields; a kind can be a flavour of another (set on its card).</p>
       <ul className="list">
         {thingKinds.map(({ kind: k, depth }) => {
           const siblings = thingKindsIn(data.items, world).filter((o) => o.flavourOf === k.flavourOf);
@@ -617,37 +597,58 @@ function Kinds({ data, nav, world, save }: Part) {
           );
         })}
       </ul>
-      <div className="inline-add">
-        <input className="filter" placeholder="New kind (e.g. City)" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addKind()} />
-        <button className="primary" onClick={addKind}>Add</button>
-      </div>
-      <label className="stack">
-        <select value={parentKind} onChange={(e) => setParentKind(e.target.value)}>
-          <option value="">a kind of its own</option>
-          {thingKinds.map(({ kind: k, depth }) => <option key={k.key} value={k.key}>{"  ".repeat(depth)}a flavour of {k.name}</option>)}
-        </select>
-        <span className="sub">A flavour has its parent's fields as well as its own, and anything that expects the parent accepts it.</span>
-      </label>
-      {/* Link kinds in two sections, to find them easily (owner, 27 Nov: "containers and links"). */}
-      <h2>Containers: trees and groups</h2>
-      <p className="sub">What items sit in: a tree (one container at a time: "in", "part of") or groups (many at once: "in area"). Trees are shown in this order: the first is shown first, and used wherever no tree is chosen.</p>
-      <LinkKindList data={data} nav={nav} world={world} save={save} kinds={containerKinds} onRemove={removeLink} />
-      <div className="inline-add">
-        <input className="filter" placeholder="New tree or group kind (e.g. part of)" value={containerName} onChange={(e) => setContainerName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addContainerKind()} />
-        <select value={containerShape} onChange={(e) => setContainerShape(e.target.value as "one parent" | "several parents")}>
-          <option value="one parent">a tree</option>
-          <option value="several parents">groups</option>
-        </select>
-        <button className="primary" onClick={addContainerKind}>Add</button>
-      </div>
-      <h2>Connections: links between items</h2>
-      <p className="sub">Lines between two items (a road, an alliance, a feud): drawn on maps and the Diagram, each with fields, and shown as a network on the Diagram.</p>
-      <LinkKindList data={data} nav={nav} world={world} save={save} kinds={connectionKinds} onRemove={removeLink} />
-      <div className="inline-add">
-        <input className="filter" placeholder="New connection kind (e.g. road)" value={linkName} onChange={(e) => setLinkName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addLinkKind()} />
-        <button className="primary" onClick={addLinkKind}>Add</button>
-      </div>
+      <div className="buttons"><button className="primary" onClick={() => add("item")}>+ New kind of item</button></div>
+
+      <h2>Connections</h2>
+      <p className="sub">Join two items (a road, an alliance, a feud), one way or both: drawn as lines on maps and the Diagram, with fields; each can be shown as a network on the Diagram.</p>
+      <LinkKindList data={data} nav={nav} world={world} save={save} kinds={of("none")} onRemove={removeLink} />
+      <div className="buttons"><button className="primary" onClick={() => add("none")}>+ New connection</button></div>
+
+      <h2>Containers</h2>
+      <p className="sub">Hold things, always one way: a tree (one container at a time), a group (many at once), or a link container (an item that holds connections: a road of its stretches, a border).</p>
+      <select className="tree-select" value="" onChange={(e) => e.target.value && add(e.target.value as NewKindWhat)}>
+        <option value="">+ New container…</option>
+        <option value="one parent">a tree</option>
+        <option value="several parents">a group</option>
+        <option value="links">a link container</option>
+      </select>
+      <div className="sub field-group">Trees · shown in this order: the first is used wherever no tree is chosen</div>
+      <LinkKindList data={data} nav={nav} world={world} save={save} kinds={of("one parent")} onRemove={removeLink} />
+      <div className="sub field-group">Groups</div>
+      <LinkKindList data={data} nav={nav} world={world} save={save} kinds={of("several parents")} onRemove={removeLink} />
+      <div className="sub field-group">Link containers</div>
+      <LinkKindList data={data} nav={nav} world={world} save={save} kinds={of("links")} onRemove={removeLink} />
     </>
+  );
+}
+
+// A new kind, named before it's saved (owner, 27 Nov: "if you don't add a name just don't save it").
+export type NewKindWhat = "item" | LinkKind["hierarchy"];
+const NEW_KIND_TITLE: Record<NewKindWhat, string> = { item: "A new kind of item", none: "A new connection", "one parent": "A new tree", "several parents": "A new group", links: "A new link container" };
+const NEW_KIND_EXAMPLE: Record<NewKindWhat, string> = { item: "e.g. City", none: "e.g. road, feud with", "one parent": "e.g. in, part of", "several parents": "e.g. in area, member of", links: "e.g. route, border" };
+
+export function NewKindScreen({ data, nav, world, what }: { data: AppData; nav: Nav; world: string; what: NewKindWhat }) {
+  const [name, setName] = useState("");
+  const create = async () => {
+    const n = name.trim();
+    if (!n) return;
+    const item = what === "item"
+      ? { key: newKey(data.items, world, "thing-kind", n), kind: "thing-kind" as const, world, name: n, fields: [] }
+      : { key: newKey(data.items, world, "link-kind", n), kind: "link-kind" as const, world, name: n, direction: "one-way" as const, hierarchy: what, ...(what === "links" ? { reverseName: "part of", endsDiffer: true } : {}) };
+    await data.setItems([...data.items, item]);
+    nav.back();
+    nav.open(what === "item" ? { name: "thing-kind", key: item.key } : { name: "link-kind", key: item.key });
+  };
+  return (
+    <article className="card">
+      <h1>{NEW_KIND_TITLE[what]}</h1>
+      <input className="name-box" autoFocus placeholder={`Its name (${NEW_KIND_EXAMPLE[what]})`} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && create()} />
+      <div className="buttons">
+        <button className="primary" disabled={!name.trim()} onClick={create}>Create</button>
+        <button onClick={() => nav.back()}>Cancel</button>
+      </div>
+      <p className="sub">Nothing is saved until it has a name. The rest is set on its card.</p>
+    </article>
   );
 }
 
@@ -661,7 +662,7 @@ function LinkKindList({ data, nav, world, save, kinds, onRemove }: Part & { kind
           <SwipeRow action="Remove" onAction={() => onRemove(k.key, k.name)}>
             <button onClick={() => nav.open({ name: "link-kind", key: k.key })}>
               <span className="title">{k.name}{k.reverseName ? ` / ${k.reverseName}` : ""}</span>
-              <span className="sub">{[k.hierarchy === "none" ? "" : k.hierarchy === "one parent" ? "a tree" : "groups", k.direction, k.strictness === "warn" ? "warn only" : "", k.about].filter(Boolean).join(" · ")}</span>
+              <span className="sub">{[k.hierarchy === "none" ? k.direction : "", k.strictness === "warn" ? "warn only" : "", k.about].filter(Boolean).join(" · ")}</span>
             </button>
           </SwipeRow>
           <OrderArrows onMove={(by) => save(moveInOrder(data.items, world, kinds, k.key, by))} />

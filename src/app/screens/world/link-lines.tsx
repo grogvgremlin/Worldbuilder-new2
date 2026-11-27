@@ -136,7 +136,7 @@ export type ContainerBand = { container: Thing; colour: string; links: { a: Poin
 
 // The world items that links are part of, in name order.
 export function linkContainersIn(items: Item[], world: string): Thing[] {
-  const wholes = new Set(items.filter((i): i is Link => i.kind === "link" && i.world === world && !!i.partOf).map((l) => l.partOf!));
+  const wholes = new Set(items.filter((i): i is Link => i.kind === "link" && i.world === world && !!i.partOf).flatMap((l) => l.partOf!));
   return items.filter((i): i is Thing => i.kind === "thing" && wholes.has(i.key)).sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -156,7 +156,7 @@ export function containerBands(items: Item[], world: string, containers: Thing[]
     container,
     colour: containerColour(items, world, container),
     links: items
-      .filter((i): i is Link => i.kind === "link" && i.world === world && i.partOf === container.key)
+      .filter((i): i is Link => i.kind === "link" && i.world === world && !!i.partOf?.includes(container.key))
       .map((l) => ({ a: at(l.from)?.p, b: at(l.to)?.p }))
       .filter((s): s is { a: Point; b: Point } => !!s.a && !!s.b),
   })).filter((r) => r.links.length > 0);

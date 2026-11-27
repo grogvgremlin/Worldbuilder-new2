@@ -55,6 +55,8 @@ function labelOf(screen: Screen, data: AppData): string {
     case "thing-kind":
     case "link-kind":
       return nameOf(screen.key);
+    case "new-kind":
+      return "New";
     case "link": {
       const link = data.items.find((i) => i.key === screen.key);
       return link && link.kind === "link" ? `${nameOf(link.from)} – ${nameOf(link.to)}` : "Link";

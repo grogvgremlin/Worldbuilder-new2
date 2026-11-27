@@ -12,7 +12,7 @@ import type { Item, Link, LinkKind, Thing } from "../items/items";
 import { inOrder, isStrict, misfit } from "./kinds";
 import { addToGroup } from "./groups";
 import { descendantsOf, hiddenByHand, hideHere, parentOf, setParent } from "./places";
-import { linkKindsIn, linksIn, newLink } from "./world";
+import { linkKindsIn, linksIn, newKey, newLink } from "./world";
 
 // One link kind offered for joining A to B.
 //   fits: "yes" (both ends fit), "reversed" (only B to A fits: joining swaps them), "no";
@@ -285,4 +285,76 @@ function clean(link: Link): Link {
   const out = { ...link } as Record<string, unknown>;
   for (const f of ["start", "end", "note", "colour", "line"]) if (out[f] === "" || out[f] === undefined) delete out[f];
   return out as Link;
+}
+
+// --- Roads and links that become things (owner, 27 Nov) --------------------------------------------
+// A road (the Great North Road) is a world item with its own name, entry, fields and links (ruled by,
+// sacred to). Its stretches are links, each marked as part of it, carrying distance and speed each
+// way. A stretch that needs links of its own is made a thing: a world item that stands for the link.
+// Design: design/world-structure.md §3 ("a link that needs links of its own becomes a thing"), §4
+// (transit networks: segments, part of, routes with speed by direction).
+
+// Marks a link as a stretch of an item (or of nothing). An item can't be part of a road it's an end of
+// only by accident: that's allowed (a road ending at a town is fine).
+export function setPartOf(items: Item[], key: string, whole: string | null): Item[] {
+  return items.map((i) => {
+    if (i.kind !== "link" || i.key !== key) return i;
+    const { partOf, ...rest } = i;
+    return whole ? { ...rest, partOf: whole } : rest;
+  });
+}
+
+// The links that are stretches of an item, in the order they join up where they can (end to end),
+// else by title.
+export function stretchesOf(items: Item[], world: string, whole: string): Link[] {
+  const parts = linksIn(items, world).filter((l) => l.partOf === whole);
+  return inRoadOrder(items, parts);
+}
+
+// End to end: start from a stretch whose first end no other stretch reaches, and follow on.
+function inRoadOrder(items: Item[], parts: Link[]): Link[] {
+  const left = [...parts].sort((a, b) => linkTitle(items, a).localeCompare(linkTitle(items, b)));
+  const out: Link[] = [];
+  const ends = (l: Link) => [l.from, l.to];
+  while (left.length) {
+    const count = (k: string) => left.filter((l) => ends(l).includes(k)).length;
+    const start = left.find((l) => count(l.from) === 1) ?? left.find((l) => count(l.to) === 1) ?? left[0];
+    let at = count(start.from) === 1 ? start.to : start.from;
+    out.push(start);
+    left.splice(left.indexOf(start), 1);
+    for (;;) {
+      const next = left.find((l) => ends(l).includes(at));
+      if (!next) break;
+      out.push(next);
+      left.splice(left.indexOf(next), 1);
+      at = next.from === at ? next.to : next.from;
+    }
+  }
+  return out;
+}
+
+// Makes a world item stand for a link (a stretch with its own name, entry and links). Named from the
+// link ("Nuln – Wurtbad"), of the kinds given; the link stays and points at it.
+export function makeLinkAThing(items: Item[], world: string, key: string, kinds: string[] = []): { items: Item[]; thing?: string; problem?: string } {
+  const link = linkOf(items, key);
+  if (!link) return { items, problem: "that link isn't there" };
+  if (link.asThing) return { items, thing: link.asThing };
+  const name = `${nameOf(items, link.from)} – ${nameOf(items, link.to)}`;
+  const thingKey = newKey(items, world, "thing", name);
+  const thing: Thing = { key: thingKey, kind: "thing", world, name, kinds, fields: [], summary: `${linkKindOf(items, link.linkKind)?.name ?? "link"}, as a world item` };
+  return { items: [...items.map((i) => (i.key === key ? { ...link, asThing: thingKey } : i)), thing], thing: thingKey };
+}
+
+// The link a world item stands for, if it stands for one.
+export function linkStoodFor(items: Item[], thing: string): Link | undefined {
+  return items.find((i): i is Link => i.kind === "link" && i.asThing === thing);
+}
+
+// Lets go of the world item standing for a link (the item stays, as an ordinary one).
+export function unlinkThing(items: Item[], key: string): Item[] {
+  return items.map((i) => {
+    if (i.kind !== "link" || i.key !== key) return i;
+    const { asThing, ...rest } = i;
+    return rest;
+  });
 }

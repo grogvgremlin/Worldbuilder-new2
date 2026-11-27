@@ -18,6 +18,7 @@ import { SwipeRow } from "../../swipe";
 import { useChosenTree } from "./tree-picker";
 import { recalled, rememberAll, useRemembered } from "./remembered";
 import { fitsTree, kindLine, kindTree, refusal } from "../../../world/kinds";
+import { linkStoodFor, linkTitle, plainLinks, setPartOf, stretchesOf } from "../../../world/links";
 import { fieldSummary, join, linksFrom, offersFor, removeLink, type Offer } from "../../../world/links";
 import { JoinChoices } from "./JoinPopup";
 
@@ -103,6 +104,7 @@ export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; 
       <Fold id="where" title="Where it sits" big>
         <WhereItSits data={data} nav={nav} thing={thing} editing={editing} save={save} />
         <Connections data={data} nav={nav} thing={thing} editing={editing} save={save} />
+        <Stretches data={data} nav={nav} thing={thing} editing={editing} save={save} />
         <OnMaps data={data} nav={nav} thing={thing} />
       </Fold>
 
@@ -558,6 +560,49 @@ function AddMember({ data, world, group, linkKind, treesOf, save }: { data: AppD
           {options.map((o) => <button key={o.label} onClick={() => add(picked, o.scope)}>{o.label}</button>)}
           <button className="link" onClick={() => setPicked("")}>Cancel</button>
         </div>
+      )}
+    </>
+  );
+}
+
+// Stretches (owner, 27 Nov: a road as a world item): the links that are part of it, end to end, each
+// with what it carries; editing, add one of the world's connections not yet part of anything. And, for
+// an item that stands for a link, which link.
+function Stretches({ data, nav, thing, editing, save }: { data: AppData; nav: Nav; thing: Thing; editing: boolean; save: (items: Item[]) => Promise<void> }) {
+  const world = thing.world;
+  const parts = stretchesOf(data.items, world, thing.key);
+  const stood = linkStoodFor(data.items, thing.key);
+  const free = plainLinks(data.items, world).filter((l) => !l.partOf && l.asThing !== thing.key);
+  if (parts.length === 0 && !stood && !editing) return null;
+  return (
+    <>
+      {stood && (
+        <p className="sub">
+          Stands for the link <button className="link" onClick={() => nav.open({ name: "link", key: stood.key })}>{linkTitle(data.items, stood)}</button>.
+        </p>
+      )}
+      {(parts.length > 0 || editing) && (
+        <Fold id="stretches" title={`Stretches${parts.length ? ` (${parts.length})` : ""}`}>
+          {editing && free.length > 0 && (
+            <select className="tree-select" value="" onChange={(e) => e.target.value && save(setPartOf(data.items, e.target.value, thing.key))}>
+              <option value="">Add a stretch (a link, as part of this)…</option>
+              {free.map((l) => <option key={l.key} value={l.key}>{linkTitle(data.items, l)}</option>)}
+            </select>
+          )}
+          <ul className="list">
+            {parts.map((l) => (
+              <li key={l.key}>
+                <SwipeRow action="Take out" onAction={() => save(setPartOf(data.items, l.key, null))}>
+                  <button onClick={() => nav.open({ name: "link", key: l.key })}>
+                    <span className="title">{linkTitle(data.items, l)}</span>
+                    {(l.fields?.length || l.start || l.end) && <span className="sub">{[fieldSummary(data.items, l), dates(l)].filter(Boolean).join(" · ")}</span>}
+                  </button>
+                </SwipeRow>
+              </li>
+            ))}
+          </ul>
+          {parts.length === 0 && <p className="sub">No stretches yet. A link's card can also say it's part of this.</p>}
+        </Fold>
       )}
     </>
   );

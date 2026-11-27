@@ -147,11 +147,18 @@ export function newLink(items: Item[], world: string, from: string, linkKind: st
 // --- Removing ------------------------------------------------------------------------------------
 
 // A thing goes with its links and its pins; what it held is left where it was, one level up
-// being a choice the owner makes, not something done for them.
+// being a choice the owner makes, not something done for them. Links that were stretches of it, or
+// that it stood for, stay: they're just no longer part of it.
 export function removeThing(items: Item[], key: string): Item[] {
   return items
     .filter((i) => i.key !== key && !(i.kind === "link" && (i.from === key || i.to === key)))
-    .map((i) => (i.kind === "map" ? { ...i, pins: i.pins.filter((p) => p.thing !== key) } : i));
+    .map((i) => (i.kind === "map" ? { ...i, pins: i.pins.filter((p) => p.thing !== key) } : i))
+    .map((i) => (i.kind === "link" && (i.partOf === key || i.asThing === key) ? withoutThing(i, key) : i));
+}
+
+function withoutThing(link: Link, key: string): Link {
+  const { partOf, asThing, ...rest } = link;
+  return { ...rest, ...(partOf && partOf !== key ? { partOf } : {}), ...(asThing && asThing !== key ? { asThing } : {}) };
 }
 
 // A thing kind goes from every thing that has it; their fields filled under it become one-offs; its

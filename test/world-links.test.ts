@@ -228,9 +228,9 @@ describe("roads and links that become things (owner, 27 Nov)", () => {
     const adj = kinds.get("adjacent to")!;
     const a = join(next, W, key("nuln"), adj, key("wurtbad"));
     const b = join(a.items, W, key("averland"), adj, key("nuln"));
-    next = setPartOf(setPartOf(b.items, b.link!, road.key), a.link!, road.key);
+    next = setPartOf(setPartOf(b.items, b.link!, road.key).items, a.link!, road.key).items;
     expect(stretchesOf(next, W, road.key).map((l) => linkTitle(next, l))).toEqual(["averland — adjacent to — nuln", "nuln — adjacent to — wurtbad"]);
-    expect(linkOf(setPartOf(next, a.link!, null), a.link!)!.partOf).toBeUndefined();
+    expect(linkOf(setPartOf(next, a.link!, null).items, a.link!)!.partOf).toBeUndefined();
   });
 
   it("a link made a thing: a world item stands for it; removing the item leaves the link", async () => {

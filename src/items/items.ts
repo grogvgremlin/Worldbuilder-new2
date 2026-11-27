@@ -597,6 +597,9 @@ export const LinkKind = z.strictObject({
   // values … and those values may be asymmetrical"). §3's "carries a value"; speed by direction (§4),
   // conductance by direction (§6). "A kind" (fear, kinship type) comes later.
   fields: z.array(LinkField).optional(),
+  // What its links can be stretches of (owner, 27 Nov: road links only part of Road items): thing-kind
+  // keys, flavours counting; Strict or Warn as for its ends. Nothing listed: anything.
+  partOfTakes: z.array(z.string()).optional(),
   // Earlier (27 Nov, one day): a single value. Upgraded on read into `fields` (race-dimensions.ts).
   carries: z.enum(["nothing", "value"]).optional(),
   valueName: z.string().optional(),
@@ -637,6 +640,7 @@ export const Thing = z.strictObject({
   icon: z.string().optional(), // overrides its kind's icon
   colour: z.string().optional(), // how it shows as an area on maps ("#2f6f8f"); blank: by depth
   excludedMembers: z.array(z.string()).optional(), // as a group: items brought in by a member, left out
+  startsAt: z.string().optional(), // as a road: the item it's read from (Altdorf → Middenheim); thing key
   summary: z.string().optional(), // one line, shown under the name
   description: z.string().optional(), // the entry's text
   fields: z.array(ThingField),

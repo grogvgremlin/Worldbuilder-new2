@@ -6,6 +6,9 @@
 //   - Move inside: the same, and dropped on another box they move inside it (on the world's box: to
 //     the top). Dropped on empty space they stay where dropped, as in Arrange (owner, 27 Nov: "move
 //     inside should just allow holding but not stop arrangement").
+//   - Join: the same, but dropped on another box it joins them instead (owner, 27 Nov: "a third mode
+//     … same as move, but just creates a link"): the Join choices open, the dragged box first; the
+//     boxes go back where they were. Dropped on empty space they stay where dropped.
 // A container's round button folds its branch away (and shows how many are hidden).
 // Undo and Redo step back through the moves. Drag the background to pan; pinch or wheel to zoom.
 // Design: design/world-structure.md §3 (one parent at a time, no loops: a drop that would make a loop
@@ -31,7 +34,7 @@ import { plainLinks } from "../../../world/links";
 import { DOUBLE_TAP_MS, swallowNextClick, tapSlop } from "./gestures";
 
 
-type DragMode = "arrange" | "inside";
+type DragMode = "arrange" | "inside" | "join";
 type View = { k: number; tx: number; ty: number };
 type Point = { x: number; y: number };
 type Gesture =
@@ -55,7 +58,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [grouping, setGrouping] = useState(false);
-  const [joining, setJoining] = useState(false); // two selected: join them (owner, 27 Nov)
+  const [joining, setJoining] = useState<[string, string] | null>(null); // two items to join, in order (owner, 27 Nov)
   const [pickedLink, setPickedLink] = useState<string | null>(null); // a link tapped on the Diagram
   const [linksShown, setLinksShown] = useKept(`diagram-links|${world}`, true); // the Links set
   const flagged = itemsWithMisfits(data.items, world, tree); // in one of this tree's links that doesn't fit
@@ -217,7 +220,8 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       const moving = [...new Set(dragged.flatMap((k) => boxesThatMove(data.items, world, tree, k, withBranch)))];
       if (mode === "arrange") return setDrag({ key: g.key, dragged, moving, dx, dy, over: null, refused: null });
       const target = boxAt(toDiagram(at, view), moving)?.key;
-      const fits = !!target && dragged.every((k) => canDrop(k, target));
+      // Join: any other item's box (not the world's) takes the drop; the choices say what fits.
+      const fits = mode === "join" ? !!target && target !== ROOT : !!target && dragged.every((k) => canDrop(k, target));
       setDrag({ key: g.key, dragged, moving, dx, dy, over: fits ? target! : null, refused: target && !fits ? target : null });
     }
   };
@@ -239,6 +243,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
     setDrag(null);
     if (!done) return;
     if (done.refused) return; // dropped on a box that can't take it: back where it was
+    if (done.over && mode === "join") return setJoining([done.key, done.over]); // back where they were; choose how
     if (done.over) {
       let items = data.items;
       for (const key of done.dragged) items = setParent(items, world, key, done.over === ROOT ? null : done.over, tree).items;
@@ -345,6 +350,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
         <nav className="segments small">
           <button className={mode === "arrange" ? "on" : ""} onClick={() => setMode("arrange")}>Arrange</button>
           <button className={mode === "inside" ? "on" : ""} onClick={() => setMode("inside")}>Move inside</button>
+          <button className={mode === "join" ? "on" : ""} onClick={() => setMode("join")}>Join</button>
         </nav>
         <label className="choice"><input type="checkbox" checked={withBranch} onChange={() => setWithBranch(!withBranch)} /> Branch follows</label>
         <TreePicker data={data} world={world} tree={tree} onChoose={setTree} />
@@ -371,7 +377,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
           <>
             <div className="title">{selected.length} selected <span className="sub">· drag one to move them all</span></div>
             <div className="selection-buttons">
-              {selected.length === 2 && <button className="primary" onClick={() => setJoining(true)}>Join…</button>}
+              {selected.length === 2 && <button className="primary" onClick={() => setJoining([selected[0], selected[1]])}>Join…</button>}
               {selected.length > 1 && <button className={selected.length === 2 ? "" : "primary"} onClick={() => setGrouping(true)}>Group / move into…</button>}
               {tree && looseSelected.length > 0 && (
                 <button onClick={async () => {
@@ -387,7 +393,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
         ) : (
           <span className="sub">
             Tap: select (two to join) · a line: its link · double-tap: open, or a new item ·{" "}
-            {mode === "arrange" ? (withBranch ? "branches follow" : "boxes move on their own") : "drop on a box: inside"}
+            {mode === "arrange" ? (withBranch ? "branches follow" : "boxes move on their own") : mode === "inside" ? "drop on a box: inside" : "drop on a box: join"}
           </span>
         )}
       </div>
@@ -439,16 +445,16 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       </div>
       <OverlayList heading="Key" sets={outlineSets} picked={outlineHover} onRow={pickRow} onHover={setOutlineHover} onOpen={(row) => nav.open({ name: row.opens, key: row.key })} />
       </div>
-      {joining && selected.length === 2 && (
+      {joining && (
         <JoinPopup
           data={data}
           world={world}
-          ends={[selected[0], selected[1]]}
+          ends={joining}
           apply={async (items) => {
             await undo.apply(items);
             setSelected([]);
           }}
-          onClose={() => setJoining(false)}
+          onClose={() => setJoining(null)}
         />
       )}
       {grouping && (

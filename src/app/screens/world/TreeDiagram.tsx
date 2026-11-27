@@ -31,6 +31,7 @@ import { GroupPopup } from "./GroupPopup";
 import { JoinPopup } from "./JoinPopup";
 import { LinkBar, LinkLines, linkLines, linkRowId, LINKS_SET, linkSet } from "./link-lines";
 import { plainLinks } from "../../../world/links";
+import { isNetwork } from "../../../world/network";
 import { DOUBLE_TAP_MS, swallowNextClick, tapSlop } from "./gestures";
 
 
@@ -49,9 +50,13 @@ type Gesture =
 type Drag = { key: string; dragged: string[]; moving: string[]; dx: number; dy: number; over: string | null; refused: string | null };
 
 export function TreeDiagram({ data, nav, world, save }: Part) {
-  const [tree, setTree] = useChosenTree(data, world);
+  const [tree, setTree] = useChosenTree(data, world, true);
+  // A network (a connection link kind) instead of a tree (owner, 27 Nov): no world box, no branches,
+  // nothing to move inside; its own links drawn between the boxes.
+  const network = isNetwork(data.items, world, tree);
   const [direction, setDirection] = useKept<Direction>("diagram-direction", "across");
-  const [mode, setMode] = useKept<DragMode>("diagram-drag", "arrange");
+  const [keptMode, setMode] = useKept<DragMode>("diagram-drag", "arrange");
+  const mode: DragMode = network && keptMode === "inside" ? "arrange" : keptMode;
   const [withBranch, setWithBranch] = useKept("diagram-branch", true);
   const [view, setView] = useState<View | null>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
@@ -147,7 +152,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
     const fits = width * k <= size.w - 24 && height * k <= size.h - 24;
     if (fits) return { k, tx: (size.w - width * k) / 2 - left * k, ty: 12 - top * k };
     // Too big for the screen: start at the world's box (the top of the tree), to be panned from.
-    const root = boxes.find((b) => b.key === ROOT)!;
+    const root = boxes.find((b) => b.key === ROOT) ?? boxes[0]; // a network: its first box
     return direction === "down"
       ? { k, tx: size.w / 2 - (root.x + NODE_W / 2) * k, ty: 12 - root.y * k }
       : { k, tx: 12 - root.x * k, ty: size.h / 2 - (root.y + NODE_H / 2) * k };
@@ -299,7 +304,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const madeHere = async (key: string) => {
     let items = data.items;
     const inside = selected.length === 1 ? selected[0] : null;
-    if (inside) items = setParent(items, world, key, inside, tree).items;
+    if (inside && !network) items = setParent(items, world, key, inside, tree).items;
     const box = arrangedLayout(items, world, tree, direction).find((b) => b.key === key);
     if (box && newAt) items = moveBoxes(items, world, tree, direction, [key], newAt.x - NODE_W / 2 - box.x, newAt.y - NODE_H / 2 - box.y);
     await save(items);
@@ -329,13 +334,16 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   // folded: the line is marked "via"); not in this tree at all: not drawn (owner, 27 Nov).
   const endAt = (thing: string) => {
     const box = byKey.get(thing);
-    // From the box's outer side (right, across; bottom, down), the lines bowing out that way.
-    const centre = (b: Box) => (direction === "across" ? { x: drawnAt(b).x + NODE_W, y: drawnAt(b).y + NODE_H / 2 } : { x: drawnAt(b).x + NODE_W / 2, y: drawnAt(b).y + NODE_H });
+    // From the box's outer side (right, across; bottom, down), the lines bowing out that way; in a
+    // network, centre to centre (its boxes aren't in columns of one parent).
+    const centre = (b: Box) => (network ? { x: drawnAt(b).x + NODE_W / 2, y: drawnAt(b).y + NODE_H / 2 } : direction === "across" ? { x: drawnAt(b).x + NODE_W, y: drawnAt(b).y + NODE_H / 2 } : { x: drawnAt(b).x + NODE_W / 2, y: drawnAt(b).y + NODE_H });
     if (box) return { p: centre(box) };
+    if (network) return null; // a network folds nothing away
     const above = pathOf(data.items, world, thing, tree).slice(0, -1).reverse().find((t) => byKey.has(t.key));
     return above ? { p: centre(byKey.get(above.key)!), via: true } : null;
   };
-  const lines = linksOn ? linkLines(data.items, world, plainLinks(data.items, world).filter((l) => !hiddenOutlines.includes(linkRowId(l.linkKind))), endAt) : [];
+  // The network's own links are always drawn (they are its lines); others as Layers says.
+  const lines = linkLines(data.items, world, plainLinks(data.items, world).filter((l) => (network && l.linkKind === tree) || (linksOn && !hiddenOutlines.includes(linkRowId(l.linkKind)))), endAt);
   const worldName = worldOf(data.items, world)?.name ?? "World";
   const label = (b: Box) => (b.thing ? `${iconOf(data.items, b.thing)} ${b.thing.name}` : worldName);
   const handPlaced = hasHandPlacing(data.items, world, tree, direction);
@@ -349,11 +357,11 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
         </nav>
         <nav className="segments small">
           <button className={mode === "arrange" ? "on" : ""} onClick={() => setMode("arrange")}>Arrange</button>
-          <button className={mode === "inside" ? "on" : ""} onClick={() => setMode("inside")}>Move inside</button>
+          {!network && <button className={mode === "inside" ? "on" : ""} onClick={() => setMode("inside")}>Move inside</button>}
           <button className={mode === "join" ? "on" : ""} onClick={() => setMode("join")}>Join</button>
         </nav>
-        <label className="choice"><input type="checkbox" checked={withBranch} onChange={() => setWithBranch(!withBranch)} /> Branch follows</label>
-        <TreePicker data={data} world={world} tree={tree} onChoose={setTree} />
+        {!network && <label className="choice"><input type="checkbox" checked={withBranch} onChange={() => setWithBranch(!withBranch)} /> Branch follows</label>}
+        <TreePicker data={data} world={world} tree={tree} onChoose={setTree} withNetworks />
         <span className="map-tools outlines-menu">
           <button className={outlined.length || linksOn ? "tool on" : "tool"} onClick={() => setOutlineMenu(!outlineMenu)}>Layers ▾</button>
           {outlineMenu && (
@@ -368,6 +376,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
         </span>
       </div>
       {tree && <HiddenNote data={data} nav={nav} world={world} tree={tree} />}
+      {network && boxes.length === 0 && <p className="hint">Nothing in this network yet: join two items with it (Join, or select two and Join…), or show its loose items (its link kind's page).</p>}
       {/* What's selected, in a bar of its own that keeps its height (owner, 26 Nov: the Group button
           was cut off in the hint line until something else changed). */}
       <div className="selection-bar diagram-selection">
@@ -385,7 +394,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
                   for (const k of looseSelected) items = hideHere(items, tree, k, true);
                   await undo.apply(items);
                   setSelected([]);
-                }}>Hide {looseSelected.length} loose from this tree</button>
+                }}>Hide {looseSelected.length} loose from this {network ? "network" : "tree"}</button>
               )}
               <button onClick={() => setSelected([])}>Clear</button>
             </div>
@@ -393,7 +402,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
         ) : (
           <span className="sub">
             Tap: select (two to join) · a line: its link · double-tap: open, or a new item ·{" "}
-            {mode === "arrange" ? (withBranch ? "branches follow" : "boxes move on their own") : mode === "inside" ? "drop on a box: inside" : "drop on a box: join"}
+            {mode === "arrange" ? (network ? "drag to arrange" : withBranch ? "branches follow" : "boxes move on their own") : mode === "inside" ? "drop on a box: inside" : "drop on a box: join"}
           </span>
         )}
       </div>
@@ -421,7 +430,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
               {boxes.filter((b) => b.parent).map((b) => (
                 <path key={`edge-${b.key}`} className="diagram-edge" d={edge(drawnAt(byKey.get(b.parent!)!), drawnAt(b))} />
               ))}
-              <LinkLines lines={lines} k={1} picked={pickedLink} gap={14} bulge={direction === "across" ? { x: 1, y: 0 } : { x: 0, y: 1 }} />
+              <LinkLines lines={lines} k={1} picked={pickedLink} gap={14} bulge={network ? undefined : direction === "across" ? { x: 1, y: 0 } : { x: 0, y: 1 }} />
               {boxes.map((b) => {
                 const p = drawnAt(b);
                 const classes = ["diagram-node", b.key === ROOT ? "root" : "", flagged.has(b.key) ? "misfit" : "", selected.includes(b.key) ? "selected" : "", drag?.moving.includes(b.key) ? "moving" : "", drag?.over === b.key ? "target" : "", drag?.refused === b.key ? "refused" : ""];

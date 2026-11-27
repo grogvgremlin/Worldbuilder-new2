@@ -7,6 +7,7 @@ import type { Item, Sandbox, Thing } from "../items/items";
 import { childrenOf, descendantsOf, topPlaces } from "./places";
 import { isOnlyAGroup } from "./groups";
 import { worldOf } from "./world";
+import { isNetwork, networkItems, networkLayers } from "./network";
 
 export type Direction = "across" | "down";
 export const ROOT = "(world)"; // the world itself, at the root; never stored as an item
@@ -20,8 +21,10 @@ const DOWN = { depthStep: 84, leafStep: NODE_W + 14 }; // down: depth runs down,
 // and, folded, how many of those are hidden (owner, 26 Nov: "a collapse button on a container").
 export type Box = { key: string; thing: Thing | null; parent: string | null; x: number; y: number; holds: number; hidden: number };
 
-// Leaves one step apart; a parent centred on its children.
+// Leaves one step apart; a parent centred on its children. A network (a connection link kind) is laid
+// out by its own rule: networkLayout.
 export function autoLayout(items: Item[], world: string, tree: string | undefined, direction: Direction, folded: Set<string> = new Set()): Box[] {
+  if (isNetwork(items, world, tree)) return networkLayout(items, world, tree!, direction);
   const step = direction === "across" ? ACROSS : DOWN;
   const boxes: Box[] = [];
   let leaf = 0;
@@ -53,9 +56,30 @@ export function arrangedLayout(items: Item[], world: string, tree: string | unde
   });
 }
 
-// Which boxes move when one is dragged: the box alone, or with everything under it in this tree.
+// A network: each part in layers out from its best-joined item (across: layers run right, an item's
+// layer down the page; down: the other way round); parts one after another; loose items in a last
+// row (across: column) after them. No world box: a network has no top.
+export function networkLayout(items: Item[], world: string, kind: string, direction: Direction): Box[] {
+  const step = direction === "across" ? ACROSS : DOWN;
+  const boxes: Box[] = [];
+  const put = (thing: Thing, along: number, spot: number) =>
+    boxes.push(direction === "across" ? { key: thing.key, thing, parent: null, x: along * step.depthStep, y: spot * step.leafStep, holds: 0, hidden: 0 } : { key: thing.key, thing, parent: null, x: spot * step.leafStep, y: along * step.depthStep, holds: 0, hidden: 0 });
+  let start = 0; // the first free spot along the leaf axis
+  for (const layers of networkLayers(items, world, kind)) {
+    const widest = Math.max(...layers.map((l) => l.length));
+    layers.forEach((layer, along) => layer.forEach((t, n) => put(t, along, start + n + (widest - layer.length) / 2)));
+    start += widest + 1;
+  }
+  const loose = networkItems(items, world, kind).loose;
+  const perLine = 6;
+  loose.forEach((t, n) => put(t, n % perLine, start + Math.floor(n / perLine)));
+  return boxes;
+}
+
+// Which boxes move when one is dragged: the box alone, or with everything under it in this tree (a
+// network has no branches: the box alone).
 export function boxesThatMove(items: Item[], world: string, tree: string | undefined, key: string, withBranch: boolean): string[] {
-  if (!withBranch) return [key];
+  if (!withBranch || isNetwork(items, world, tree)) return [key];
   return [key, ...descendantsOf(items, world, key, tree).map((t) => t.key)];
 }
 

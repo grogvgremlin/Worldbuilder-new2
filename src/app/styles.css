@@ -465,3 +465,7 @@ main:has(.map-screen), main:has(.diagram-wrap) { max-width: none; }
 /* Link containers (items made of links) drawn as bands under their links (owner, 27 Nov). */
 .container-band { fill: none; stroke: currentColor; stroke-opacity: .35; stroke-linecap: round; pointer-events: none; }
 .container-name { fill: currentColor; text-anchor: middle; font-weight: 600; pointer-events: none; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; }
+
+/* Allowed values beside a field on a kind's card (owner, 27 Nov). */
+.kind-field { flex-wrap: wrap; } .kind-field > .field-box { flex: 1 1 90px; min-width: 0; } .kind-field > .row-buttons { order: 2; } .kind-field > .choices-box { order: 3; flex: 1 1 100%; }
+.link-field-row { flex-wrap: wrap; gap: 8px; } .link-field-row .choices-box { flex: 1 1 140px; }

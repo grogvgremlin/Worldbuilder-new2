@@ -12,7 +12,7 @@ import { firstTree } from "../../../world/places";
 import { fieldSummary, linkKindStyle, linkTitle } from "../../../world/links";
 import { SwipeRow } from "../../swipe";
 import type { Nav } from "../../App";
-import { TextBox } from "./text-box";
+import { ChoicesBox, TextBox } from "./text-box";
 import { useFoldAll } from "./fold-all";
 
 export function ThingKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav; kindKey: string }) {
@@ -70,7 +70,8 @@ export function ThingKindScreen({ data, nav, kindKey }: { data: AppData; nav: Na
       {kind.fields.map((f, n) => (
         <div className="field kind-field" key={`${f.name}-${n}`}>
           <TextBox className="field-box" value={f.name} onSave={(v) => v && change({ fields: kind.fields.map((g, j) => (j === n ? { ...g, name: v } : g)) })} />
-          <TextBox className="field-box" value={f.about ?? ""} placeholder="hint" onSave={(v) => change({ fields: kind.fields.map((g, j) => (j === n ? { name: g.name, ...(v ? { about: v } : {}) } : g)) })} />
+          <TextBox className="field-box" value={f.about ?? ""} placeholder="hint" onSave={(v) => change({ fields: kind.fields.map((g, j) => (j === n ? { ...g, about: v || undefined } : g)) })} />
+          <ChoicesBox choices={f.choices} onSave={(choices) => change({ fields: kind.fields.map((g, j) => (j === n ? { ...g, choices } : g)) })} />
           <span className="row-buttons">
             <button className="link" disabled={n === 0} onClick={() => moveField(n, -1)} aria-label="Up">↑</button>
             <button className="link" disabled={n === kind.fields.length - 1} onClick={() => moveField(n, 1)} aria-label="Down">↓</button>
@@ -268,6 +269,7 @@ function LinkFields({ kind, change }: { kind: LinkKind; change: (patch: Partial<
             <SwipeRow action="Remove" onAction={() => set(fields.filter((_, i) => i !== n))}>
               <div className="link-field-row">
                 <span className="title">{f.name}</span>
+                <ChoicesBox choices={f.choices} onSave={(choices) => set(fields.map((g, i) => (i === n ? { ...g, choices } : g)))} />
                 <label className="choice"><input type="checkbox" checked={!!f.byDirection} onChange={() => set(fields.map((g, i) => (i === n ? { ...g, byDirection: g.byDirection ? undefined : true } : g)))} /> each way</label>
               </div>
             </SwipeRow>

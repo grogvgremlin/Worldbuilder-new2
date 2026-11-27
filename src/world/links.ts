@@ -223,8 +223,8 @@ export function linkStyle(items: Item[], world: string, link: Link): LinkStyle {
 export type LinkDirection = "from to" | "to from";
 
 // The fields a link shows: its kind's, then any of its own, each with whether it's kept each way.
-export function fieldsOfLink(items: Item[], link: Link): { name: string; byDirection: boolean; offered: boolean; about?: string }[] {
-  const offered = (linkKindOf(items, link.linkKind)?.fields ?? []).map((f) => ({ name: f.name, byDirection: !!f.byDirection, offered: true, about: f.about }));
+export function fieldsOfLink(items: Item[], link: Link): { name: string; byDirection: boolean; offered: boolean; about?: string; choices?: string[] }[] {
+  const offered = (linkKindOf(items, link.linkKind)?.fields ?? []).map((f) => ({ name: f.name, byDirection: !!f.byDirection, offered: true, about: f.about, choices: f.choices }));
   const own = [...new Set((link.fields ?? []).map((f) => f.field))]
     .filter((name) => !offered.some((o) => o.name === name))
     .map((name) => ({ name, byDirection: (link.fields ?? []).some((f) => f.field === name && f.direction), offered: false }));

@@ -594,7 +594,7 @@ function Connections({ data, nav, thing, editing, save }: { data: AppData; nav: 
         {rows.map((r) => (
           <li key={r.link.key}>
             <SwipeRow action="Remove" onAction={() => save(removeLink(data.items, r.link.key))}>
-              <button onClick={() => nav.open({ name: "place", key: r.other })}>
+              <button onClick={() => nav.open({ name: "link", key: r.link.key })}>
                 <span className="title"><span className="link-word">{r.word}</span> {names.get(r.other) ?? r.other}</span>
                 {(r.link.value || r.link.start || r.link.end) && <span className="sub">{[r.link.value && `${carried(r.kind) ?? "value"} ${r.link.value}`, dates(r.link)].filter(Boolean).join(" · ")}</span>}
               </button>

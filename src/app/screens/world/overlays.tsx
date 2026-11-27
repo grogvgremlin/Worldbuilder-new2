@@ -5,11 +5,11 @@
 //   - the side list (the key): the same sets and rows, each with a dot in its colour. Tap a row to
 //     switch it on or off; double-tap to open its card; with a mouse, pointing picks it out.
 import { useRef } from "react";
-import type { Thing } from "../../../items/items";
 import { useFoldAll } from "./fold-all";
 import { DOUBLE_TAP_MS } from "./gestures";
 
-export type OverlayRow = { id: string; thing: Thing; depth: number; on: boolean; colour: string; line: "solid" | "dashed" | "dotted" };
+// A row: an area or outline (opens its item), or a link kind (opens the link kind).
+export type OverlayRow = { id: string; name: string; key: string; opens: "place" | "link-kind"; depth: number; on: boolean; colour: string; line: "solid" | "dashed" | "dotted" };
 export type OverlaySet = { id: string; title: string; on: boolean; rows: OverlayRow[] };
 
 export function OverlayMenu({ label, master, onMaster, sets, onSet, onRow, onClose }: { label: string; master: boolean; onMaster: () => void; sets: OverlaySet[]; onSet: (id: string) => void; onRow: (row: OverlayRow) => void; onClose: () => void }) {
@@ -30,7 +30,7 @@ export function OverlayMenu({ label, master, onMaster, sets, onSet, onRow, onClo
             <summary className="sub menu-heading">{set.title} ({set.rows.filter((r) => r.on).length} of {set.rows.length})</summary>
             {set.rows.map((row) => (
               <label key={row.id} className="choice" style={{ paddingLeft: 8 + row.depth * 16, opacity: master && set.on ? 1 : 0.5 }}>
-                <input type="checkbox" checked={row.on} onChange={() => onRow(row)} /> {row.thing.name}
+                <input type="checkbox" checked={row.on} onChange={() => onRow(row)} /> {row.name}
               </label>
             ))}
           </details>
@@ -40,7 +40,7 @@ export function OverlayMenu({ label, master, onMaster, sets, onSet, onRow, onClo
   );
 }
 
-export function OverlayList({ heading, sets, picked, onRow, onHover, onOpen }: { heading: string; sets: OverlaySet[]; picked: string | null; onRow: (row: OverlayRow) => void; onHover: (id: string | null) => void; onOpen: (thing: string) => void }) {
+export function OverlayList({ heading, sets, picked, onRow, onHover, onOpen }: { heading: string; sets: OverlaySet[]; picked: string | null; onRow: (row: OverlayRow) => void; onHover: (id: string | null) => void; onOpen: (row: OverlayRow) => void }) {
   const folds = useFoldAll();
   const lastTap = useRef<{ id: string; time: number } | null>(null);
   // One tap switches the row on or off; a second soon after switches it back and opens its card.
@@ -49,7 +49,7 @@ export function OverlayList({ heading, sets, picked, onRow, onHover, onOpen }: {
     if (before && before.id === row.id && Date.now() - before.time < DOUBLE_TAP_MS) {
       lastTap.current = null;
       onRow(row);
-      return onOpen(row.thing.key);
+      return onOpen(row);
     }
     lastTap.current = { id: row.id, time: Date.now() };
     onRow(row);
@@ -73,7 +73,7 @@ export function OverlayList({ heading, sets, picked, onRow, onHover, onOpen }: {
                   onPointerLeave={(e) => e.pointerType === "mouse" && onHover(null)}
                 >
                   <span className={`area-dot ${row.line}`} style={{ background: row.on ? row.colour : "transparent", borderColor: row.colour }} />
-                  <span style={{ paddingLeft: row.depth * 10 }}>{row.thing.name}</span>
+                  <span style={{ paddingLeft: row.depth * 10 }}>{row.name}</span>
                 </button>
               </li>
             ))}

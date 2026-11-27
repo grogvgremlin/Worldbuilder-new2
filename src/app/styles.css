@@ -450,3 +450,13 @@ main:has(.map-screen), main:has(.diagram-wrap) { max-width: none; }
 .join-choices li.warn-choice .title { color: var(--warn); }
 .join-ends { margin: 4px 0 8px; }
 .link-word { color: var(--muted, #6b6b6b); margin-right: 4px; }
+
+/* Links drawn on maps and the Diagram (owner, 27 Nov): colour from the link kind (or the link). */
+.link-line { cursor: pointer; }
+.link-line .link-hit { fill: none; stroke: transparent; }
+.link-line .link-stroke { fill: none; stroke: currentColor; stroke-linecap: round; }
+.link-line .link-arrow { fill: currentColor; }
+.link-line.via .link-stroke { opacity: .55; }
+.link-line.picked .link-stroke { filter: drop-shadow(0 0 2px var(--accent)); }
+.link-heading { font-size: 1.3rem; line-height: 1.4; }
+.link-heading .link-word { font-weight: normal; }

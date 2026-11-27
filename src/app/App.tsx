@@ -29,6 +29,7 @@ import { WorldScreen } from "./screens/world/WorldScreen";
 import { PlaceScreen } from "./screens/world/PlaceScreen";
 import { MapScreen } from "./screens/world/MapScreen";
 import { LinkKindScreen, ThingKindScreen } from "./screens/world/KindScreens";
+import { LinkScreen } from "./screens/world/LinkScreen";
 import { worldOf } from "../world/world";
 import { WorldBar } from "./screens/world/Trail";
 
@@ -54,7 +55,8 @@ export type Screen =
   | { name: "place"; key: string }
   | { name: "map"; key: string; focus?: string; place?: string }
   | { name: "thing-kind"; key: string }
-  | { name: "link-kind"; key: string };
+  | { name: "link-kind"; key: string }
+  | { name: "link"; key: string };
 
 export type Nav = { open: (s: Screen) => void; back: () => void; home: () => void; popTo: (index: number) => void };
 
@@ -183,6 +185,8 @@ function render(screen: Screen, data: AppData, nav: Nav, draft: Draft | null, se
       return <MapScreen key={`${screen.key}|${screen.focus}|${screen.place}`} data={data} nav={nav} mapKey={screen.key} focus={screen.focus} place={screen.place} />;
     case "thing-kind":
       return <ThingKindScreen key={screen.key} data={data} nav={nav} kindKey={screen.key} />;
+    case "link":
+      return <LinkScreen key={screen.key} data={data} nav={nav} linkKey={screen.key} />;
     case "link-kind":
       return <LinkKindScreen key={screen.key} data={data} nav={nav} kindKey={screen.key} />;
     case "library":

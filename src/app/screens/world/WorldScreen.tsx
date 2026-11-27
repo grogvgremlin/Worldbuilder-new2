@@ -230,7 +230,7 @@ export function HiddenNote({ data, nav, world, tree }: { data: AppData; nav: Nav
   const kind = linkKindsIn(data.items, world).find((k) => k.key === tree);
   const loose = looseIn(data.items, world, tree);
   const hidden = kind?.loose === "hide" ? loose.length : loose.filter((t) => (kind?.hiddenHere ?? []).includes(t.key)).length;
-  if (!kind || hidden === 0) return <p className="sub swipe-hint">Swipe a loose item left to hide it from this tree.</p>;
+  if (!kind || hidden === 0) return kind?.hierarchy === "none" ? null : <p className="sub swipe-hint">Swipe a loose item left to hide it from this tree.</p>;
   return (
     <p className="sub">
       {hidden} loose item{hidden === 1 ? "" : "s"} hidden from "{kind.name}" ·{" "}

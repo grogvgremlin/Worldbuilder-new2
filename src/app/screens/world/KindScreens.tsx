@@ -183,17 +183,21 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
         <KindChips label="Takes" hint="Nothing ticked: every kind not left out." kinds={thingKinds} on={kind.scope} onToggle={(k) => change({ scope: toggle(kind.scope, k) })} />
       )}
       <KindChips label="Leaves out (both ends)" hint="Their flavours too, unless ticked to take." kinds={thingKinds} on={kind.exclude} onToggle={(k) => change({ exclude: toggle(kind.exclude, k) })} />
-      {kind.hierarchy === "one parent" && (
+      {kind.hierarchy !== "several parents" && (
         <>
-          <h2>Loose items in this tree</h2>
-          <p className="sub">Items that fit this tree but sit loose in it (nothing above, nothing inside): shown at the top of the tree, or not: a dynasty of rulers without everyone else.</p>
+          <h2>Loose items in this {kind.hierarchy === "none" ? "network" : "tree"}</h2>
+          <p className="sub">
+            {kind.hierarchy === "none"
+              ? "Items that fit this link kind but are on none of its links: shown after the network on the Diagram (choose it under Show), or not."
+              : "Items that fit this tree but sit loose in it (nothing above, nothing inside): shown at the top of the tree, or not: a dynasty of rulers without everyone else."}
+          </p>
           <nav className="segments small">
             <button className={kind.loose !== "hide" ? "on" : ""} onClick={() => change({ loose: undefined })}>Show</button>
             <button className={kind.loose === "hide" ? "on" : ""} onClick={() => change({ loose: "hide" })}>Hide</button>
           </nav>
           {(kind.hiddenHere ?? []).length > 0 && (
             <>
-              <p className="sub">Hidden here by hand (swipe on Items or the Diagram):</p>
+              <p className="sub">Hidden here by hand (swipe on Items, or select on the Diagram):</p>
               <ul className="plain">
                 {(kind.hiddenHere ?? []).map((k) => (
                   <li key={k}>{thingsIn(data.items, kind.world).find((t) => t.key === k)?.name ?? k} · <button className="link" onClick={() => replace({ ...kind, hiddenHere: kind.hiddenHere!.filter((h) => h !== k).length ? kind.hiddenHere!.filter((h) => h !== k) : undefined })}>Show again</button></li>

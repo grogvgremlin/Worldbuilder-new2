@@ -11,7 +11,7 @@
 import type { Item, Link, LinkKind, Thing } from "../items/items";
 import { inOrder, isStrict, misfit } from "./kinds";
 import { addToGroup } from "./groups";
-import { descendantsOf, hiddenByHand, parentOf, setParent } from "./places";
+import { descendantsOf, hiddenByHand, hideHere, parentOf, setParent } from "./places";
 import { linkKindsIn, linksIn, newLink } from "./world";
 
 // One link kind offered for joining A to B.
@@ -89,8 +89,11 @@ export function join(items: Item[], world: string, from: string, linkKind: strin
   return { items: result.items, link: made?.key };
 }
 
+// A plain link; both ends are then in its network by choice, so no longer hidden from it (as an item
+// put inside something is no longer hidden from its tree).
 function addPlain(items: Item[], world: string, from: string, linkKind: string, to: string): { items: Item[]; problem?: string } {
-  return { items: [...items, newLink(items, world, from, linkKind, to)] };
+  const shown = hideHere(hideHere(items, linkKind, from, false), linkKind, to, false);
+  return { items: [...shown, newLink(items, world, from, linkKind, to)] };
 }
 
 // --- One link --------------------------------------------------------------------------------------

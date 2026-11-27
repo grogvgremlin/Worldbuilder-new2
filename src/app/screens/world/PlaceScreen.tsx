@@ -7,7 +7,7 @@
 import { useState, type ReactNode } from "react";
 import type { Item, Link, Thing, ThingField, ThingName } from "../../../items/items";
 import { linkKindsIn, linksIn, mapsIn, removeThing, thingKindsIn, thingsIn, worldOf } from "../../../world/world";
-import { childrenOf, descendantsOf, firstTree, hiddenIn, hideHere, pathOf, setParent, treeKinds } from "../../../world/places";
+import { childrenOf, descendantsOf, firstTree, hiddenByHand, hiddenIn, hideHere, pathOf, setParent, treeKinds } from "../../../world/places";
 import { iconOf, mapsShowing } from "../../../world/maps";
 import { addToGroup, broughtOptions, effectiveMembers, excludeFromGroup, groupLinkKinds, groupsIn, groupsWithMember, membersOf, removeFromGroup, type Brings } from "../../../world/groups";
 import type { AppData } from "../../app-data";
@@ -344,11 +344,12 @@ function TreeSection({ data, nav, thing, editing, save, display, tree, treeName 
   const children = childrenOf(data.items, world, thing.key, tree);
   const fits = fitsTree(data.items, world, tree, thing.key);
   const hidden = hiddenIn(data.items, world, tree, thing.key);
-  const canHold = !refusal(data.items, world, tree, "to", thing.key);
+  // Hidden from this tree, it holds nothing here (owner, 27 Nov): only loose or a container shows it.
+  const canHold = !refusal(data.items, world, tree, "to", thing.key) && hidden !== "by hand";
   const kind = linkKindsIn(data.items, world).find((k) => k.key === tree);
   const holdsWord = kind?.reverseName ? `${kind.reverseName[0].toUpperCase()}${kind.reverseName.slice(1)}` : "Holds";
   const inside = new Set(descendantsOf(data.items, world, thing.key, tree).map((t) => t.key));
-  const containers = thingsIn(data.items, world).filter((t) => t.key !== thing.key && !inside.has(t.key) && !refusal(data.items, world, tree, "to", t.key));
+  const containers = thingsIn(data.items, world).filter((t) => t.key !== thing.key && !inside.has(t.key) && !refusal(data.items, world, tree, "to", t.key) && !hiddenByHand(data.items, tree, t.key));
   const label = (t: Thing) => pathOf(data.items, world, t.key, tree).map((p) => p.name).join(" › ");
   const above = new Set(pathOf(data.items, world, thing.key, tree).map((t) => t.key));
   const movable = thingsIn(data.items, world)
@@ -389,7 +390,7 @@ function TreeSection({ data, nav, thing, editing, save, display, tree, treeName 
       {editing && fits ? (
         <select className="tree-select" value={hidden === "by hand" ? HIDDEN : path[path.length - 1]?.key ?? LOOSE} onChange={(e) => place(e.target.value)}>
           <option value={LOOSE}>(loose: straight in the world)</option>
-          <option value={HIDDEN}>(hidden from this tree)</option>
+          <option value={HIDDEN} disabled={children.length > 0}>(hidden from this tree{children.length > 0 ? `: take out what it ${holdsWord.toLowerCase()} first` : ""})</option>
           {containers.map((t) => ({ t, name: label(t) })).sort((a, b) => a.name.localeCompare(b.name)).map(({ t, name }) => <option key={t.key} value={t.key}>{name}</option>)}
         </select>
       ) : where ? (
@@ -399,6 +400,7 @@ function TreeSection({ data, nav, thing, editing, save, display, tree, treeName 
       ) : (
         <ItemsShown data={data} nav={nav} things={path} display="thumbs" />
       )}
+      {hidden === "by hand" && editing && <p className="sub">Hidden from this tree, it {holdsWord.toLowerCase()} nothing here: choose loose or a container to show it.</p>}
       {hidden === "loose hidden" && editing && <p className="sub warn">"{treeName}" hides loose items · <button className="link" onClick={() => nav.open({ name: "link-kind", key: tree })}>Show them</button> or put it in a container</p>}
 
       {(children.length > 0 || (editing && canHold)) && <div className="sub field-group">{holdsWord} ({children.length})</div>}

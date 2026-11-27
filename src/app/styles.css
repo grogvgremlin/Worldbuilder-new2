@@ -320,6 +320,7 @@ label.stack { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8p
 .diagram-node.root rect { fill: var(--ink); stroke: var(--ink); } .diagram-node.root text { fill: var(--ground); }
 .diagram-node.dragging { opacity: .35; }
 .diagram-node.target rect { stroke: var(--accent); stroke-width: 3; }
+.diagram-node.refused rect { stroke: var(--warn, #b4541f); stroke-width: 3; stroke-dasharray: 4 3; }
 .diagram-node.ghost { opacity: .85; pointer-events: none; } .diagram-node.ghost rect { stroke: var(--accent); }
 .swipe-hint { margin: 0 0 6px; font-size: .8rem; } @media (hover: hover) and (pointer: fine) { .swipe-hint { display: none; } }
 .diagram-bar { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; margin-bottom: 4px; }

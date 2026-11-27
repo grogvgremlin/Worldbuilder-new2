@@ -28,6 +28,15 @@
       "scope": [
         "Place"
       ]
+    },
+    {
+      "name": "adjacent to",
+      "direction": "both ways",
+      "hierarchy": "none",
+      "about": "A plain connection: two places that touch or sit side by side. It carries nothing and holds nothing (world-structure §4: adjacency without travel).",
+      "scope": [
+        "Place"
+      ]
     }
   ],
   "group": "in area"

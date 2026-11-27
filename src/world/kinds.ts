@@ -119,7 +119,15 @@ export function misfit(items: Item[], world: string, linkKind: string, end: "fro
   if (itemFits(items, world, item.kinds, rule)) return null;
   const name = (k: string) => thingKindsIn(items, world).find((t) => t.key === k)?.name ?? k;
   const takes = rule.take.length ? `takes ${rule.take.map(name).join(" or ")}` : `leaves out ${rule.leave.map(name).join(" and ")}`;
-  return `"${kind.name}" ${takes} ${end === "from" ? "inside" : "as the container"}; ${item.name} doesn't fit`;
+  return `"${kind.name}" ${takes} ${endWord(kind, end)}; ${item.name} doesn't fit`;
+}
+
+// How an end is named: a tree's or group's ends are inside / the container; a plain connection's
+// are its from and to ends, or either end when it runs both ways.
+export function endWord(kind: LinkKind, end: "from" | "to"): string {
+  if (kind.hierarchy !== "none") return end === "from" ? "inside" : "as the container";
+  if (!kind.endsDiffer) return "at either end";
+  return end === "from" ? "at the from end" : "at the to end";
 }
 
 // Whether a link kind refuses misfits (strict, the default) or only flags them (warn).

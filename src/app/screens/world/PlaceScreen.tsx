@@ -13,7 +13,7 @@ import { addToGroup, broughtOptions, effectiveMembers, excludeFromGroup, groupLi
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { NewPlace } from "./WorldScreen";
-import { TextBox } from "./text-box";
+import { TextBox, ValueBox } from "./text-box";
 import { SwipeRow } from "../../swipe";
 import { useChosenTree } from "./tree-picker";
 import { recalled, rememberAll, useRemembered } from "./remembered";
@@ -207,7 +207,7 @@ function Fields({ data, thing, editing, change }: { data: AppData; thing: Thing;
   const offered = new Set(kinds.flatMap((k) => k.fields.map((f) => `${k.key}|${f.name}`)));
   // Filled in under a kind the thing no longer has, or not offered by its kind: shown as they are.
   const others = thing.fields.filter((f) => !f.of || !offered.has(`${f.of}|${f.field}`));
-  const groups = kinds.map((k) => ({ title: kinds.length > 1 ? k.name : "", of: k.key as string | undefined, fields: k.fields.map((f) => ({ name: f.name, about: f.about })) }));
+  const groups = kinds.map((k) => ({ title: kinds.length > 1 ? k.name : "", of: k.key as string | undefined, fields: k.fields.map((f) => ({ name: f.name, about: f.about, choices: f.choices })) }));
   const rows = groups.map((g) => ({ ...g, fields: editing ? g.fields : g.fields.filter((f) => valueOf(g.of, f.name)) })).filter((g) => g.fields.length > 0);
   if (!editing && rows.length === 0 && others.length === 0) return null;
 
@@ -219,7 +219,7 @@ function Fields({ data, thing, editing, change }: { data: AppData; thing: Thing;
           {g.fields.map((f) => (
             <div className="field" key={f.name}>
               <span className="label">{f.name}</span>
-              {editing ? <TextBox className="field-box" value={valueOf(g.of, f.name)} placeholder={f.about ?? ""} onSave={(v) => setValue(g.of, f.name, v)} /> : <span>{valueOf(g.of, f.name)}</span>}
+              {editing ? <ValueBox value={valueOf(g.of, f.name)} choices={f.choices} placeholder={f.about ?? ""} onSave={(v) => setValue(g.of, f.name, v)} /> : <span>{valueOf(g.of, f.name)}</span>}
             </div>
           ))}
         </div>

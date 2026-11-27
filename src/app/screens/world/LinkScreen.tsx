@@ -11,7 +11,7 @@ import { newKey, thingKindsIn, thingsIn } from "../../../world/world";
 import { addPartOf, canBePartOf, holderKindsFor, linkContainerKinds, linkTitle, makeLinkAThing, partOfMisfit, removePartOf, splitLink, unlinkThing } from "../../../world/links";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
-import { TextBox } from "./text-box";
+import { TextBox, ValueBox } from "./text-box";
 import { SwipeRow } from "../../swipe";
 
 export function LinkScreen({ data, nav, linkKey }: { data: AppData; nav: Nav; linkKey: string }) {
@@ -117,7 +117,7 @@ function Carries({ data, link, name, save }: { data: AppData; link: Link; name: 
   const [own, setOwn] = useState("");
   const [ownEachWay, setOwnEachWay] = useState(false);
   // Fields of its own just added: shown until they have a value (a link keeps only filled-in fields).
-  const [pending, setPending] = useState<{ name: string; byDirection: boolean; offered: boolean }[]>([]);
+  const [pending, setPending] = useState<{ name: string; byDirection: boolean; offered: boolean; choices?: string[] }[]>([]);
   const stored = fieldsOfLink(data.items, link);
   const fields = [...stored, ...pending.filter((p) => !stored.some((f) => f.name === p.name))];
   const ways: { direction: LinkDirection; label: string }[] = [
@@ -132,7 +132,7 @@ function Carries({ data, link, name, save }: { data: AppData; link: Link; name: 
     setOwnEachWay(false);
   };
   const box = (field: string, direction?: LinkDirection) => (
-    <TextBox className="field-box" value={linkValue(link, field, direction)} placeholder="e.g. 40 miles, +2" onSave={(v) => save(setLinkValue(data.items, link.key, field, v, direction))} />
+    <ValueBox value={linkValue(link, field, direction)} choices={fields.find((f) => f.name === field)?.choices} placeholder="e.g. 40 miles, +2" onSave={(v) => save(setLinkValue(data.items, link.key, field, v, direction))} />
   );
   return (
     <>

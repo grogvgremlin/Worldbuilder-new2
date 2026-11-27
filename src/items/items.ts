@@ -538,6 +538,7 @@ export type Roster = z.infer<typeof Roster>;
 export const KindField = z.strictObject({
   name: z.string(), // "population"
   about: z.string().optional(), // a line saying what goes in it
+  choices: z.array(z.string()).optional(), // allowed values: a dropdown (owner, 27 Nov: "paved vs mud")
 });
 export type KindField = z.infer<typeof KindField>;
 
@@ -560,6 +561,7 @@ export const LinkField = z.strictObject({
   name: z.string(), // "distance"
   about: z.string().optional(),
   byDirection: z.boolean().optional(), // true: a value from → to and one to → from
+  choices: z.array(z.string()).optional(), // allowed values: a dropdown (owner, 27 Nov: "paved vs mud")
 });
 export type LinkField = z.infer<typeof LinkField>;
 

@@ -575,6 +575,15 @@ export const LinkKind = z.strictObject({
   // hidden here by hand (owner, 26 Nov: a dynasty of Nuln's rulers without everyone else).
   loose: z.enum(["show", "hide"]).optional(), // absent: show
   hiddenHere: z.array(z.string()).optional(), // thing keys
+  // What a link of this kind carries (§3): nothing, or a value (loyalty +2, 40 miles), named here
+  // (owner, 27 Nov). "A kind" (fear, kinship type) comes later. Absent: nothing.
+  carries: z.enum(["nothing", "value"]).optional(),
+  valueName: z.string().optional(), // what the value is called on its links ("loyalty"); blank: "value"
+  // How its links are drawn on maps and the Diagram (owner, 27 Nov). Absent: worked out from its
+  // place in the world's order; a link can override colour and line.
+  colour: z.string().optional(), // "#2f6f8f"
+  line: z.enum(["solid", "dashed", "dotted"]).optional(),
+  arrows: z.boolean().optional(), // one-way links drawn with an arrow; absent: yes
   about: z.string().optional(),
 });
 export type LinkKind = z.infer<typeof LinkKind>;
@@ -632,6 +641,9 @@ export const Link = z.strictObject({
   broughtFrom: z.string().optional(), // for contents: the tree (link kind key) they're taken from
   start: z.string().optional(), // in-world date, as written, until calendars come
   end: z.string().optional(),
+  note: z.string().optional(), // the link's own note (owner, 27 Nov: a link's own card)
+  colour: z.string().optional(), // drawn in this colour, not its link kind's
+  line: z.enum(["solid", "dashed", "dotted"]).optional(), // drawn with this line, not its link kind's
 });
 export type Link = z.infer<typeof Link>;
 

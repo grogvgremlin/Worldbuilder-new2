@@ -3,7 +3,9 @@
 // empty space for a new item there (inside the one selected box, if one is).
 // Two ways to drag (everything selected moves together if the box dragged is selected):
 //   - Arrange: move boxes where you like, each branch following or not; kept on the world;
-//   - Move inside: drop on another box to move inside, on the world to put them at the top.
+//   - Move inside: the same, and dropped on another box they move inside it (on the world's box: to
+//     the top). Dropped on empty space they stay where dropped, as in Arrange (owner, 27 Nov: "move
+//     inside should just allow holding but not stop arrangement").
 // A container's round button folds its branch away (and shows how many are hidden).
 // Undo and Redo step back through the moves. Drag the background to pan; pinch or wheel to zoom.
 // Design: design/world-structure.md §3 (one parent at a time, no loops: a drop that would make a loop
@@ -35,8 +37,9 @@ type Gesture =
   | { kind: "fold"; key: string; start: Point; from: View; moved: boolean }
   | { kind: "pinch"; startDistance: number; startCentre: Point; from: View }
   | null;
-// A drag under way: which boxes move and by how much (arrange), or where it would drop (inside).
-type Drag = { key: string; moving: string[]; dx: number; dy: number; over: string | null };
+// A drag under way: the boxes dragged, those drawn moving (with their branches, if they follow), by
+// how much, and (Move inside) the box it would drop into, or one it's over that can't take it.
+type Drag = { key: string; dragged: string[]; moving: string[]; dx: number; dy: number; over: string | null; refused: string | null };
 
 export function TreeDiagram({ data, nav, world, save }: Part) {
   const [tree, setTree] = useChosenTree(data, world);
@@ -132,7 +135,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
     return { x: e.clientX - box.left, y: e.clientY - box.top };
   };
   const toDiagram = (p: Point, v: View): Point => ({ x: (p.x - v.tx) / v.k, y: (p.y - v.ty) / v.k });
-  const boxAt = (p: Point, skip: string): Box | undefined => boxes.find((b) => b.key !== skip && p.x >= b.x && p.x <= b.x + NODE_W && p.y >= b.y && p.y <= b.y + NODE_H);
+  const boxAt = (p: Point, skip: string[]): Box | undefined => boxes.find((b) => !skip.includes(b.key) && p.x >= b.x && p.x <= b.x + NODE_W && p.y >= b.y && p.y <= b.y + NODE_H);
 
   // Where a box may be moved inside: not itself or anything it holds.
   const canDrop = (dragged: string, target: string | undefined): boolean => {
@@ -182,14 +185,11 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       const dx = (at.x - g.start.x) / view.k;
       const dy = (at.y - g.start.y) / view.k;
       const dragged = selected.includes(g.key) ? selected : [g.key]; // a selected box brings the rest of the selection
-      if (mode === "arrange") {
-        const moving = [...new Set(dragged.flatMap((k) => boxesThatMove(data.items, world, tree, k, withBranch)))];
-        setDrag({ key: g.key, moving, dx, dy, over: null });
-      } else {
-        const target = boxAt(toDiagram(at, view), g.key)?.key;
-        const fits = dragged.every((k) => canDrop(k, target)) && !dragged.includes(target ?? "");
-        setDrag({ key: g.key, moving: dragged, dx, dy, over: fits ? target! : null });
-      }
+      const moving = [...new Set(dragged.flatMap((k) => boxesThatMove(data.items, world, tree, k, withBranch)))];
+      if (mode === "arrange") return setDrag({ key: g.key, dragged, moving, dx, dy, over: null, refused: null });
+      const target = boxAt(toDiagram(at, view), moving)?.key;
+      const fits = !!target && dragged.every((k) => canDrop(k, target));
+      setDrag({ key: g.key, dragged, moving, dx, dy, over: fits ? target! : null, refused: target && !fits ? target : null });
     }
   };
 
@@ -208,15 +208,15 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
     const done = drag;
     setDrag(null);
     if (!done) return;
-    if (mode === "arrange") {
-      await undo.apply(moveBoxes(data.items, world, tree, direction, done.moving, done.dx, done.dy));
-      return setSelected([]); // a move is done: start afresh (owner, 26 Nov)
+    if (done.refused) return; // dropped on a box that can't take it: back where it was
+    if (done.over) {
+      let items = data.items;
+      for (const key of done.dragged) items = setParent(items, world, key, done.over === ROOT ? null : done.over, tree).items;
+      await undo.apply(items);
+      return setSelected([]);
     }
-    if (!done.over) return; // dropped nowhere useful: they go back where they were
-    let items = data.items;
-    for (const key of done.moving) items = setParent(items, world, key, done.over === ROOT ? null : done.over, tree).items;
-    await undo.apply(items);
-    setSelected([]);
+    await undo.apply(moveBoxes(data.items, world, tree, direction, done.moving, done.dx, done.dy));
+    setSelected([]); // a move is done: start afresh (owner, 26 Nov)
   };
 
   // One tap selects or unselects; a second on the same box soon after opens it.
@@ -266,7 +266,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   };
 
   // Where a box is drawn: moved along with an arrange drag, or still (inside: a ghost follows).
-  const drawnAt = (b: Box): Point => (drag && mode === "arrange" && drag.moving.includes(b.key) ? { x: b.x + drag.dx, y: b.y + drag.dy } : { x: b.x, y: b.y });
+  const drawnAt = (b: Box): Point => (drag && drag.moving.includes(b.key) ? { x: b.x + drag.dx, y: b.y + drag.dy } : { x: b.x, y: b.y });
   const edge = (parent: Point, child: Point): string => {
     if (direction === "across") {
       const [x1, y1, x2, y2] = [parent.x + NODE_W, parent.y + NODE_H / 2, child.x, child.y + NODE_H / 2];
@@ -290,9 +290,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
           <button className={mode === "arrange" ? "on" : ""} onClick={() => setMode("arrange")}>Arrange</button>
           <button className={mode === "inside" ? "on" : ""} onClick={() => setMode("inside")}>Move inside</button>
         </nav>
-        {mode === "arrange" && (
-          <label className="choice"><input type="checkbox" checked={withBranch} onChange={() => setWithBranch(!withBranch)} /> Branch follows</label>
-        )}
+        <label className="choice"><input type="checkbox" checked={withBranch} onChange={() => setWithBranch(!withBranch)} /> Branch follows</label>
         <TreePicker data={data} world={world} tree={tree} onChoose={setTree} />
         <span className="map-tools outlines-menu">
           <button className={outlined.length ? "tool on" : "tool"} onClick={() => setOutlineMenu(!outlineMenu)}>Outlines ▾</button>
@@ -330,7 +328,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
         ) : (
           <span className="sub">
             Tap to select (more for a bulk move) · double-tap to open · double-tap empty space for a new item ·{" "}
-            {mode === "arrange" ? (withBranch ? "branches follow" : "boxes move on their own") : "drop onto a box to move inside, onto the world for the top"}
+            {mode === "arrange" ? (withBranch ? "branches follow" : "boxes move on their own") : "drop onto a box to move inside, onto the world for the top, anywhere else to arrange"}
           </span>
         )}
       </div>
@@ -360,7 +358,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
               ))}
               {boxes.map((b) => {
                 const p = drawnAt(b);
-                const classes = ["diagram-node", b.key === ROOT ? "root" : "", flagged.has(b.key) ? "misfit" : "", selected.includes(b.key) ? "selected" : "", drag?.moving.includes(b.key) ? (mode === "arrange" ? "moving" : "dragging") : "", drag?.over === b.key ? "target" : ""];
+                const classes = ["diagram-node", b.key === ROOT ? "root" : "", flagged.has(b.key) ? "misfit" : "", selected.includes(b.key) ? "selected" : "", drag?.moving.includes(b.key) ? "moving" : "", drag?.over === b.key ? "target" : "", drag?.refused === b.key ? "refused" : ""];
                 return (
                   <g key={b.key} data-node={b.key} transform={`translate(${p.x} ${p.y})`} className={classes.join(" ")}>
                     <rect width={NODE_W} height={NODE_H} rx={8} />
@@ -375,12 +373,6 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
                   </g>
                 );
               })}
-              {drag && mode === "inside" && (
-                <g className="diagram-node ghost" transform={`translate(${byKey.get(drag.key)!.x + drag.dx} ${byKey.get(drag.key)!.y + drag.dy})`}>
-                  <rect width={NODE_W} height={NODE_H} rx={8} />
-                  <text x={10} y={NODE_H / 2 + 5}>{clip(label(byKey.get(drag.key)!), 17)}</text>
-                </g>
-              )}
             </g>
           </svg>
         )}

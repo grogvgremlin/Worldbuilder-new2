@@ -25,6 +25,7 @@ import { useKept, useRemembered } from "./remembered";
 import { HiddenNote, NewPlace, type Part } from "./WorldScreen";
 import { useUndo } from "./undo";
 import { GroupPopup } from "./GroupPopup";
+import { JoinPopup } from "./JoinPopup";
 import { DOUBLE_TAP_MS, swallowNextClick, tapSlop } from "./gestures";
 
 
@@ -51,6 +52,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [grouping, setGrouping] = useState(false);
+  const [joining, setJoining] = useState(false); // two selected: join them (owner, 27 Nov)
   const flagged = itemsWithMisfits(data.items, world, tree); // in one of this tree's links that doesn't fit
   const looseKeys = new Set(looseIn(data.items, world, tree).map((t) => t.key));
   const looseSelected = selected.filter((k) => looseKeys.has(k));
@@ -313,7 +315,8 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
           <>
             <div className="title">{selected.length} selected <span className="sub">· drag one to move them all</span></div>
             <div className="selection-buttons">
-              {selected.length > 1 && <button className="primary" onClick={() => setGrouping(true)}>Group / move into…</button>}
+              {selected.length === 2 && <button className="primary" onClick={() => setJoining(true)}>Join…</button>}
+              {selected.length > 1 && <button className={selected.length === 2 ? "" : "primary"} onClick={() => setGrouping(true)}>Group / move into…</button>}
               {tree && looseSelected.length > 0 && (
                 <button onClick={async () => {
                   let items = data.items;
@@ -327,7 +330,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
           </>
         ) : (
           <span className="sub">
-            Tap to select (more for a bulk move) · double-tap to open · double-tap empty space for a new item ·{" "}
+            Tap to select (two to join, more for a bulk move) · double-tap to open · double-tap empty space for a new item ·{" "}
             {mode === "arrange" ? (withBranch ? "branches follow" : "boxes move on their own") : "drop on a box to move inside, elsewhere to arrange"}
           </span>
         )}
@@ -379,6 +382,18 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       </div>
       <OverlayList heading="Key" sets={outlineSets} picked={outlineHover} onRow={(row) => { const o = outlineByRow(row); if (o) toggleOne(o); }} onHover={setOutlineHover} onOpen={(key) => nav.open({ name: "place", key })} />
       </div>
+      {joining && selected.length === 2 && (
+        <JoinPopup
+          data={data}
+          world={world}
+          ends={[selected[0], selected[1]]}
+          apply={async (items) => {
+            await undo.apply(items);
+            setSelected([]);
+          }}
+          onClose={() => setJoining(false)}
+        />
+      )}
       {grouping && (
         <GroupPopup
           data={data}

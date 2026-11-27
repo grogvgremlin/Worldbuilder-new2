@@ -20,6 +20,7 @@ import { TextBox } from "./text-box";
 import { treeKinds } from "../../../world/places";
 import { useUndo } from "./undo";
 import { GroupPopup } from "./GroupPopup";
+import { JoinPopup } from "./JoinPopup";
 import { colourOf } from "./area-colours";
 import { OverlayList, OverlayMenu, type OverlayRow, type OverlaySet } from "./overlays";
 import { DOUBLE_TAP_MS, DOUBLE_TAP_PX, swallowNextClick, tapSlop } from "./gestures";
@@ -50,6 +51,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
   const [lit, setLit] = useState<string | null>(null); // an area picked out (tap on the map or in the list)
   const [hover, setHover] = useState<string | null>(null); // with a mouse: the area under the pointer
   const [grouping, setGrouping] = useState(false);
+  const [joining, setJoining] = useState(false); // two selected: join them (owner, 27 Nov)
   const [areasMenu, setAreasMenu] = useState(false);
   const showArea = (next: AreasShown) => (setShown(next), saveAreasShown(mapKey, next));
   const [locked, setLocked] = useState(false);
@@ -321,7 +323,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
         </div>
       )}
       {selected.length === 0 ? (
-        <div className="selection-bar empty sub">Tap to select (more for a bulk move) · double-tap to open · double-tap empty space for a new item.</div>
+        <div className="selection-bar empty sub">Tap to select (two to join, more for a bulk move) · double-tap to open · double-tap empty space for a new item.</div>
       ) : (
         <SelectionCard
           data={data}
@@ -336,6 +338,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
           }}
           onSelect={setSelected}
           onGroup={() => setGrouping(true)}
+          onJoin={() => setJoining(true)}
           onClose={() => setSelected([])}
         />
       )}
@@ -363,6 +366,18 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
       </div>
       <OverlayList heading="Areas" sets={sets} picked={picked} onRow={toggleRow} onHover={setHover} onOpen={(key) => nav.open({ name: "place", key })} />
       </div>
+      {joining && selected.length === 2 && (
+        <JoinPopup
+          data={data}
+          world={map.world}
+          ends={[selected[0], selected[1]]}
+          apply={async (items) => {
+            await undo.apply(items);
+            setSelected([]);
+          }}
+          onClose={() => setJoining(false)}
+        />
+      )}
       {grouping && (
         <GroupPopup
           data={data}
@@ -519,7 +534,7 @@ function saveAreasShown(mapKey: string, shown: AreasShown) {
 
 // What's selected: one item's card (Open; take it off the map; select what's inside it), or a count
 // for a bulk move (owner, 26 Nov: "I want to be able to do bulk moves").
-function SelectionCard({ data, map, selected, onOpen, onUnpin, onSelect, onGroup, onClose }: { data: AppData; map: WorldMap; selected: Thing[]; onOpen: (key: string) => void; onUnpin: (keys: string[]) => void; onSelect: (keys: string[]) => void; onGroup: () => void; onClose: () => void }) {
+function SelectionCard({ data, map, selected, onOpen, onUnpin, onSelect, onGroup, onJoin, onClose }: { data: AppData; map: WorldMap; selected: Thing[]; onOpen: (key: string) => void; onUnpin: (keys: string[]) => void; onSelect: (keys: string[]) => void; onGroup: () => void; onJoin: () => void; onClose: () => void }) {
   const pinned = selected.filter((t) => map.pins.some((p) => p.thing === t.key));
   // Inside the selection: what each holds (any depth, main tree) and its group members, pinned here.
   const inside = [...new Set(selected.flatMap((t) => [...descendantsOf(data.items, map.world, t.key), ...membersOf(data.items, map.world, t.key).map((m) => m.thing)]).map((t) => t.key))]
@@ -539,7 +554,8 @@ function SelectionCard({ data, map, selected, onOpen, onUnpin, onSelect, onGroup
       )}
       <div className="selection-buttons">
         {one && <button className="primary" onClick={() => onOpen(one.key)}>Open</button>}
-        {selected.length > 1 && <button className="primary" onClick={onGroup}>Group / move into…</button>}
+        {selected.length === 2 && <button className="primary" onClick={onJoin}>Join {selected[0].name} → {selected[1].name}…</button>}
+        {selected.length > 1 && <button className={selected.length === 2 ? "" : "primary"} onClick={onGroup}>Group / move into…</button>}
         {inside.length > 0 && <button onClick={() => onSelect([...selected.map((t) => t.key), ...inside])}>Select what's inside ({inside.length})</button>}
         {pinned.length > 0 && <button onClick={() => onUnpin(pinned.map((t) => t.key))}>Take {pinned.length > 1 ? `${pinned.length} ` : ""}off this map</button>}
       </div>

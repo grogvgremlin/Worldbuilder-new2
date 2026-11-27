@@ -18,6 +18,8 @@ import { SwipeRow } from "../../swipe";
 import { useChosenTree } from "./tree-picker";
 import { recalled, rememberAll, useRemembered } from "./remembered";
 import { fitsTree, kindLine, kindTree, refusal } from "../../../world/kinds";
+import { carried, join, linksFrom, offersFor, removeLink, type Offer } from "../../../world/links";
+import { JoinChoices } from "./JoinPopup";
 
 export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; thingKey: string }) {
   const [editing, setEditing] = useState(false);
@@ -100,7 +102,7 @@ export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; 
 
       <Fold id="where" title="Where it sits" big>
         <WhereItSits data={data} nav={nav} thing={thing} editing={editing} save={save} />
-        <AllLinks data={data} nav={nav} thing={thing} />
+        <Connections data={data} nav={nav} thing={thing} editing={editing} save={save} />
         <OnMaps data={data} nav={nav} thing={thing} />
       </Fold>
 
@@ -561,33 +563,56 @@ function AddMember({ data, world, group, linkKind, treesOf, save }: { data: AppD
   );
 }
 
-// Every other link (not a tree, not a group), read from this end: "in" one way, "holds" the other.
-function AllLinks({ data, nav, thing }: { data: AppData; nav: Nav; thing: Thing }) {
+// Connections: its plain links (not a tree, not a group), read from this end: "rules" one way,
+// "ruled by" the other. Editing, a picker at the top joins it to another item, ends first (owner,
+// 27 Nov): the link kinds that fit, then the rest with the reason. Swipe a row left to remove it.
+function Connections({ data, nav, thing, editing, save }: { data: AppData; nav: Nav; thing: Thing; editing: boolean; save: (items: Item[]) => Promise<void> }) {
   const world = thing.world;
-  const kinds = new Map(linkKindsIn(data.items, world).map((k) => [k.key, k]));
+  const [other, setOther] = useState("");
   const names = new Map(thingsIn(data.items, world).map((t) => [t.key, t.name]));
-  const hierarchical = new Set(linkKindsIn(data.items, world).filter((k) => k.hierarchy !== "none").map((k) => k.key));
-  const rows = linksIn(data.items, world)
-    .filter((l) => !hierarchical.has(l.linkKind) && (l.from === thing.key || l.to === thing.key))
-    .map((l) => {
-      const kind = kinds.get(l.linkKind);
-      const outward = l.from === thing.key;
-      const word = outward || kind?.direction === "both ways" ? kind?.name ?? l.linkKind : kind?.reverseName ?? `(${kind?.name ?? l.linkKind}) from`;
-      return { key: l.key, word, other: outward ? l.to : l.from, value: l.value };
-    });
-  if (rows.length === 0) return null;
+  const rows = linksFrom(data.items, world, thing.key);
+  if (rows.length === 0 && !editing) return null;
+  const others = thingsIn(data.items, world).filter((t) => t.key !== thing.key).sort((a, b) => a.name.localeCompare(b.name));
+  const pick = async (offer: Offer) => {
+    const result = join(data.items, world, thing.key, offer.kind.key, other);
+    if (result.problem) return alert(result.problem);
+    await save(result.items);
+    setOther("");
+  };
   return (
-    <Fold id="links" title="Other links">
-      <ul className="plain links">
+    <Fold id="links" title={`Connections${rows.length ? ` (${rows.length})` : ""}`}>
+      {editing && (
+        <>
+          <select className="tree-select" value={other} onChange={(e) => setOther(e.target.value)}>
+            <option value="">Join to…</option>
+            {others.map((t) => <option key={t.key} value={t.key}>{t.name}</option>)}
+          </select>
+          {other && <JoinChoices data={data} offers={offersFor(data.items, world, thing.key, other)} from={thing.name} to={names.get(other) ?? other} onPick={pick} />}
+        </>
+      )}
+      <ul className="list">
         {rows.map((r) => (
-          <li key={r.key}>
-            <span className="link-word">{r.word}:</span> <button className="link" onClick={() => nav.open({ name: "place", key: r.other })}>{names.get(r.other) ?? r.other}</button>
-            {r.value && <span className="sub"> · {r.value}</span>}
+          <li key={r.link.key}>
+            <SwipeRow action="Remove" onAction={() => save(removeLink(data.items, r.link.key))}>
+              <button onClick={() => nav.open({ name: "place", key: r.other })}>
+                <span className="title"><span className="link-word">{r.word}</span> {names.get(r.other) ?? r.other}</span>
+                {(r.link.value || r.link.start || r.link.end) && <span className="sub">{[r.link.value && `${carried(r.kind) ?? "value"} ${r.link.value}`, dates(r.link)].filter(Boolean).join(" · ")}</span>}
+              </button>
+            </SwipeRow>
           </li>
         ))}
       </ul>
+      {rows.length === 0 && <p className="sub">Not joined to anything yet.</p>}
     </Fold>
   );
+}
+
+// A link's dates as written: "2502–2512", "from 2502", "until 2512".
+function dates(link: Link): string {
+  if (link.start && link.end) return `${link.start}–${link.end}`;
+  if (link.start) return `from ${link.start}`;
+  if (link.end) return `until ${link.end}`;
+  return "";
 }
 
 // The maps it's pinned on; or pin it on one.

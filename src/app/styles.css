@@ -444,3 +444,9 @@ main:has(.map-screen), main:has(.diagram-wrap) { max-width: none; }
 .scope-choice { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 8px; padding: 8px; background: var(--panel); border: 1px solid var(--link); border-radius: var(--radius); }
 .scope-choice button:not(.link) { padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--ground); }
 .scope-picks { margin: 6px 0 10px; padding: 8px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+
+/* Joining two items (owner, 27 Nov): link kinds that don't fit are greyed with the reason. */
+.join-choices li.greyed { opacity: .5; }
+.join-choices li.warn-choice .title { color: var(--warn); }
+.join-ends { margin: 4px 0 8px; }
+.link-word { color: var(--muted, #6b6b6b); margin-right: 4px; }

@@ -664,6 +664,11 @@ export const Link = z.strictObject({
   start: z.string().optional(), // in-world date, as written, until calendars come
   end: z.string().optional(),
   note: z.string().optional(), // the link's own note (owner, 27 Nov: a link's own card)
+  // Roads and the like (owner, 27 Nov; design §3–4): the world item this link is a stretch of (the
+  // Great North Road: a thing with its own name, entry and links), and the world item that stands for
+  // this link itself, once it needs links of its own ("a link that needs links becomes a thing").
+  partOf: z.string().optional(), // thing key
+  asThing: z.string().optional(), // thing key
   colour: z.string().optional(), // drawn in this colour, not its link kind's
   line: z.enum(["solid", "dashed", "dotted"]).optional(), // drawn with this line, not its link kind's
 });

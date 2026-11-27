@@ -217,3 +217,31 @@ describe("what a link carries: fields (owner, 27 Nov)", () => {
     expect([l.value, linkValue(l, "Distance")]).toEqual([undefined, "40 miles"]);
   });
 });
+
+describe("roads and links that become things (owner, 27 Nov)", () => {
+  it("a road is a world item; its stretches are links marked part of it, in order end to end", async () => {
+    const { setPartOf, stretchesOf } = await import("../src/world/links");
+    const { items, kinds } = setUp();
+    const road: Thing = { key: key("north-road"), kind: "thing", world: W, name: "The Great North Road", kinds: [], fields: [] };
+    const town = { ...(items.find((i) => i.key === key("nuln")) as Thing), key: key("wurtbad"), name: "wurtbad" };
+    let next: Item[] = [...items, road, town];
+    const adj = kinds.get("adjacent to")!;
+    const a = join(next, W, key("nuln"), adj, key("wurtbad"));
+    const b = join(a.items, W, key("averland"), adj, key("nuln"));
+    next = setPartOf(setPartOf(b.items, b.link!, road.key), a.link!, road.key);
+    expect(stretchesOf(next, W, road.key).map((l) => linkTitle(next, l))).toEqual(["averland — adjacent to — nuln", "nuln — adjacent to — wurtbad"]);
+    expect(linkOf(setPartOf(next, a.link!, null), a.link!)!.partOf).toBeUndefined();
+  });
+
+  it("a link made a thing: a world item stands for it; removing the item leaves the link", async () => {
+    const { makeLinkAThing, linkStoodFor } = await import("../src/world/links");
+    const { removeThing } = await import("../src/world/world");
+    const { items, kinds } = setUp();
+    const made = join(items, W, key("nuln"), kinds.get("adjacent to")!, key("averland"));
+    const thing = makeLinkAThing(made.items, W, made.link!);
+    expect(thing.items.find((i) => i.key === thing.thing)!.name).toBe("nuln – averland");
+    expect(linkStoodFor(thing.items, thing.thing!)!.key).toBe(made.link);
+    const gone = removeThing(thing.items, thing.thing!);
+    expect(linkOf(gone, made.link!)!.asThing).toBeUndefined();
+  });
+});

@@ -4,10 +4,11 @@
 // Design: design/world-structure.md §3 (direction, carries), §7 (start and end readable on any
 // dated link). Core: src/world/links.ts.
 import { useState } from "react";
-import type { Item, Link } from "../../../items/items";
+import type { Item, Link, Thing } from "../../../items/items";
 import { changeEnd, fieldsOfLink, linkValue, removeLinkField, setLinkValue, type LinkDirection, changeLink, changeLinkKind, linkKindOf, linkKindStyle, linkKindsInOrder, linkStyle, removeLink, swapEnds } from "../../../world/links";
 import { misfit } from "../../../world/kinds";
-import { thingsIn } from "../../../world/world";
+import { newKey, thingKindsIn, thingsIn } from "../../../world/world";
+import { makeLinkAThing, setPartOf, unlinkThing } from "../../../world/links";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { TextBox } from "./text-box";
@@ -66,6 +67,8 @@ export function LinkScreen({ data, nav, linkKey }: { data: AppData; nav: Nav; li
       <p className="sub"><button className="link" onClick={() => nav.open({ name: "link-kind", key: link.linkKind })}>Open "{kind?.name ?? link.linkKind}"</button>: what it takes, what it carries, how its links are drawn.</p>
 
       <Carries data={data} link={link} name={name} save={save} />
+
+      <AsAThing data={data} nav={nav} link={link} things={things} save={save} />
 
       <h2>When</h2>
       <p className="sub">As written, until calendars come.</p>
@@ -160,6 +163,67 @@ function Carries({ data, link, name, save }: { data: AppData; link: Link; name: 
         <button onClick={addOwn}>Add</button>
       </div>
       <label className="choice"><input type="checkbox" checked={ownEachWay} onChange={() => setOwnEachWay(!ownEachWay)} /> each way</label>
+    </>
+  );
+}
+
+// Part of a road (owner, 27 Nov: "the great north road"): the world item this link is a stretch of,
+// chosen or made here. And the link as a world item of its own, once it needs a name, an entry or
+// links of its own (design §3: "a link that needs links of its own becomes a thing").
+function AsAThing({ data, nav, link, things, save }: { data: AppData; nav: Nav; link: Link; things: Thing[]; save: (items: Item[]) => Promise<void> }) {
+  const world = link.world;
+  const kinds = thingKindsIn(data.items, world);
+  const [name, setName] = useState("");
+  const [kind, setKind] = useState(kinds.find((k) => /road|river|route/i.test(k.name))?.key ?? "");
+  const whole = things.find((t) => t.key === link.partOf);
+  const stood = things.find((t) => t.key === link.asThing);
+  const makeWhole = async () => {
+    if (!name.trim()) return;
+    const key = newKey(data.items, world, "thing", name);
+    const thing: Thing = { key, kind: "thing", world, name: name.trim(), kinds: kind ? [kind] : [], fields: [] };
+    await save(setPartOf([...data.items, thing], link.key, key));
+    setName("");
+  };
+  return (
+    <>
+      <h2>Part of</h2>
+      <p className="sub">A road, river or route this is a stretch of: a world item with its own name, entry and links.</p>
+      <div className="field">
+        <span className="label">Part of</span>
+        <select value={link.partOf ?? ""} onChange={(e) => save(setPartOf(data.items, link.key, e.target.value || null))}>
+          <option value="">(nothing)</option>
+          {things.filter((t) => t.key !== link.asThing).map((t) => <option key={t.key} value={t.key}>{t.name}</option>)}
+        </select>
+      </div>
+      {whole && <p className="sub"><button className="link" onClick={() => nav.open({ name: "place", key: whole.key })}>Open {whole.name}</button>: its stretches, in order.</p>}
+      {!whole && (
+        <div className="inline-add">
+          <input className="filter" placeholder="Or a new one (e.g. The Great North Road)" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && makeWhole()} />
+          <select value={kind} onChange={(e) => setKind(e.target.value)}>
+            <option value="">no kind</option>
+            {kinds.map((k) => <option key={k.key} value={k.key}>{k.name}</option>)}
+          </select>
+          <button onClick={makeWhole}>Make</button>
+        </div>
+      )}
+
+      <h2>As a world item</h2>
+      {stood ? (
+        <p className="sub">
+          <button className="link" onClick={() => nav.open({ name: "place", key: stood.key })}>{stood.name}</button> stands for this link: its name, entry and links of its own. ·{" "}
+          <button className="link" onClick={() => save(unlinkThing(data.items, link.key))}>Let go</button>
+        </p>
+      ) : (
+        <>
+          <p className="sub">When this link needs a name, an entry or links of its own (a bridge, a treaty, a stretch ruled by someone), make it a world item.</p>
+          <button onClick={async () => {
+            const result = makeLinkAThing(data.items, world, link.key);
+            if (result.problem) return alert(result.problem);
+            await save(result.items);
+            nav.open({ name: "place", key: result.thing! });
+          }}>Make this link a world item</button>
+        </>
+      )}
     </>
   );
 }

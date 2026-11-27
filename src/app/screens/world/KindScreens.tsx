@@ -136,11 +136,13 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
         </select>
       </div>
       <div className="field">
-        <span className="label">Hierarchy</span>
+        {/* Named by what it makes (owner, 27 Nov: "road" was set to several parents and became a group,
+            not a line between two places). */}
+        <span className="label">Makes</span>
         <select value={kind.hierarchy} onChange={(e) => change({ hierarchy: e.target.value as LinkKind["hierarchy"] })}>
-          <option value="none">none</option>
-          <option value="one parent">one parent at a time (a tree)</option>
-          <option value="several parents">several parents, no loops</option>
+          <option value="none">connections: a line between two items (a road, an alliance)</option>
+          <option value="one parent">a tree: one container at a time (in, part of)</option>
+          <option value="several parents">groups: many at once, no loops (in area, member of)</option>
         </select>
       </div>
       {/* What its links carry, and how they're drawn (owner, 27 Nov: configurable on the link kind,
@@ -158,7 +160,16 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
           <TextBox className="field-box" value={kind.valueName ?? ""} placeholder="e.g. loyalty, distance (blank: value)" onSave={(v) => change({ valueName: v || undefined })} />
         </div>
       )}
-      {kind.hierarchy === "none" && <DrawnAs data={data} kind={kind} change={change} />}
+      {kind.hierarchy === "none" ? (
+        <DrawnAs data={data} kind={kind} change={change} />
+      ) : (
+        <>
+          <h2>How its links are drawn</h2>
+          <p className="sub">
+            {kind.hierarchy === "one parent" ? "As a tree: areas on maps, branches on the Diagram." : "As groups: dashed areas on maps, outlines on the Diagram."} Only connections are drawn as lines (with a colour, line and arrows set here). For a road or an alliance, choose <b>Makes: connections</b> above: its links stay, and become connections.
+          </p>
+        </>
+      )}
       <h2>What this does here</h2>
       <ul className="plain does">{whatItDoes(kind, isTree).map((line) => <li key={line}>{line}</li>)}</ul>
       <h2>What it takes</h2>
@@ -204,7 +215,7 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
         </>
       )}
       <p className="sub">{count} link{count === 1 ? "" : "s"} of this kind.</p>
-      {kind.hierarchy === "none" && count > 0 && (
+      {count > 0 && (
         <ul className="list">
           {linksIn(data.items, kind.world).filter((l) => l.linkKind === kind.key).map((l) => (
             <li key={l.key}>

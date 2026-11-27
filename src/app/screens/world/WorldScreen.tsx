@@ -18,6 +18,7 @@ import { ScopePicks } from "./scope-picks";
 import type { Brings } from "../../../world/groups";
 import { groupKindFor } from "../../../world/bulk";
 import { TreeDiagram } from "./TreeDiagram";
+import { linkKindsInOrder, linkTitle, plainLinks, removeLink } from "../../../world/links";
 import { ALL, TreePicker, useChosenTree } from "./tree-picker";
 import { hasKind, inOrder, itemsWithMisfits, kindTree, misfitLinks, moveInOrder, refusal, removeLinkKind, setFlavourOf, type Misfit } from "../../../world/kinds";
 
@@ -50,7 +51,7 @@ export type Part = { data: AppData; nav: Nav; world: string; save: (items: Item[
 type Shape = "all" | "containers" | "base";
 
 function Items({ data, nav, world, save }: Part) {
-  const [view, setView] = useRemembered<"tree" | "groups" | "loose" | "misfits">(`${world}|items-view`, "tree");
+  const [view, setView] = useRemembered<"tree" | "groups" | "loose" | "links" | "misfits">(`${world}|items-view`, "tree");
   const [epoch, setEpoch] = useState(0); // bumped by Fold all / Open all: the tree redraws
   const [tree, setTree] = useChosenTree(data, world);
   const [byKind, setByKind] = useRemembered(`${world}|by-kind`, false); // the tree picker's "All"
@@ -122,6 +123,7 @@ function Items({ data, nav, world, save }: Part) {
               <button className={view === "tree" ? "on" : ""} onClick={() => setView("tree")}>Tree</button>
               <button className={view === "groups" ? "on" : ""} onClick={() => setView("groups")}>Groups</button>
               <button className={view === "loose" ? "on" : ""} onClick={() => setView("loose")}>Loose ({looseItems(data.items, world).length})</button>
+              <button className={view === "links" ? "on" : ""} onClick={() => setView("links")}>Links ({plainLinks(data.items, world).length})</button>
               {misfits.length > 0 && <button className={view === "misfits" ? "on" : ""} onClick={() => setView("misfits")}>⚠ Doesn't fit ({misfits.length})</button>}
             </nav>
             {view === "tree" && <TreePicker data={data} world={world} tree={byKind ? ALL : tree} onChoose={(k) => (k === ALL ? setByKind(true) : (setByKind(false), setTree(k)))} withAll />}
@@ -145,6 +147,7 @@ function Items({ data, nav, world, save }: Part) {
             </ul>
           )}
           {view === "groups" && <Groups data={data} nav={nav} world={world} save={save} />}
+          {view === "links" && <LinksList data={data} nav={nav} world={world} save={save} />}
           {view === "misfits" && <MisfitList data={data} nav={nav} misfits={misfits} save={save} />}
           {view === "loose" && (
             <>
@@ -154,6 +157,42 @@ function Items({ data, nav, world, save }: Part) {
           )}
         </>
       )}
+    </>
+  );
+}
+
+// Items → Links (owner, 27 Nov: "still don't see links in items anywhere"): every connection, a folding
+// section per link kind in the world's order. Tap a link to open its card; swipe left to remove it.
+function LinksList({ data, nav, world, save }: { data: AppData; nav: Nav; world: string; save: (items: Item[]) => Promise<void> }) {
+  const folds = useFoldAll();
+  const kinds = linkKindsInOrder(data.items, world).filter((k) => k.hierarchy === "none");
+  const links = plainLinks(data.items, world);
+  if (kinds.length === 0) return <p className="sub">No connection link kinds yet: add one under Kinds (Makes: connections).</p>;
+  if (links.length === 0) return <p className="sub">No links yet. Select two items on a map or the Diagram and Join, or use Join to… on an item's card.</p>;
+  return (
+    <>
+      <p className="sub">{folds.controls}</p>
+      {kinds.map((k) => {
+        const these = links.filter((l) => l.linkKind === k.key).sort((a, b) => linkTitle(data.items, a).localeCompare(linkTitle(data.items, b)));
+        if (these.length === 0) return null;
+        return (
+          <details key={`${k.key}|${folds.epoch}`} className="menu-section" open={folds.openFor(true)}>
+            <summary className="sub menu-heading">{k.name} ({these.length})</summary>
+            <ul className="list">
+              {these.map((l) => (
+                <li key={l.key}>
+                  <SwipeRow action="Remove" onAction={() => save(removeLink(data.items, l.key))}>
+                    <button onClick={() => nav.open({ name: "link", key: l.key })}>
+                      <span className="title">{linkTitle(data.items, l)}</span>
+                      {(l.value || l.start || l.end || l.note) && <span className="sub">{[l.value, [l.start, l.end].filter(Boolean).join("–"), l.note].filter(Boolean).join(" · ")}</span>}
+                    </button>
+                  </SwipeRow>
+                </li>
+              ))}
+            </ul>
+          </details>
+        );
+      })}
     </>
   );
 }
@@ -583,7 +622,7 @@ function Kinds({ data, nav, world, save }: Part) {
             <SwipeRow action="Remove" onAction={() => removeLink(k.key, k.name)}>
               <button onClick={() => nav.open({ name: "link-kind", key: k.key })}>
                 <span className="title">{k.name}{k.reverseName ? ` / ${k.reverseName}` : ""}</span>
-                <span className="sub">{[k.direction, k.hierarchy === "none" ? "" : k.hierarchy, k.strictness === "warn" ? "warn only" : "", k.about].filter(Boolean).join(" · ")}</span>
+                <span className="sub">{[k.hierarchy === "none" ? "connections" : k.hierarchy === "one parent" ? "a tree" : "groups", k.direction, k.strictness === "warn" ? "warn only" : "", k.about].filter(Boolean).join(" · ")}</span>
               </button>
             </SwipeRow>
             <OrderArrows onMove={(by) => save(moveInOrder(data.items, world, linkKindsIn(data.items, world), k.key, by))} />

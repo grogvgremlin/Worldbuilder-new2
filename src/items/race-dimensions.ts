@@ -58,6 +58,28 @@ export function upgradeItem(item: Record<string, any>): Record<string, any> {
   return item;
 }
 
+// Upgrades that need more than the item itself. A link's single value (27 Nov, one day) becomes a
+// field named as its link kind named it ("Distance"); the link kind's "carries a value" becomes that
+// field, offered on its links.
+export function upgradeItems(items: Item[]): Item[] {
+  const named = new Map<string, string>();
+  for (const i of items) if (i.kind === "link-kind" && i.carries === "value") named.set(i.key, i.valueName || "value");
+  return items.map((i) => {
+    if (i.kind === "link-kind" && (i.carries !== undefined || i.valueName !== undefined)) {
+      const { carries, valueName, ...rest } = i;
+      const field = carries === "value" ? valueName || "value" : null;
+      const fields = field && !(rest.fields ?? []).some((f) => f.name === field) ? [...(rest.fields ?? []), { name: field }] : rest.fields;
+      return { ...rest, ...(fields ? { fields } : {}) };
+    }
+    if (i.kind === "link" && i.value !== undefined) {
+      const { value, ...rest } = i;
+      if (!value) return rest;
+      return { ...rest, fields: [...(rest.fields ?? []), { field: named.get(i.linkKind) ?? "value", value }] };
+    }
+    return i;
+  });
+}
+
 // --- Changing the dimensions, applied at once (owner, 24 Nov: "adjust the app on the fly") ---------
 
 export type DimensionChange = { dims: RaceDimension[]; renames: Record<string, string> }; // renames: old name -> new

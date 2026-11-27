@@ -5,6 +5,8 @@
 import { describe, expect, it } from "vitest";
 import type { Item, LinkKind, Thing, ThingKind } from "../src/items/items";
 import { linkKindsIn, newWorld, thingKindsIn } from "../src/world/world";
+import { fieldSummary, fieldsOfLink, linkValue, removeLinkField, setLinkValue } from "../src/world/links";
+import { upgradeItems } from "../src/items/race-dimensions";
 import { changeLink, changeLinkKind, join, linkOf, linksFrom, linkStyle, linkTitle, offersFor, removeLink, swapEnds } from "../src/world/links";
 import { hiddenIn, hideHere, parentOf, setParent } from "../src/world/places";
 import { misfitLinks } from "../src/world/kinds";
@@ -18,7 +20,7 @@ function setUp() {
   const person: ThingKind = { key: `${W}.kind.person`, kind: "thing-kind", world: W, name: "Person", fields: [] };
   const thing = (name: string, kinds: string[]): Thing => ({ key: key(name), kind: "thing", world: W, name, kinds, fields: [] });
   const rules: LinkKind = { key: `${W}.link-kind.rules`, kind: "link-kind", world: W, name: "rules", reverseName: "ruled by", direction: "one-way", hierarchy: "none", endsDiffer: true, expectsFrom: [person.key], expectsTo: [place] };
-  const feud: LinkKind = { key: `${W}.link-kind.feud`, kind: "link-kind", world: W, name: "feud with", direction: "both ways", hierarchy: "none", carries: "value", valueName: "strength" };
+  const feud: LinkKind = { key: `${W}.link-kind.feud`, kind: "link-kind", world: W, name: "feud with", direction: "both ways", hierarchy: "none", fields: [{ name: "strength" }] };
   const items: Item[] = [...start, person, rules, feud, thing("nuln", [place]), thing("averland", [place]), thing("countess", [person.key]), thing("count", [person.key])];
   const kinds = new Map(linkKindsIn(items, W).map((k) => [k.name, k.key]));
   return { items, kinds, place };
@@ -121,19 +123,19 @@ describe("one link", () => {
   it("its kind can change, keeping its key and what it carries", () => {
     const { items, kinds } = setUp();
     const made = join(items, W, key("countess"), kinds.get("feud with")!, key("nuln"));
-    const valued = changeLink(made.items, made.link!, { value: "−2", start: "2502", note: "over taxes" });
+    const valued = setLinkValue(changeLink(made.items, made.link!, { start: "2502", note: "over taxes" }), made.link!, "strength", "−2");
     const changed = changeLinkKind(valued, W, made.link!, kinds.get("rules")!);
     expect(changed.problem).toBeUndefined();
     const link = linkOf(changed.items, made.link!)!;
-    expect([link.linkKind, link.value, link.start, link.note]).toEqual([kinds.get("rules"), "−2", "2502", "over taxes"]);
+    expect([link.linkKind, linkValue(link, "strength"), link.start, link.note]).toEqual([kinds.get("rules"), "−2", "2502", "over taxes"]);
     expect(changeLinkKind(valued, W, made.link!, kinds.get("in")!).problem).toMatch(/countess doesn't fit/);
   });
 
   it("blank fields are dropped; removing takes it out", () => {
     const { items, kinds } = setUp();
     const made = join(items, W, key("countess"), kinds.get("feud with")!, key("count"));
-    const blank = changeLink(made.items, made.link!, { value: "" });
-    expect("value" in linkOf(blank, made.link!)!).toBe(false);
+    const blank = changeLink(made.items, made.link!, { note: "" });
+    expect("note" in linkOf(blank, made.link!)!).toBe(false);
     expect(linkOf(removeLink(blank, made.link!), made.link!)).toBeUndefined();
   });
 
@@ -172,5 +174,46 @@ describe("changing an end", () => {
     const made = join(items, W, key("countess"), kinds.get("rules")!, key("nuln"));
     expect(linkOf(changeEnd(made.items, W, made.link!, "to", key("averland")).items, made.link!)!.to).toBe(key("averland"));
     expect(changeEnd(made.items, W, made.link!, "to", key("count")).problem).toMatch(/doesn't fit/);
+  });
+});
+
+describe("what a link carries: fields (owner, 27 Nov)", () => {
+  function road() {
+    const { items, kinds } = setUp();
+    const withFields = items.map((i) => (i.key === kinds.get("adjacent to") ? { ...(i as LinkKind), fields: [{ name: "distance" }, { name: "speed", byDirection: true }] } : i));
+    const made = join(withFields, W, key("nuln"), kinds.get("adjacent to")!, key("averland"));
+    return { items: made.items, link: made.link! };
+  }
+
+  it("a field the same both ways, and one kept each way", () => {
+    const { items, link } = road();
+    let next = setLinkValue(items, link, "distance", "40");
+    next = setLinkValue(next, link, "speed", "4", "from to");
+    next = setLinkValue(next, link, "speed", "7", "to from");
+    const l = linkOf(next, link)!;
+    expect(linkValue(l, "speed", "from to")).toBe("4");
+    expect(fieldSummary(next, l)).toBe("distance 40 · speed → 4, ← 7");
+    expect(fieldSummary(next, l, key("averland"))).toBe("distance 40 · speed → 7, ← 4"); // read from the other end
+  });
+
+  it("a link can carry fields of its own; blank takes a value off", () => {
+    const { items, link } = road();
+    let next = setLinkValue(items, link, "toll", "2 shillings");
+    expect(fieldsOfLink(next, linkOf(next, link)!).map((f) => [f.name, f.offered])).toEqual([["distance", true], ["speed", true], ["toll", false]]);
+    next = setLinkValue(next, link, "toll", "");
+    expect(linkOf(next, link)!.fields).toBeUndefined();
+    next = removeLinkField(setLinkValue(next, link, "speed", "4", "from to"), link, "speed");
+    expect(linkOf(next, link)!.fields).toBeUndefined();
+  });
+
+  it("a single value from before is upgraded into a field named as its kind named it", () => {
+    const { items, kinds } = setUp();
+    const old = items.map((i) => (i.key === kinds.get("adjacent to") ? { ...(i as LinkKind), carries: "value" as const, valueName: "Distance" } : i));
+    const made = join(old, W, key("nuln"), kinds.get("adjacent to")!, key("averland"));
+    const withValue = made.items.map((i) => (i.key === made.link ? { ...i, value: "40 miles" } : i)) as Item[];
+    const up = upgradeItems(withValue);
+    expect((up.find((i) => i.key === kinds.get("adjacent to")) as LinkKind).fields).toEqual([{ name: "Distance" }]);
+    const l = linkOf(up, made.link!)!;
+    expect([l.value, linkValue(l, "Distance")]).toEqual([undefined, "40 miles"]);
   });
 });

@@ -5,12 +5,13 @@
 // dated link). Core: src/world/links.ts.
 import { useState } from "react";
 import type { Item, Link } from "../../../items/items";
-import { carried, changeEnd, changeLink, changeLinkKind, linkKindOf, linkKindStyle, linkKindsInOrder, linkStyle, removeLink, swapEnds } from "../../../world/links";
+import { changeEnd, fieldsOfLink, linkValue, removeLinkField, setLinkValue, type LinkDirection, changeLink, changeLinkKind, linkKindOf, linkKindStyle, linkKindsInOrder, linkStyle, removeLink, swapEnds } from "../../../world/links";
 import { misfit } from "../../../world/kinds";
 import { thingsIn } from "../../../world/world";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 import { TextBox } from "./text-box";
+import { SwipeRow } from "../../swipe";
 
 export function LinkScreen({ data, nav, linkKey }: { data: AppData; nav: Nav; linkKey: string }) {
   const [, setChanged] = useState(0);
@@ -23,7 +24,6 @@ export function LinkScreen({ data, nav, linkKey }: { data: AppData; nav: Nav; li
   const things = thingsIn(data.items, world).sort((a, b) => a.name.localeCompare(b.name));
   const name = (key: string) => things.find((t) => t.key === key)?.name ?? key;
   const why = misfit(data.items, world, link.linkKind, "from", link.from) ?? misfit(data.items, world, link.linkKind, "to", link.to);
-  const valueName = carried(kind);
   const style = linkStyle(data.items, world, link);
   const kindStyle = kind ? linkKindStyle(data.items, world, kind) : style;
 
@@ -65,12 +65,7 @@ export function LinkScreen({ data, nav, linkKey }: { data: AppData; nav: Nav; li
       </div>
       <p className="sub"><button className="link" onClick={() => nav.open({ name: "link-kind", key: link.linkKind })}>Open "{kind?.name ?? link.linkKind}"</button>: what it takes, what it carries, how its links are drawn.</p>
 
-      {(valueName || link.value) && (
-        <div className="field">
-          <span className="label">{valueName ?? "Value"}</span>
-          <TextBox className="field-box" value={link.value ?? ""} placeholder="e.g. +2, 40 miles" onSave={(v) => save(changeLink(data.items, link.key, { value: v }))} />
-        </div>
-      )}
+      <Carries data={data} link={link} name={name} save={save} />
 
       <h2>When</h2>
       <p className="sub">As written, until calendars come.</p>
@@ -110,5 +105,61 @@ export function LinkScreen({ data, nav, linkKey }: { data: AppData; nav: Nav; li
         }}>Remove this link</button>
       </div>
     </article>
+  );
+}
+
+// What it carries: its link kind's fields, then any of its own. A field kept each way has a value for
+// each direction, named by its ends ("Nuln → Wurtbad"). Swipe one of its own fields left to remove it.
+function Carries({ data, link, name, save }: { data: AppData; link: Link; name: (key: string) => string; save: (items: Item[]) => Promise<void> }) {
+  const [own, setOwn] = useState("");
+  const [ownEachWay, setOwnEachWay] = useState(false);
+  // Fields of its own just added: shown until they have a value (a link keeps only filled-in fields).
+  const [pending, setPending] = useState<{ name: string; byDirection: boolean; offered: boolean }[]>([]);
+  const stored = fieldsOfLink(data.items, link);
+  const fields = [...stored, ...pending.filter((p) => !stored.some((f) => f.name === p.name))];
+  const ways: { direction: LinkDirection; label: string }[] = [
+    { direction: "from to", label: `${name(link.from)} → ${name(link.to)}` },
+    { direction: "to from", label: `${name(link.to)} → ${name(link.from)}` },
+  ];
+  const addOwn = async () => {
+    const n = own.trim();
+    if (!n || fields.some((f) => f.name.toLowerCase() === n.toLowerCase())) return;
+    setPending([...pending, { name: n, byDirection: ownEachWay, offered: false }]);
+    setOwn("");
+    setOwnEachWay(false);
+  };
+  const box = (field: string, direction?: LinkDirection) => (
+    <TextBox className="field-box" value={linkValue(link, field, direction)} placeholder="e.g. 40 miles, +2" onSave={(v) => save(setLinkValue(data.items, link.key, field, v, direction))} />
+  );
+  return (
+    <>
+      <h2>What it carries</h2>
+      {fields.length === 0 && <p className="sub">Its link kind offers no fields: add them there (what its links carry), or give this link one of its own below.</p>}
+      {fields.map((f) => {
+        const rows = f.byDirection ? (
+          ways.map((w) => (
+            <div key={w.direction} className="field">
+              <span className="label">{f.name} <span className="sub">{w.label}</span></span>
+              {box(f.name, w.direction)}
+            </div>
+          ))
+        ) : (
+          <div className="field">
+            <span className="label">{f.name}</span>
+            {box(f.name)}
+          </div>
+        );
+        return f.offered ? <div key={f.name}>{rows}</div> : (
+          <SwipeRow key={f.name} action="Remove" onAction={() => (setPending(pending.filter((p) => p.name !== f.name)), save(removeLinkField(data.items, link.key, f.name)))}>
+            <div>{rows}</div>
+          </SwipeRow>
+        );
+      })}
+      <div className="inline-add">
+        <input className="filter" placeholder="A field just for this link" value={own} onChange={(e) => setOwn(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addOwn()} />
+        <button onClick={addOwn}>Add</button>
+      </div>
+      <label className="choice"><input type="checkbox" checked={ownEachWay} onChange={() => setOwnEachWay(!ownEachWay)} /> each way</label>
+    </>
   );
 }

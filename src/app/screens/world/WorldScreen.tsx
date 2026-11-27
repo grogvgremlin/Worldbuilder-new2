@@ -18,7 +18,7 @@ import { ScopePicks } from "./scope-picks";
 import type { Brings } from "../../../world/groups";
 import { groupKindFor } from "../../../world/bulk";
 import { TreeDiagram } from "./TreeDiagram";
-import { linkKindsInOrder, linkTitle, plainLinks, removeLink } from "../../../world/links";
+import { fieldSummary, linkKindsInOrder, linkTitle, plainLinks, removeLink } from "../../../world/links";
 import { ALL, TreePicker, useChosenTree } from "./tree-picker";
 import { hasKind, inOrder, itemsWithMisfits, kindTree, misfitLinks, moveInOrder, refusal, removeLinkKind, setFlavourOf, type Misfit } from "../../../world/kinds";
 
@@ -184,7 +184,7 @@ function LinksList({ data, nav, world, save }: { data: AppData; nav: Nav; world:
                   <SwipeRow action="Remove" onAction={() => save(removeLink(data.items, l.key))}>
                     <button onClick={() => nav.open({ name: "link", key: l.key })}>
                       <span className="title">{linkTitle(data.items, l)}</span>
-                      {(l.value || l.start || l.end || l.note) && <span className="sub">{[l.value, [l.start, l.end].filter(Boolean).join("–"), l.note].filter(Boolean).join(" · ")}</span>}
+                      {(l.fields?.length || l.start || l.end || l.note) && <span className="sub">{[fieldSummary(data.items, l), [l.start, l.end].filter(Boolean).join("–"), l.note].filter(Boolean).join(" · ")}</span>}
                     </button>
                   </SwipeRow>
                 </li>

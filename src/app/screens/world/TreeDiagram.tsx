@@ -328,7 +328,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
         ) : (
           <span className="sub">
             Tap to select (more for a bulk move) · double-tap to open · double-tap empty space for a new item ·{" "}
-            {mode === "arrange" ? (withBranch ? "branches follow" : "boxes move on their own") : "drop onto a box to move inside, onto the world for the top, anywhere else to arrange"}
+            {mode === "arrange" ? (withBranch ? "branches follow" : "boxes move on their own") : "drop on a box to move inside, elsewhere to arrange"}
           </span>
         )}
       </div>

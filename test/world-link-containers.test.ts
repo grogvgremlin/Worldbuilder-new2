@@ -134,3 +134,28 @@ describe("splitting a link", () => {
     expect(splitLink(items, W, links["altdorf-delberz"], key("north")).problem).toMatch(/doesn't fit/);
   });
 });
+
+describe("several links into a link container (owner, 28 Nov)", () => {
+  it("into an existing one where each fits", async () => {
+    const { addLinksTo, containersFitting } = await import("../src/world/links");
+    const { items, road } = world();
+    const a = join(items, W, key("far-a"), road, key("far-b"));
+    const fit = containersFitting(a.items, W, [a.link!]).map((t) => t.name);
+    expect(fit).toEqual(["forest", "north"]);
+    const put = addLinksTo(a.items, [a.link!], key("forest"));
+    expect([put.done, linkOf(put.items, a.link!)!.partOf]).toEqual([1, [key("forest")]]);
+  });
+
+  it("into a new one, the link container kind made to fit when none holds them", async () => {
+    const { newContainerOfLinks } = await import("../src/world/links");
+    const { items, road, route } = world();
+    const place = thingKindsIn(items, W)[0].key;
+    const a = join(items, W, key("far-a"), road, key("far-b"));
+    const made = newContainerOfLinks(a.items.filter((i) => i.key !== route), W, [a.link!], "The Old Road", place);
+    const kind = made.items.find((i) => i.key === made.madeKind) as LinkKind;
+    expect([kind.hierarchy, kind.expectsFrom, kind.expectsTo, kind.name]).toEqual(["links", [road], [place], "made of adjacent to"]);
+    expect(linkOf(made.items, a.link!)!.partOf).toEqual([made.thing]);
+    const again = newContainerOfLinks(made.items, W, [a.link!], "Another", place);
+    expect(again.madeKind).toBeUndefined(); // a kind holds them now
+  });
+});

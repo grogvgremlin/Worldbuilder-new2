@@ -21,7 +21,7 @@ import { treeKinds } from "../../../world/places";
 import { useUndo } from "./undo";
 import { GroupPopup } from "./GroupPopup";
 import { JoinPopup } from "./JoinPopup";
-import { ContainerBands, containerBands, containerRowId, LINK_CONTAINERS_SET, linkContainerSet, linkContainersIn, LinkBar, LinkLines, linkLines, linkRowId, LINKS_SET, linkSet } from "./link-lines";
+import { ContainerBands, containerBands, containerRowId, LINK_CONTAINERS_SET, linkContainerSet, linkContainersIn, LinkBar, LinkContainerPopup, LinkLines, linkLines, linkRowId, LINKS_SET, linkSet } from "./link-lines";
 import { plainLinks } from "../../../world/links";
 import { colourOf } from "./area-colours";
 import { OverlayList, OverlayMenu, type OverlayRow, type OverlaySet } from "./overlays";
@@ -55,7 +55,8 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
   const [hover, setHover] = useState<string | null>(null); // with a mouse: the area under the pointer
   const [grouping, setGrouping] = useState(false);
   const [joining, setJoining] = useState(false); // two selected: join them (owner, 27 Nov)
-  const [pickedLink, setPickedLink] = useState<string | null>(null); // a link tapped on the map
+  const [pickedLinks, setPickedLinks] = useState<string[]>([]); // links tapped (several, as items: owner, 28 Nov)
+  const [linkContainer, setLinkContainer] = useState(false); // a link tapped on the map
   const [areasMenu, setAreasMenu] = useState(false);
   const showArea = (next: AreasShown) => (setShown(next), saveAreasShown(mapKey, next));
   const [locked, setLocked] = useState(false);
@@ -224,7 +225,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
     }
     lastTap.current = { key: `link:${key}`, at, time: Date.now(), before: selected };
     setSelected([]);
-    setPickedLink(pickedLink === key ? null : key);
+    setPickedLinks(pickedLinks.includes(key) ? pickedLinks.filter((k) => k !== key) : [...pickedLinks, key]);
   };
 
   // One tap selects or unselects a pin or area (empty space: clears); a second soon after, close
@@ -240,7 +241,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
       return;
     }
     lastTap.current = { key, at, time: Date.now(), before: selected };
-    setPickedLink(null);
+    setPickedLinks([]);
     if (!key && view) setLit(areaAt(toMap(at, view))); // an empty tap picks out the area there (or none)
     if (!key) setSelected([]);
     else setSelected(selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key]);
@@ -384,12 +385,12 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
           Tap the map to place <b>{placingThing.name}</b> <button className="link" onClick={() => setPlacing(null)}>Cancel</button>
         </div>
       )}
-      {pickedLink && selected.length === 0 ? (
+      {pickedLinks.length > 0 && selected.length === 0 ? (
         <div className="selection-bar">
-          <LinkBar data={data} world={map.world} linkKey={pickedLink} onOpen={() => nav.open({ name: "link", key: pickedLink })} apply={(items) => undo.apply(items)} onClose={() => setPickedLink(null)} />
+          <LinkBar data={data} world={map.world} linkKeys={pickedLinks} onOpen={(key) => nav.open({ name: "link", key })} onContainer={() => setLinkContainer(true)} apply={(items) => undo.apply(items)} onClose={() => setPickedLinks([])} />
         </div>
       ) : selected.length === 0 ? (
-        <div className="selection-bar empty sub">Tap: select (two to connect, more to move) · a line: its link · double-tap: open · on empty space: a new item</div>
+        <div className="selection-bar empty sub">Tap: select (two to connect, more to move) · lines: select (several: a link container) · double-tap: open · on empty space: a new item</div>
       ) : (
         <SelectionCard
           data={data}
@@ -416,7 +417,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
               <rect className="map-sheet" x={sheet.x} y={sheet.y} width={sheet.width} height={sheet.height} rx={8 / view.k} />
               <Areas areas={toDraw} k={view.k} selected={selected} treeStyle={treeStyle} lit={picked} />
               <ContainerBands bands={bands} k={view.k} />
-              <LinkLines lines={lines} k={view.k} picked={pickedLink} />
+              <LinkLines lines={lines} k={view.k} picked={pickedLinks} />
               {map.pins.map((p) => {
                 const thing = things.get(p.thing);
                 if (!thing) return null;
@@ -445,6 +446,9 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
           }}
           onClose={() => setJoining(false)}
         />
+      )}
+      {linkContainer && pickedLinks.length > 0 && (
+        <LinkContainerPopup data={data} world={map.world} linkKeys={pickedLinks} apply={async (items) => (await undo.apply(items), setPickedLinks([]))} onClose={() => setLinkContainer(false)} />
       )}
       {grouping && (
         <GroupPopup

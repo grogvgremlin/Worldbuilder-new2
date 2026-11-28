@@ -4,7 +4,7 @@
 // Design: design/world-structure.md §3–4 (containment one parent at a time; groups many at once).
 
 import type { Item, Thing } from "../items/items";
-import { addToGroup, groupLinkKinds, groupsIn, type Brings } from "./groups";
+import { addToGroup, groupLinkKinds, groupsIn, newGroupLinkKind, type Brings } from "./groups";
 import { childrenOf, setParent } from "./places";
 import { newKey, thingKindsIn, thingsIn } from "./world";
 import { endRule } from "./kinds";
@@ -27,8 +27,14 @@ export function groupSelected(items: Item[], world: string, selected: string[], 
 }
 
 // A new group holding the selected items.
+// With no group kind in the world yet, one is made to fit (owner, 28 Nov: "pre populate the types …
+// if it's a new container in general"): "in area", taking the selected items' kinds.
 export function newGroupOf(items: Item[], world: string, selected: string[], name: string, kind?: string, scopes: Map<string, Brings> = new Map()): BulkResult & { group?: string } {
   if (!name.trim()) return { items, done: 0, problems: ["a group needs a name"] };
+  if (groupLinkKinds(items, world).length === 0) {
+    const takes = [...new Set(thingsIn(items, world).filter((t) => selected.includes(t.key)).flatMap((t) => t.kinds))];
+    items = [...items, { ...newGroupLinkKind(items, world, newKey(items, world, "link-kind", "in area")), ...(takes.length ? { scope: takes } : {}) }];
+  }
   const key = newKey(items, world, "thing", name);
   const chosen = kind ?? groupKindFor(items, world) ?? thingKindsIn(items, world)[0]?.key; // every item has a kind
   const group: Thing = { key, kind: "thing", world, name: name.trim(), kinds: chosen ? [chosen] : [], fields: [] };

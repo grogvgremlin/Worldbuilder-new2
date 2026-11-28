@@ -522,3 +522,58 @@ export function newConnectionKindFor(items: Item[], world: string, name: string,
   const ends = a && a === b ? { scope: [a], direction: "both ways" as const } : { endsDiffer: true, expectsFrom: a ? [a] : undefined, expectsTo: b ? [b] : undefined, direction: "one-way" as const };
   return { key, kind: "link-kind", world, name: name.trim(), hierarchy: "none", ...ends };
 }
+
+// --- Several links into a link container at once (owner, 28 Nov: "select multiple links to group in
+// the same way as items … pre populate the types") ---------------------------------------------------
+
+// Puts each link in an item; each that can't go says why.
+export function addLinksTo(items: Item[], keys: string[], whole: string): { items: Item[]; done: number; problems: string[] } {
+  let out = items;
+  let done = 0;
+  const problems: string[] = [];
+  for (const key of keys) {
+    const result = addPartOf(out, key, whole);
+    if (result.problem) problems.push(`${linkTitle(out, linkOf(out, key)!)}: ${result.problem}`);
+    else (out = result.items), done++;
+  }
+  return { items: out, done, problems };
+}
+
+// Items every one of these links could go in (where a link container kind takes each of them).
+export function containersFitting(items: Item[], world: string, keys: string[]): Thing[] {
+  return items
+    .filter((i): i is Thing => i.kind === "thing" && i.world === world)
+    .filter((t) => keys.every((k) => linkOf(items, k)?.asThing !== t.key && canBePartOf(items, world, k, t.key) !== "no"))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Whether some link container kind holds all these links' kinds in an item of this kind.
+export function holdsAll(items: Item[], world: string, keys: string[], itemKind: string): boolean {
+  const linkKinds = new Set(keys.map((k) => linkOf(items, k)?.linkKind).filter((k): k is string => !!k));
+  return linkContainerKinds(items, world).some((k) => [...linkKinds].every((lk) => !(k.expectsFrom ?? []).length || (k.expectsFrom ?? []).includes(lk)) && itemFits(items, world, [itemKind], { take: k.expectsTo ?? [], leave: k.exclude ?? [] }));
+}
+
+// A link container kind made to fit (pre-filled): it holds these links' kinds, in items of this kind.
+// Named "made of …" after the connection kinds.
+export function newLinkContainerKindFor(items: Item[], world: string, keys: string[], itemKind: string): LinkKind {
+  const linkKinds = [...new Set(keys.map((k) => linkOf(items, k)?.linkKind).filter((k): k is string => !!k))];
+  const name = `made of ${linkKinds.map((k) => linkKindOf(items, k)?.name ?? k).join(" and ")}`;
+  return { key: newKey(items, world, "link-kind", name), kind: "link-kind", world, name, reverseName: "part of", direction: "one-way", hierarchy: "links", endsDiffer: true, expectsFrom: linkKinds, expectsTo: [itemKind] };
+}
+
+// A new item holding these links (owner, 28 Nov): of the kind given, with a link container kind made
+// first if none holds them in that kind of item.
+export function newContainerOfLinks(items: Item[], world: string, keys: string[], name: string, itemKind: string): { items: Item[]; thing?: string; madeKind?: string; problems: string[] } {
+  if (!name.trim()) return { items, problems: ["it needs a name"] };
+  if (!itemKind) return { items, problems: ["a world item needs a kind"] };
+  let out = items;
+  let madeKind: string | undefined;
+  if (!holdsAll(items, world, keys, itemKind)) {
+    const kind = newLinkContainerKindFor(items, world, keys, itemKind);
+    out = [...out, kind];
+    madeKind = kind.key;
+  }
+  const thing: Thing = { key: newKey(out, world, "thing", name), kind: "thing", world, name: name.trim(), kinds: [itemKind], fields: [] };
+  const result = addLinksTo([...out, thing], keys, thing.key);
+  return { items: result.items, thing: thing.key, madeKind, problems: result.problems };
+}

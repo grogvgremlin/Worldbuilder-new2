@@ -8,7 +8,9 @@
 // Design: design/world-structure.md §3 (topics are display groupings of link kinds, toggled like map
 // layers); spec/authoring/authoring-v2.md §1. Core: src/world/links.ts.
 import type { Item, Link, Thing } from "../../../items/items";
-import { linkKindStyle, linkKindsInOrder, linkStyle, linkTitle, removeLink, swapEnds, type LinkStyle } from "../../../world/links";
+import { addLinksTo, containersFitting, holderKindsFor, holdsAll, linkKindStyle, linkKindsInOrder, linkStyle, linkTitle, newContainerOfLinks, removeLink, swapEnds, type LinkStyle } from "../../../world/links";
+import { thingKindsIn } from "../../../world/world";
+import { useState } from "react";
 import type { OverlayRow, OverlaySet } from "./overlays";
 import type { AppData } from "../../app-data";
 
@@ -46,7 +48,7 @@ export function linkLines(items: Item[], world: string, links: Link[], at: (thin
 // The lines as SVG. `k` is the zoom (lines keep their width on screen); `gap` is the spread between
 // links that share their ends; `bulge` bows every line out that way (the Diagram: boxes in one column
 // would hide a straight line, so it bows out to the side).
-export function LinkLines({ lines, k, picked, gap = 10, bulge }: { lines: LinkLine[]; k: number; picked: string | null; gap?: number; bulge?: Point }) {
+export function LinkLines({ lines, k, picked, gap = 10, bulge }: { lines: LinkLine[]; k: number; picked: string[]; gap?: number; bulge?: Point }) {
   const pairs = new Map<string, LinkLine[]>();
   for (const l of lines) {
     const id = [l.link.from, l.link.to].sort().join("|");
@@ -63,7 +65,7 @@ export function LinkLines({ lines, k, picked, gap = 10, bulge }: { lines: LinkLi
         const mid = bend(l.a, l.b, offset, bulge);
         const d = `M${l.a.x} ${l.a.y} Q${mid.control.x} ${mid.control.y} ${l.b.x} ${l.b.y}`;
         const dash = l.style.line === "dashed" ? `${8 / k} ${5 / k}` : l.style.line === "dotted" ? `${1.5 / k} ${4 / k}` : undefined;
-        const isPicked = picked === l.link.key;
+        const isPicked = picked.includes(l.link.key);
         return (
           <g key={l.link.key} data-link={l.link.key} className={"link-line" + (isPicked ? " picked" : "") + (l.via ? " via" : "")} style={{ color: l.style.colour }}>
             <path className="link-hit" d={d} style={{ strokeWidth: 16 / k }} />
@@ -98,27 +100,75 @@ function Arrow({ at, towards, k }: { at: Point; towards: Point; k: number }) {
   return <polygon className="link-arrow" points={`${tip.x},${tip.y} ${back.x + side.x},${back.y + side.y} ${back.x - side.x},${back.y - side.y}`} />;
 }
 
-// The selection bar for a picked link: its title, Open, Swap ends (one way), Remove.
-export function LinkBar({ data, world, linkKey, onOpen, apply, onClose }: { data: AppData; world: string; linkKey: string; onOpen: () => void; apply: (items: Item[]) => Promise<void>; onClose: () => void }) {
-  const link = data.items.find((i): i is Link => i.kind === "link" && i.key === linkKey);
-  if (!link) return null;
-  const oneWay = data.items.some((i) => i.kind === "link-kind" && i.key === link.linkKind && i.direction === "one-way");
+// The selection bar for picked links (owner, 28 Nov: several, as items): one link: its title, Open,
+// Swap ends (one way), Remove; several: how many. Either: Link container… (put them in one, or a new
+// one) and Clear.
+export function LinkBar({ data, world, linkKeys, onOpen, onContainer, apply, onClose }: { data: AppData; world: string; linkKeys: string[]; onOpen: (key: string) => void; onContainer: () => void; apply: (items: Item[]) => Promise<void>; onClose: () => void }) {
+  const links = linkKeys.map((k) => data.items.find((i): i is Link => i.kind === "link" && i.key === k)).filter((l): l is Link => !!l);
+  if (links.length === 0) return null;
+  const one = links.length === 1 ? links[0] : null;
+  const oneWay = one && data.items.some((i) => i.kind === "link-kind" && i.key === one.linkKind && i.direction === "one-way");
   return (
     <>
       <button className="link popup-close" aria-label="Close" onClick={onClose}>✕</button>
-      <div className="title">{linkTitle(data.items, link)}</div>
+      <div className="title">{one ? linkTitle(data.items, one) : `${links.length} links selected`}</div>
       <div className="selection-buttons">
-        <button className="primary" onClick={onOpen}>Open</button>
+        {one && <button className="primary" onClick={() => onOpen(one.key)}>Open</button>}
+        <button className={one ? "" : "primary"} onClick={onContainer}>Link container…</button>
         {oneWay && (
           <button onClick={async () => {
-            const result = swapEnds(data.items, world, linkKey);
+            const result = swapEnds(data.items, world, one!.key);
             if (result.problem) return alert(result.problem);
             await apply(result.items);
           }}>⇄ Swap ends</button>
         )}
-        <button onClick={async () => (await apply(removeLink(data.items, linkKey)), onClose())}>Remove</button>
+        {one && <button onClick={async () => (await apply(removeLink(data.items, one.key)), onClose())}>Remove</button>}
       </div>
     </>
+  );
+}
+
+// Put the selected links in a link container (owner, 28 Nov): one they all fit, or a new item of a
+// kind, pre-filled with a kind that can hold them; if no link container kind holds them in that kind
+// of item yet, one is made to fit ("made of road", held by that kind) and said so.
+export function LinkContainerPopup({ data, world, linkKeys, apply, onClose }: { data: AppData; world: string; linkKeys: string[]; apply: (items: Item[]) => Promise<void>; onClose: () => void }) {
+  const kinds = thingKindsIn(data.items, world);
+  const linkKinds = [...new Set(linkKeys.map((k) => data.items.find((i): i is Link => i.kind === "link" && i.key === k)?.linkKind).filter((k): k is string => !!k))];
+  const holders = [...new Set(linkKinds.flatMap((lk) => holderKindsFor(data.items, world, lk)))];
+  const [name, setName] = useState("");
+  const [kind, setKind] = useState(holders[0] ?? kinds[0]?.key ?? "");
+  const fitting = containersFitting(data.items, world, linkKeys);
+  const run = async (result: { items: Item[]; problems: string[] }) => {
+    await apply(result.items);
+    if (result.problems.length) alert(`Not done:\n${result.problems.join("\n")}`);
+    onClose();
+  };
+  const willMake = kind && !holdsAll(data.items, world, linkKeys, kind);
+  return (
+    <div className="popup-back" onClick={onClose}>
+      <div className="popup" onClick={(e) => e.stopPropagation()}>
+        <button className="link popup-close" aria-label="Close" onClick={onClose}>✕</button>
+        <h2>{linkKeys.length} link{linkKeys.length === 1 ? "" : "s"} into a link container</h2>
+        {fitting.length > 0 && (
+          <label className="stack">
+            <span className="sub">Into one they all fit</span>
+            <select value="" onChange={(e) => e.target.value && run(addLinksTo(data.items, linkKeys, e.target.value))}>
+              <option value="">Choose…</option>
+              {fitting.map((t) => <option key={t.key} value={t.key}>{t.name}</option>)}
+            </select>
+          </label>
+        )}
+        <span className="sub">A new one</span>
+        <div className="inline-add">
+          <input className="filter" placeholder="Its name (e.g. The Great North Road)" value={name} onChange={(e) => setName(e.target.value)} />
+          <select value={kind} onChange={(e) => setKind(e.target.value)}>
+            {kinds.map((k) => <option key={k.key} value={k.key}>{k.name}</option>)}
+          </select>
+          <button className="primary" disabled={!name.trim() || !kind} onClick={() => run(newContainerOfLinks(data.items, world, linkKeys, name, kind))}>Make</button>
+        </div>
+        {willMake && <p className="sub">No link container kind holds these in a {kinds.find((k) => k.key === kind)?.name} yet: one is made to fit ("made of {linkKinds.map((k) => data.items.find((i) => i.key === k)?.name).join(" and ")}"), to change under Kinds → Containers.</p>}
+      </div>
+    </div>
   );
 }
 

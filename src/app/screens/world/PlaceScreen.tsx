@@ -673,7 +673,7 @@ function Connections({ data, nav, thing, editing, save }: { data: AppData; nav: 
     setOther("");
   };
   return (
-    <Fold id="links" title={`Connections${rows.length ? ` (${rows.length})` : ""}`}>
+    <Fold id="links" title={`Connectors${rows.length ? ` (${rows.length})` : ""}`}>
       {editing && (
         <>
           <select className="tree-select" value={other} onChange={(e) => setOther(e.target.value)}>

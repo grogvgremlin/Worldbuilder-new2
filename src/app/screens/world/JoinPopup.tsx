@@ -38,7 +38,7 @@ export function JoinPopup({ data, world, ends, apply, onClose }: { data: AppData
 // The link kinds offered, as rows: each reads as a sentence ("Nuln in Averland"), with what joining
 // also does, or why it can't.
 export function JoinChoices({ offers, from, to, onPick }: { data: AppData; offers: Offer[]; from: string; to: string; onPick: (offer: Offer) => void }) {
-  if (offers.length === 0) return <p className="sub">No connections yet: make one below, or under Kinds → Connections.</p>;
+  if (offers.length === 0) return <p className="sub">No network types yet: make one below, or under Kinds → Network types.</p>;
   return (
     <ul className="list join-choices">
       {offers.map((o) => {
@@ -60,7 +60,7 @@ export function JoinChoices({ offers, from, to, onPick }: { data: AppData; offer
 function kindWord(o: Offer): string {
   if (o.kind.hierarchy === "one parent") return "tree";
   if (o.kind.hierarchy === "several parents") return "group";
-  return o.kind.direction === "both ways" ? "connection, both ways" : "connection, one way";
+  return o.kind.direction === "both ways" ? "network type, both ways" : "network type, one way";
 }
 
 // A new connection kind, its ends taken from these two items' kinds, and these two connected by it.
@@ -76,7 +76,7 @@ export function NewConnection({ data, world, from, to, onMade }: { data: AppData
   };
   return (
     <div className="inline-add">
-      <input className="filter" placeholder="Or a new connection (e.g. road, feud with)" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && make()} />
+      <input className="filter" placeholder="Or a new network type (e.g. road, feud with)" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && make()} />
       <button onClick={make}>Make</button>
     </div>
   );

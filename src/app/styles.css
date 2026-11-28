@@ -333,7 +333,7 @@ label.stack { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8p
 .fold > summary { color: var(--accent); font-weight: 600; cursor: pointer; }
 .fold[open] > summary { margin-bottom: 4px; }
 .fold .form h2 { display: none; }
-.diagram-node.selected rect { stroke: var(--link); stroke-width: 3; fill: var(--panel); }
+
 .tool:disabled { opacity: .4; }
 .area-badge { cursor: pointer; }
 .area-badge circle { fill: var(--panel); stroke: var(--muted); stroke-width: 1.2; }
@@ -472,3 +472,11 @@ main:has(.map-screen), main:has(.diagram-wrap) { max-width: none; }
 /* Items: the type row wraps on a phone rather than running off the screen (owner, 27 Nov). */
 .segments.items-types { flex-wrap: wrap; max-width: 100%; } .segments.items-types button { white-space: nowrap; flex: 0 0 auto; }
 .tree-select.which { margin: 6px 0; }
+/* Kinds: sections fold; a kind's flavours fold under it (owner, 28 Nov). */
+.kinds-section > summary { font-weight: 600; }
+.twisty-space { flex: 0 0 28px; }
+.list li > .ordered-row { display: flex; align-items: center; gap: 4px; }
+.list li > .list { margin-top: 4px; }
+
+/* A selected box, as its tree's or network's Diagram settings say (owner, 28 Nov); after other states so it always shows. */
+.diagram-node.selected rect, .diagram-node.selected.moving rect { stroke: var(--sel-colour, var(--link)); stroke-width: 3; stroke-dasharray: var(--sel-dash, none); fill: var(--sel-fill, var(--panel)); }

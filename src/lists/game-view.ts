@@ -74,7 +74,8 @@ function gameUnit(u: UnitView, reach: Item[], game: Game | undefined, all: Item[
       .map(readItemPick)
       .filter((p) => p && p.where === where)
       .map((p) => reach.find((i): i is MagicItem => i.kind === "magic-item" && i.key === p!.itemKey))
-      .filter((i): i is MagicItem => !!i);
+      .filter((i): i is MagicItem => !!i)
+      .reduce(countRepeats, [] as MagicItem[]);
 
   // Kit: what it comes with, less mounts and whatever an option or item replaces, then what was taken.
   const kitOf = (base: Term[], options: Option[], magic: MagicItem[]) => {
@@ -271,4 +272,12 @@ function details(name: string, item: Item | undefined): ReferenceEntry {
     return { name, key: item.key, facts, text: item.text };
   }
   return { name, key: item.key, facts: [] };
+}
+
+// An item taken more than once by one bearer (a Rune of Might twice) is shown once: "Rune of Might ×2".
+function countRepeats(shown: MagicItem[], item: MagicItem): MagicItem[] {
+  const at = shown.findIndex((m) => m.key === item.key);
+  if (at < 0) return [...shown, item];
+  const n = (Number(/ ×(\d+)$/.exec(shown[at].name)?.[1]) || 1) + 1;
+  return shown.map((m, i) => (i === at ? { ...m, name: `${item.name} ×${n}` } : m));
 }

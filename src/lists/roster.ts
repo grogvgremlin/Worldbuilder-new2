@@ -582,7 +582,9 @@ export function setSlotCount(roster: Roster, id: string, name: string, n: number
 
 // --- Picking magic items --------------------------------------------------------------------------
 
-export type ItemChoice = { item: MagicItem; picked: boolean; why?: string }; // why: not offered, and the reason
+// why: not offered, and the reason. count: how many times taken (an item that repeats can be taken
+// again: again says why not, or is absent when it can).
+export type ItemChoice = { item: MagicItem; picked: boolean; why?: string; count?: number; again?: string };
 
 // The items an allowance offers this unit, each with whether it's picked and, if it can't be added,
 // why: it isn't for this bearer, it's over the budget, or a magic-item rule would be broken.
@@ -598,18 +600,24 @@ export function itemChoices(roster: Roster, items: Item[], unitId: string, where
   const row = where.startsWith("slot:") ? u.taken.slotRows.find((r) => r.name === where.slice(5)) : undefined;
   const bearer = { name: row?.name ?? u.taken.name, rules: u.taken.rules.map((r) => r.name), troopType: u.taken.troopType?.type };
   const before = new Set(view.issues.filter((i) => i.about === "items").map((i) => i.message));
-  return itemsForAllowance(allowanceName, reach).map((item) => {
-    const pick = itemPick(where, allowanceName, item.key);
-    if (u.rosterUnit.picks.includes(pick)) return { item, picked: true };
+  // Why this item can't be added (once more): not for the bearer, over the budget, too many, or a rule.
+  const whyNot = (item: MagicItem, pick: string): string | undefined => {
     const notFor = notForBearer(item, bearer);
-    if (notFor) return { item, picked: false, why: notFor };
+    if (notFor) return notFor;
     const cost = item.cost?.points ?? 0;
     const { budget, most } = group.allowance!;
-    if (budget !== null && spent + cost > budget) return { item, picked: false, why: `${spent + cost} pts would be over ${budget}` };
-    if (most !== null && mine.length >= most) return { item, picked: false, why: most === 1 ? "one item only: take the other off first" : `at most ${most} items` };
+    if (budget !== null && spent + cost > budget) return `${spent + cost} pts would be over ${budget}`;
+    if (most !== null && mine.length >= most) return most === 1 ? "one item only: take the other off first" : `at most ${most} items`;
     const tried = withPick(roster, unitId, pick);
     const broken = viewRoster(tried, items.map((i) => (i.key === roster.key ? tried : i))).issues.find((i) => i.about === "items" && !before.has(i.message));
-    return broken ? { item, picked: false, why: broken.message } : { item, picked: false };
+    return broken?.message;
+  };
+  return itemsForAllowance(allowanceName, reach).map((item) => {
+    const pick = itemPick(where, allowanceName, item.key);
+    const count = mine.filter((p) => p === pick).length;
+    if (count > 0) return item.repeats ? { item, picked: true, count, again: whyNot(item, pick) } : { item, picked: true, count };
+    const why = whyNot(item, pick);
+    return why ? { item, picked: false, why } : { item, picked: false };
   });
 }
 
@@ -617,7 +625,22 @@ function withPick(roster: Roster, unitId: string, pick: string): Roster {
   return { ...roster, units: roster.units.map((u) => (u.id === unitId ? { ...u, picks: [...u.picks, pick] } : u)) };
 }
 
-// Takes an item, or takes it off.
+// Takes an item that repeats once more (a second Rune of Might on the same weapon).
+export function addItemAgain(roster: Roster, unitId: string, where: string, allowanceName: string, itemKey: string): Roster {
+  const ru = roster.units.find((u) => u.id === unitId);
+  return ru ? updateUnit(roster, unitId, { picks: [...ru.picks, itemPick(where, allowanceName, itemKey)] }) : roster;
+}
+
+// Takes one of an item off (the last one taken off takes it off altogether).
+export function takeOneOff(roster: Roster, unitId: string, where: string, allowanceName: string, itemKey: string): Roster {
+  const pick = itemPick(where, allowanceName, itemKey);
+  const ru = roster.units.find((u) => u.id === unitId);
+  if (!ru) return roster;
+  const at = ru.picks.lastIndexOf(pick);
+  return at < 0 ? roster : updateUnit(roster, unitId, { picks: ru.picks.filter((_, i) => i !== at) });
+}
+
+// Takes an item, or takes it off (every copy of it).
 export function toggleItem(roster: Roster, unitId: string, where: string, allowanceName: string, itemKey: string): Roster {
   const pick = itemPick(where, allowanceName, itemKey);
   const ru = roster.units.find((u) => u.id === unitId);

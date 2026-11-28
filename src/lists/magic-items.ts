@@ -5,6 +5,8 @@
 // The rules about magic items are limits in the data (a Composition tab), not code (owner, 23 Nov):
 //   magic weapon~0-1~bearer            one magic weapon per bearer (any type name works the same)
 //   each magic item[not Extremely Common]~0-1~army   each item once per army, unless extremely common
+//   each set[Type(weapon rune,master weapon rune)]~0-1~army   no two bearers with the same set of the
+//       items the filter picks out (the Dwarfs' Rule of Pride: no two identical runic items)
 // "bearer" counts per character or command model holding the allowance; "army" across the list.
 // Design: design/options-items-and-rules.md (items taken through allowances; budgets).
 //
@@ -71,6 +73,10 @@ export function itemRuleIssues(picked: PickedItem[], rules: CompositionRule[]): 
   const out: { message: string; units: string[] }[] = [];
   for (const rule of rules)
     for (const limit of rule.limits.limits) {
+      if (matchName(limit.counts) === "each set") {
+        out.push(...sameSetIssues(rule.name, limit, picked));
+        continue;
+      }
       if (!countsItems(limit, types)) continue;
       const what = matchName(limit.counts.replace(/^each\s+/i, ""));
       const each = /^each\s+/i.test(limit.counts);
@@ -85,10 +91,30 @@ export function itemRuleIssues(picked: PickedItem[], rules: CompositionRule[]): 
       if (max === null) continue;
       for (const list of groups.values()) {
         if (list.length <= max) continue;
-        const label = each ? list[0].item.name : limit.counts;
+        // What it counts, in words: the item, or the types its filter names ("weapon rune, master weapon rune").
+        const types = /type\s*\(([^)]*)\)/i.exec(limit.where ?? "")?.[1];
+        const label = each ? list[0].item.name : types ? types.split(/[|,]/).map((t) => t.trim()).join(", ") : limit.counts;
         out.push({ message: `${rule.name}: ${label} ${list.length} taken${perBearer ? " by one bearer" : ""}, at most ${max}`, units: [...new Set(list.map((p) => p.unitId))] });
       }
     }
+  return out;
+}
+
+// "each set[filter]~0-1~army": the items each bearer holds that pass the filter, as a set (a rune
+// taken twice counts twice); no more bearers than the limit's most may hold the same set.
+function sameSetIssues(ruleName: string, limit: Limit, picked: PickedItem[]): { message: string; units: string[] }[] {
+  const max = limit.amount.max;
+  if (max === null) return [];
+  const byBearer = new Map<string, PickedItem[]>();
+  for (const p of picked.filter((p) => itemPasses(p.item, limit.where))) byBearer.set(p.bearer, [...(byBearer.get(p.bearer) ?? []), p]);
+  const bySet = new Map<string, PickedItem[][]>();
+  for (const held of byBearer.values()) {
+    const set = held.map((p) => p.item.name).sort().join(", ");
+    bySet.set(set, [...(bySet.get(set) ?? []), held]);
+  }
+  const out: { message: string; units: string[] }[] = [];
+  for (const [set, holders] of bySet)
+    if (holders.length > max) out.push({ message: `${ruleName}: ${holders.length} the same (${set}), at most ${max}`, units: [...new Set(holders.map((h) => h[0].unitId))] });
   return out;
 }
 

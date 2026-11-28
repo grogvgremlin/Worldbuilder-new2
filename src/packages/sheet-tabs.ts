@@ -44,7 +44,7 @@ export const COLUMNS = {
   settings: ["Setting", "Value", "Notes"],
   races: ["Race", "Tree", "Rank", ...STATS, "Rules", "Reference", "Notes"],
   equipment: ["Equipment", "Match Key", ...STATS, "Save", "Rules", "Alias", "Rules 2", "Type", "R", "AP", "Cost", "Reference"],
-  magicItems: ["Magic Item", "Type", "Match Key", ...STATS, "Save", "Rules", "Rules 2", "R", "AP", "Cost", "Reference"],
+  magicItems: ["Magic Item", "Type", "Match Key", ...STATS, "Save", "Rules", "Rules 2", "R", "AP", "Cost", "Reference", "Repeats"],
   rules: ["Rule", "Type", "Rules", "Rules 2", "Reference"],
   commonLinks: ["Link Key", "Name", "Equipment", "Alias", "Reference"],
   armyEntry: [
@@ -221,6 +221,7 @@ export function readMagicItemRows(rows: Row[], ctx: TabContext): MagicItem[] {
       homePackage: ctx.packageKey,
       type,
       extremelyCommon: written.endsWith("*"),
+      repeats: readYes(row["Repeats"]),
       countsAs: at("Match Key", (p) => readTerms(row["Match Key"], p)),
       stats: readStats(row),
       save: v.readStat(row["Save"]),
@@ -240,6 +241,7 @@ export function writeMagicItemRow(item: MagicItem): Row {
   row["Save"] = v.writeStat(item.save);
   row["Rules"] = writeTerms(item.rules);
   row["Rules 2"] = item.text ?? "";
+  row["Repeats"] = item.repeats ? "yes" : "";
   row["R"] = item.range ?? "";
   row["AP"] = item.armourPiercing ?? "";
   row["Cost"] = v.writeCost(item.cost);
@@ -442,4 +444,9 @@ export function writeCompositionRow(rule: CompositionRule, columns: PackageColum
     "Unit Limit": writeLimits(rule.limits),
     Notes: rule.notes ?? "",
   };
+}
+
+// A yes / no column: "yes" (or "y", "true", "x") is yes; blank is no.
+function readYes(cell: string | undefined): true | undefined {
+  return /^(yes|y|true|x)$/i.test((cell ?? "").trim()) ? true : undefined;
 }

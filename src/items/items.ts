@@ -329,6 +329,9 @@ export const MagicItem = z.strictObject({
   kind: z.literal("magic-item"),
   type: z.string(),
   extremelyCommon: z.boolean(),
+  // May be taken more than once by one bearer, adding up (the Dwarfs' Rule of Duplication: runes
+  // marked * on the page). Written "yes" in the Repeats column.
+  repeats: z.boolean().optional(),
   countsAs: z.array(Term), // Armour of Fortune counts as Heavy Armour
   stats: Stats,
   save: Stat.optional(),

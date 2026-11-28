@@ -15,7 +15,7 @@ import type { OverlayRow, OverlaySet } from "./overlays";
 import type { AppData } from "../../app-data";
 
 type Point = { x: number; y: number };
-export type LinkLine = { link: Link; a: Point; b: Point; style: LinkStyle; via?: boolean };
+export type LinkLine = { link: Link; a: Point; b: Point; style: LinkStyle; via?: boolean; bow?: Point };
 
 export const LINKS_SET = "links";
 export const linkRowId = (linkKind: string) => `link|${linkKind}`;
@@ -33,14 +33,15 @@ export function linkSet(items: Item[], world: string, on: boolean, isOn: (linkKi
 }
 
 // Lines for links whose two ends have a position (`at` gives one, or null), in the link kinds shown.
-export function linkLines(items: Item[], world: string, links: Link[], at: (thing: string) => { p: Point; via?: boolean } | null): LinkLine[] {
+// `at` is given each end and the other end, so a box can offer the side facing it.
+export function linkLines(items: Item[], world: string, links: Link[], at: (thing: string, other: string) => { p: Point; via?: boolean; bow?: Point } | null): LinkLine[] {
   const out: LinkLine[] = [];
   for (const link of links) {
-    const a = at(link.from);
-    const b = at(link.to);
+    const a = at(link.from, link.to);
+    const b = at(link.to, link.from);
     if (!a || !b) continue;
     if (a.p.x === b.p.x && a.p.y === b.p.y) continue; // both ends inside one folded box
-    out.push({ link, a: a.p, b: b.p, style: linkStyle(items, world, link), via: a.via || b.via });
+    out.push({ link, a: a.p, b: b.p, style: linkStyle(items, world, link), via: a.via || b.via, bow: a.bow ?? b.bow });
   }
   return out;
 }
@@ -62,7 +63,7 @@ export function LinkLines({ lines, k, picked, gap = 10, bulge }: { lines: LinkLi
         // Spread across the pair, measured the same way round for every link in it.
         const flip = l.link.from > l.link.to ? -1 : 1;
         const offset = ((n - (group.length - 1) / 2) * gap * flip) / k;
-        const mid = bend(l.a, l.b, offset, bulge);
+        const mid = bend(l.a, l.b, offset, bulge ?? l.bow);
         const d = `M${l.a.x} ${l.a.y} Q${mid.control.x} ${mid.control.y} ${l.b.x} ${l.b.y}`;
         const dash = l.style.line === "dashed" ? `${8 / k} ${5 / k}` : l.style.line === "dotted" ? `${1.5 / k} ${4 / k}` : undefined;
         const isPicked = picked.includes(l.link.key);
@@ -201,13 +202,13 @@ export function linkContainerSet(items: Item[], world: string, on: boolean, isOn
 
 // Bands for the containers shown, from where each link's ends are drawn (`at`); a link with an end
 // not drawn is left out.
-export function containerBands(items: Item[], world: string, containers: Thing[], at: (thing: string) => { p: Point } | null): ContainerBand[] {
+export function containerBands(items: Item[], world: string, containers: Thing[], at: (thing: string, other: string) => { p: Point } | null): ContainerBand[] {
   return containers.map((container) => ({
     container,
     colour: containerColour(items, world, container),
     links: items
       .filter((i): i is Link => i.kind === "link" && i.world === world && !!i.partOf?.includes(container.key))
-      .map((l) => ({ a: at(l.from)?.p, b: at(l.to)?.p }))
+      .map((l) => ({ a: at(l.from, l.to)?.p, b: at(l.to, l.from)?.p }))
       .filter((s): s is { a: Point; b: Point } => !!s.a && !!s.b),
   })).filter((r) => r.links.length > 0);
 }

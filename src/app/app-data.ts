@@ -8,6 +8,7 @@ import type { Item } from "../items/items";
 import { moveItem, planUpload, removeGame, removePackages, type ClashChoice, type UploadPlan } from "../library/library";
 import { pickupSandbox } from "../context/context";
 import { isWorldItem } from "../world/world";
+import { WorldHistory } from "../world/history";
 import { readFullYaml } from "../packages/full-yaml";
 import { readUploads, type UploadFile } from "../library/upload";
 import type { Problem } from "../packages/formats";
@@ -18,6 +19,7 @@ export type Draft = { fileNames: string[]; problems: Problem[]; uploaded: Item[]
 
 export class AppData {
   items: Item[] = [];
+  history = new WorldHistory(); // every change to a world, for Undo (owner, 28 Nov)
   openWorld: string | null = null; // the world open in World (and later Campaign): the header's switcher
 
 
@@ -73,19 +75,41 @@ export class AppData {
   // Saves one item (a context, a roster), replacing any with the same key.
   // Many items changed at once (a change that runs through the library, like a renamed race dimension).
   async setItems(items: Item[]): Promise<void> {
+    this.history.record(this.items, items);
     this.items = items;
     await this.store.replaceItems(this.items);
   }
 
+  // Steps a world back (or forward again) through its history; not itself a change to record.
+  async undoWorld(world: string): Promise<boolean> {
+    const next = this.history.undo(this.items, world);
+    if (!next) return false;
+    this.items = next;
+    await this.store.replaceItems(this.items);
+    return true;
+  }
+
+  async redoWorld(world: string): Promise<boolean> {
+    const next = this.history.redo(this.items, world);
+    if (!next) return false;
+    this.items = next;
+    await this.store.replaceItems(this.items);
+    return true;
+  }
+
   async putItem(item: Item): Promise<void> {
-    this.items = [...this.items.filter((i) => i.key !== item.key), item];
+    const next = [...this.items.filter((i) => i.key !== item.key), item];
+    this.history.record(this.items, next);
+    this.items = next;
     await this.store.replaceItems(this.items);
   }
 
   // Removes items by key (a roster; a pick-up game with its rosters).
   async removeItems(keys: string[]): Promise<void> {
     const gone = new Set(keys);
-    this.items = this.items.filter((i) => !gone.has(i.key));
+    const next = this.items.filter((i) => !gone.has(i.key));
+    this.history.record(this.items, next);
+    this.items = next;
     await this.store.replaceItems(this.items);
   }
 

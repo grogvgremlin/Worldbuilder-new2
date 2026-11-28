@@ -142,7 +142,7 @@ function Items({ data, nav, world, save }: Part) {
           )}
           {view === "trees" && (
             <>
-              <TreePicker data={data} world={world} tree={tree} onChoose={setTree} always />
+              <TreePicker data={data} world={world} tree={tree} onChoose={setTree} always onOpen={(key) => nav.open({ name: "link-kind", key })} />
               {warnings.length > 0 && <ul className="plain problems">{warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
               {tree && <HiddenNote data={data} nav={nav} world={world} tree={tree} />}
               <p className="sub">

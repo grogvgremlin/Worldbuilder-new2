@@ -64,10 +64,8 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
   const pointers = useRef(new Map<number, Point>());
   const gesture = useRef<Gesture>(null);
   const lastTap = useRef<{ key: string; at: Point; time: number; before: string[] } | null>(null); // for a double tap ("" = empty space)
-  const undo = useUndo("map", map?.world ?? "", () => data.items, async (items) => {
-    await data.setItems(items);
-    setMap(items.find((i): i is WorldMap => i.kind === "map" && i.key === mapKey)); // undo and redo redraw the pins
-  });
+  // Undo and redo redraw the pins from what's kept.
+  const undo = useUndo(data, map?.world ?? "", (items) => data.setItems(items), () => setMap(data.items.find((i): i is WorldMap => i.kind === "map" && i.key === mapKey)));
   const [newAt, setNewAt] = useState<Point | null>(null); // a double tap here: a new item pinned at this point
 
   // The sheet's size on screen, kept up to date (turning the phone, resizing the window).
@@ -305,7 +303,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
     const quiet = shown.all && containersOn ? [] : containerRows.filter((r) => r !== id);
     showArea({ ...shown, all: true, linkContainers: true, hidden: [...shown.hidden.filter((h) => h !== id && !quiet.includes(h)), ...quietAreas, ...quiet] });
   };
-  const pinAt = (thing: string) => {
+  const pinAt = (thing: string, _other?: string) => {
     const pin = map.pins.find((p) => p.thing === thing);
     return pin ? { p: { x: pin.x, y: pin.y } } : null;
   };

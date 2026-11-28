@@ -480,3 +480,6 @@ main:has(.map-screen), main:has(.diagram-wrap) { max-width: none; }
 
 /* A selected box, as its tree's or network's Diagram settings say (owner, 28 Nov); after other states so it always shows. */
 .diagram-node.selected rect, .diagram-node.selected.moving rect { stroke: var(--sel-colour, var(--link)); stroke-width: 3; stroke-dasharray: var(--sel-dash, none); fill: var(--sel-fill, var(--panel)); }
+
+/* Pop-ups in the middle of a wide screen; at the bottom on a phone (owner, 28 Nov). */
+@media (min-width: 700px) { .popup-back { align-items: center; } .popup { border-radius: 14px; max-height: 80vh; } }

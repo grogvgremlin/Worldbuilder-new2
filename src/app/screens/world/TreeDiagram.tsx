@@ -74,7 +74,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const looseSelected = selected.filter((k) => looseKeys.has(k));
   const [newAt, setNewAt] = useState<Point | null>(null); // a double tap on empty space: a new item here
   const lastTap = useRef<{ key: string; time: number; before: string[] } | null>(null);
-  const undo = useUndo("diagram", world, () => data.items, save);
+  const undo = useUndo(data, world, save);
   const wrap = useRef<HTMLDivElement>(null);
   const pointers = useRef(new Map<number, Point>());
   const gesture = useRef<Gesture>(null);
@@ -345,19 +345,36 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   };
   // Where a link's end is drawn: its box, else the nearest box above it that's showing (its branch is
   // folded: the line is marked "via"); not in this tree at all: not drawn (owner, 27 Nov).
-  const endAt = (thing: string) => {
-    const box = byKey.get(thing);
-    // From the box's outer side (right, across; bottom, down), the lines bowing out that way; in a
-    // network, centre to centre (its boxes aren't in columns of one parent).
-    const centre = (b: Box) => (network ? { x: drawnAt(b).x + NODE_W / 2, y: drawnAt(b).y + NODE_H / 2 } : direction === "across" ? { x: drawnAt(b).x + NODE_W, y: drawnAt(b).y + NODE_H / 2 } : { x: drawnAt(b).x + NODE_W / 2, y: drawnAt(b).y + NODE_H });
-    if (box) return { p: centre(box) };
+  // The box an item is drawn in: its own, else (folded away in a tree) the nearest box above it.
+  const shownBox = (thing: string): { box: Box; via: boolean } | null => {
+    const own = byKey.get(thing);
+    if (own) return { box: own, via: false };
     if (network) return null; // a network folds nothing away
     const above = pathOf(data.items, world, thing, tree).slice(0, -1).reverse().find((t) => byKey.has(t.key));
-    return above ? { p: centre(byKey.get(above.key)!), via: true } : null;
+    return above ? { box: byKey.get(above.key)!, via: true } : null;
+  };
+  // Where a line leaves a box: the middle of the side facing the other end (owner, 28 Nov: "snap to
+  // whichever facing is most reasonable rather than … the bottom of a thumbnail").
+  const endAt = (thing: string, other: string) => {
+    const mine = shownBox(thing);
+    if (!mine) return null;
+    const a = drawnAt(mine.box);
+    const theirs = shownBox(other);
+    const b = theirs ? drawnAt(theirs.box) : a;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    // Far apart in one column (or row): a straight line would run behind the boxes between, so it
+    // leaves from the outer side and bows out round them.
+    if (Math.abs(dx) < NODE_W / 2 && Math.abs(dy) > NODE_H * 1.6) return { p: { x: a.x + NODE_W, y: a.y + NODE_H / 2 }, via: mine.via, bow: { x: 1, y: 0 } };
+    if (Math.abs(dy) < NODE_H / 2 && Math.abs(dx) > NODE_W * 1.6) return { p: { x: a.x + NODE_W / 2, y: a.y + NODE_H }, via: mine.via, bow: { x: 0, y: 1 } };
+    const p = Math.abs(dx) / NODE_W > Math.abs(dy) / NODE_H
+      ? { x: dx > 0 ? a.x + NODE_W : a.x, y: a.y + NODE_H / 2 }
+      : { x: a.x + NODE_W / 2, y: dy > 0 ? a.y + NODE_H : a.y };
+    return { p, via: mine.via };
   };
   // The network's own links are always drawn (they are its lines); others as Layers says.
   const lines = linkLines(data.items, world, plainLinks(data.items, world).filter((l) => (network && l.linkKind === tree) || (linksOn && !hiddenOutlines.includes(linkRowId(l.linkKind)))), endAt);
-  const bulge = network ? undefined : direction === "across" ? { x: 1, y: 0 } : { x: 0, y: 1 };
+  const bulge = undefined; // lines run side to side, straight (spread apart when several share ends)
   const bands = containersOn ? containerBands(data.items, world, linkContainersIn(data.items, world).filter((c) => !hiddenOutlines.includes(containerRowId(c.key))), endAt) : [];
   const worldName = worldOf(data.items, world)?.name ?? "World";
   const label = (b: Box) => (b.thing ? `${iconOf(data.items, b.thing)} ${b.thing.name}` : worldName);
@@ -376,7 +393,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
           <button className={mode === "join" ? "on" : ""} onClick={() => setMode("join")}>Connect</button>
         </nav>
         {!network && <label className="choice"><input type="checkbox" checked={withBranch} onChange={() => setWithBranch(!withBranch)} /> Branch follows</label>}
-        <TreePicker data={data} world={world} tree={tree} onChoose={setTree} withNetworks />
+        <TreePicker data={data} world={world} tree={tree} onChoose={setTree} withNetworks onOpen={(key) => nav.open({ name: "link-kind", key })} />
         <span className="map-tools outlines-menu">
           <button className={outlined.length || linksOn ? "tool on" : "tool"} onClick={() => setOutlineMenu(!outlineMenu)}>Layers ▾</button>
           {outlineMenu && (

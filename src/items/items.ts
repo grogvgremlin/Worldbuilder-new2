@@ -353,6 +353,35 @@ export const SpecialRule = z.strictObject({
 });
 export type SpecialRule = z.infer<typeof SpecialRule>;
 
+// A spell (design/options-items-and-rules.md §5): casting value, range, type and what it does. A
+// spell doesn't say which lore it's in: lores list their spells, so one spell can be in several.
+export const Spell = z.strictObject({
+  ...common,
+  kind: z.literal("spell"),
+  spellType: z.string().optional(), // Enchantment, Hex, Magic Missile … (the game's own words)
+  castingValue: z.string().optional(), // "7+ / 11+", as printed
+  range: z.string().optional(), // 24", Self
+  rules: z.array(Term), // special rules its attacks have
+  text: z.string().optional(), // the effect
+});
+export type Spell = z.infer<typeof Spell>;
+
+// A lore: its spells, in order, each optionally its signature spell and in a group (High / Low).
+// A Wizard's lore choice (Rules Options "Battle Magic") names a lore; a rule with a lore of the same
+// name (the Anvil of Doom's "Strike the Runes") gives its holder that lore's spells.
+export const LoreMember = z.strictObject({
+  spell: Term,
+  signature: z.boolean().optional(),
+  group: z.string().optional(),
+});
+export const Lore = z.strictObject({
+  ...common,
+  kind: z.literal("lore"),
+  spells: z.array(LoreMember),
+  text: z.string().optional(),
+});
+export type Lore = z.infer<typeof Lore>;
+
 // A kind of command slot: champion, standard bearer …
 export const SlotKind = z.strictObject({
   ...common,
@@ -721,6 +750,6 @@ export type WorldMap = z.infer<typeof WorldMap>;
 
 export const WORLD_KINDS = ["thing-kind", "link-kind", "thing", "link", "map"] as const;
 
-export const Item = z.discriminatedUnion("kind", [Game, Package, RaceProfile, Unit, Equipment, MagicItem, SpecialRule, SlotKind, ArmyList, CompositionRule, Patch, Source, SettingValue, Sandbox, Context, Roster, ThingKind, LinkKind, Thing, Link, WorldMap]);
+export const Item = z.discriminatedUnion("kind", [Game, Package, RaceProfile, Unit, Equipment, MagicItem, SpecialRule, Spell, Lore, SlotKind, ArmyList, CompositionRule, Patch, Source, SettingValue, Sandbox, Context, Roster, ThingKind, LinkKind, Thing, Link, WorldMap]);
 export type Item = z.infer<typeof Item>;
 export type ItemKind = Item["kind"];

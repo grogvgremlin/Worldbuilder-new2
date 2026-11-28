@@ -4,7 +4,7 @@
 //
 // Reading only reads cells: names are matched to items afterwards (resolve.ts).
 
-import type { ArmyList, CompositionRule, Equipment, MagicItem, RaceProfile, SettingValue, SlotKind, Source, SpecialRule, Stats, Unit, UnitRow } from "../items/items";
+import type { ArmyList, CompositionRule, Equipment, Lore, MagicItem, RaceProfile, Spell, SettingValue, SlotKind, Source, SpecialRule, Stats, Unit, UnitRow } from "../items/items";
 import { itemKey } from "../items/keys";
 import type { Row } from "../sheets/csv";
 import { readOptions, writeOptions } from "../notation/options";
@@ -46,6 +46,8 @@ export const COLUMNS = {
   equipment: ["Equipment", "Match Key", ...STATS, "Save", "Rules", "Alias", "Rules 2", "Type", "R", "AP", "Cost", "Reference"],
   magicItems: ["Magic Item", "Type", "Match Key", ...STATS, "Save", "Rules", "Rules 2", "R", "AP", "Cost", "Reference", "Repeats"],
   rules: ["Rule", "Type", "Rules", "Rules 2", "Reference"],
+  spells: ["Spell", "Type", "Casting Value", "Range", "Rules", "Rules 2", "Reference"],
+  lores: ["Lore", "Spell", "Signature", "Group", "Rules 2", "Reference"],
   commonLinks: ["Link Key", "Name", "Equipment", "Alias", "Reference"],
   armyEntry: [
     "Package", "SubPackage", "Rule Type", "Unit", "Key", "Type", "Link Key", "Name", "Tier", ...STATS,
@@ -449,4 +451,65 @@ export function writeCompositionRow(rule: CompositionRule, columns: PackageColum
 // A yes / no column: "yes" (or "y", "true", "x") is yes; blank is no.
 function readYes(cell: string | undefined): true | undefined {
   return /^(yes|y|true|x)$/i.test((cell ?? "").trim()) ? true : undefined;
+}
+
+// --- Spells and lores (design/options-items-and-rules.md §5) -----------------------------------
+
+export function readSpellRows(rows: Row[], ctx: TabContext): Spell[] {
+  return rows.map((row, i) => {
+    const at = cellReader(ctx, i + 2);
+    const name = row["Spell"].trim();
+    return compact<Spell>({
+      key: itemKey(ctx.game, "spell", name),
+      kind: "spell",
+      name,
+      homePackage: ctx.packageKey,
+      spellType: v.readText(row["Type"]),
+      castingValue: v.readText(row["Casting Value"]),
+      range: v.readText(row["Range"]),
+      rules: at("Rules", (p) => readTerms(row["Rules"], p)),
+      text: v.readText(row["Rules 2"]),
+      reference: v.readReference(row["Reference"]),
+    });
+  });
+}
+
+export function writeSpellRow(item: Spell): Row {
+  return {
+    Spell: item.name,
+    Type: item.spellType ?? "",
+    "Casting Value": item.castingValue ?? "",
+    Range: item.range ?? "",
+    Rules: writeTerms(item.rules),
+    "Rules 2": item.text ?? "",
+    Reference: v.writeReference(item.reference),
+  };
+}
+
+// One row per spell in a lore; rows sharing a Lore name are one lore, in order. A row with no Spell
+// carries the lore's own text. Its text and reference are the first given.
+export function readLoreRows(rows: Row[], ctx: TabContext): Lore[] {
+  const lores = new Map<string, Lore>();
+  for (const row of rows) {
+    const name = row["Lore"].trim();
+    if (!name) continue;
+    const lore = lores.get(name) ?? { key: itemKey(ctx.game, "lore", name), kind: "lore" as const, name, homePackage: ctx.packageKey, spells: [] };
+    lores.set(name, lore);
+    lore.text ??= v.readText(row["Rules 2"]);
+    lore.reference ??= v.readReference(row["Reference"]);
+    const spell = v.readText(row["Spell"]);
+    if (spell) lore.spells.push(compact({ spell: { name: spell }, signature: readYes(row["Signature"]), group: v.readText(row["Group"]) }));
+  }
+  return [...lores.values()].map((l) => compact(l));
+}
+
+export function writeLoreRows(item: Lore): Row[] {
+  const head = { Lore: item.name, "Rules 2": item.text ?? "", Reference: v.writeReference(item.reference) };
+  if (item.spells.length === 0) return [{ ...head, Spell: "", Signature: "", Group: "" }];
+  return item.spells.map((m, i) => ({
+    ...(i === 0 ? head : { Lore: item.name, "Rules 2": "", Reference: "" }),
+    Spell: m.spell.name,
+    Signature: m.signature ? "yes" : "",
+    Group: m.group ?? "",
+  }));
 }

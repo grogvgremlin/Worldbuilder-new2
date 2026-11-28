@@ -10,7 +10,7 @@ import { gameUnits } from "../lists/game-view";
 export type Found = { item: Item; how: "name" | "alias" | "type" | "key"; detail: string };
 
 const KIND_WORDS: Record<string, string> = {
-  unit: "unit", equipment: "equipment", "magic-item": "magic item", "special-rule": "rule", "race-profile": "race",
+  unit: "unit", equipment: "equipment", "magic-item": "magic item", "special-rule": "rule", spell: "spell", lore: "lore", "race-profile": "race",
   "slot-kind": "command", "army-list": "army list", "composition-rule": "composition", package: "package", game: "game",
   source: "source", setting: "setting", patch: "patch", context: "set-up", roster: "list",
 };
@@ -32,6 +32,7 @@ function typesOf(item: Item): string[] {
   if (item.kind === "equipment" && item.type) out.push(item.type);
   if (item.kind === "magic-item") out.push(item.type, "magic item");
   if (item.kind === "special-rule" && item.ruleType) out.push(item.ruleType);
+  if (item.kind === "spell" && item.spellType) out.push(item.spellType);
   if (item.kind === "source" && item.sourceKind) out.push(item.sourceKind);
   if (item.kind === "unit") out.push(item.class);
   return out;

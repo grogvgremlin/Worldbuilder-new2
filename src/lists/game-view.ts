@@ -4,7 +4,7 @@
 // shows. Battle tracking comes with the Battle tool (owner, 24 Nov). Pure: a roster view and the library in.
 // Design: design/rosters.md §4 (views of a roster are derived, never stored).
 
-import type { Equipment, Game, Item, MagicItem, Option, OptionGroup, RaceProfile, SlotKind, SpecialRule, Stats, Term, Unit } from "../items/items";
+import type { Equipment, Game, Item, Lore, MagicItem, Option, OptionGroup, RaceProfile, SlotKind, SpecialRule, Stats, Term, Unit } from "../items/items";
 import { dimensionsOf, gameOf, headingFor, profileKey } from "../items/race-dimensions";
 import { unitAsPrinted } from "../rules/race-deltas";
 import { groupFor } from "./summary-groups";
@@ -31,6 +31,7 @@ export type GameUnit = {
   command: { section: string; models: CommandModel[] }[]; // by the slots' sections (Command, …)
   rules: RuleRef[];
   items: { name: string; type: string; key: string }[]; // the unit's own (a character's); a command model's are in its kit
+  spells: { lore: Ref; spells: Ref[] }[]; // the lores its rules and choices name (a Wizard's lore; the Anvil's Strike the Runes), each with its spells
   ref?: { source: Ref; page?: string }; // "Ref: Forces of Fantasy [p. 64]": the source and the page, each a link
   note?: string;
   battleNote?: string;
@@ -149,6 +150,7 @@ function gameUnit(u: UnitView, reach: Item[], game: Game | undefined, all: Item[
     command,
     rules,
     items: itemsFor("options").map((m) => ({ name: m.name, type: m.type, key: m.key })),
+    spells: loresHeld([...t.rules, ...rulesTaken.map((o) => ({ name: o.name, item: o.item }) as Term)], reach),
     ref: ref ? { source: { name: ref.source, key: reach.find((i) => i.kind === "source" && matchName(i.name) === matchName(ref.source))?.key }, page: ref.page } : undefined,
     note: ru.note,
     battleNote: ru.battleNote,
@@ -254,12 +256,19 @@ export type ReferenceSection = { title: string; groups: { type: string; entries:
 export function armyReference(units: GameUnit[], items: Item[], game?: Game): ReferenceSection[] {
   const byKey = new Map(items.map((i) => [i.key, i]));
   const order = ["Special rules", "Equipment", "Magic items"];
-  return armySummary(units, items, game)
+  const sections = armySummary(units, items, game)
     .sort((a, b) => order.indexOf(a.title) - order.indexOf(b.title))
     .map((card) => ({
       title: card.title,
       groups: card.groups.map((g) => ({ type: g.type, entries: g.entries.map((e) => details(e.name, e.key ? byKey.get(e.key) : undefined)) })),
     }));
+  // Spells, by lore: every lore a unit in the list has, each spell written out once.
+  const lores = new Map<string, { type: string; entries: ReferenceEntry[] }>();
+  for (const held of units.flatMap((u) => u.spells)) {
+    if (lores.has(held.lore.name)) continue;
+    lores.set(held.lore.name, { type: held.lore.name, entries: held.spells.map((s) => details(s.name, s.key ? byKey.get(s.key) : undefined)) });
+  }
+  return lores.size ? [...sections, { title: "Spells", groups: [...lores.values()] }] : sections;
 }
 
 function details(name: string, item: Item | undefined): ReferenceEntry {
@@ -267,6 +276,10 @@ function details(name: string, item: Item | undefined): ReferenceEntry {
   const stats = (s: Stats) => Object.entries(s).map(([k, v]) => `${k} ${typeof v === "number" ? v : v.change !== undefined ? (v.change > 0 ? `+${v.change}` : v.change) : v.text ?? (v.none ? "-" : "")}`);
   const ruleNames = (t: Term[]) => (t.length ? [t.map((r) => r.name + (r.detail ? `(${r.detail})` : "")).join(", ")] : []);
   if (item.kind === "special-rule") return { name, key: item.key, facts: [], text: item.text ?? "Not entered yet." };
+  if (item.kind === "spell") {
+    const facts = [item.spellType, item.castingValue && `Casting value ${item.castingValue}`, item.range && `Range ${item.range}`, ...ruleNames(item.rules)].filter((f): f is string => !!f);
+    return { name, key: item.key, facts, text: item.text ?? (item.status === "stub" ? "Not entered yet." : undefined) };
+  }
   if (item.kind === "equipment" || item.kind === "magic-item") {
     const facts = [...(item.range ? [`R ${item.range}`] : []), ...stats(item.stats), ...(item.armourPiercing ? [`AP ${item.armourPiercing}`] : []), ...ruleNames(item.rules)];
     return { name, key: item.key, facts, text: item.text };
@@ -280,4 +293,12 @@ function countRepeats(shown: MagicItem[], item: MagicItem): MagicItem[] {
   if (at < 0) return [...shown, item];
   const n = (Number(/ ×(\d+)$/.exec(shown[at].name)?.[1]) || 1) + 1;
   return shown.map((m, i) => (i === at ? { ...m, name: `${item.name} ×${n}` } : m));
+}
+
+// The lores a unit has: any of its rules (or rules options taken) that is a lore, or that has a lore
+// of the same name ("Strike the Runes" is the Anvil's rule and the lore of its bound spells).
+function loresHeld(rules: Term[], reach: Item[]): GameUnit["spells"] {
+  const lores = reach.filter((i): i is Lore => i.kind === "lore");
+  const held = rules.map((r) => lores.find((l) => l.key === r.item || matchName(l.name) === matchName(r.name))).filter((l): l is Lore => !!l);
+  return [...new Set(held)].map((l) => ({ lore: { name: l.name, key: l.key }, spells: l.spells.map((m) => ({ name: m.spell.name, key: m.spell.item ?? undefined })) }));
 }

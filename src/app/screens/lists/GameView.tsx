@@ -20,6 +20,7 @@ const FILTERS = [
   { id: "kit", label: "Equipment and command" },
   { id: "rules", label: "Special rules" },
   { id: "items", label: "Magic items" },
+  { id: "spells", label: "Spells" },
   { id: "pages", label: "Pages" },
   { id: "description", label: "Description" },
   { id: "notes", label: "Notes" },
@@ -35,7 +36,7 @@ function loadFilters(): Set<string> {
     const saved = localStorage.getItem("game-view-filters");
     if (saved) return new Set(JSON.parse(saved));
   } catch {}
-  return new Set(["points", "stats", "kit", "rules", "items", "description"]);
+  return new Set(["points", "stats", "kit", "rules", "items", "spells", "description"]);
 }
 function saveFilters(f: Set<string>) {
   try {
@@ -197,6 +198,19 @@ function UnitCard({ u, stats, on, openItem, onNote, onBattleNote, heading }: Car
           ))}
         </p>
       )}
+
+      {on.has("spells") && u.spells.map((held) => (
+        // A lore the unit has (a Wizard's lore, the Anvil's Strike the Runes): its spells, each a link.
+        <p key={held.lore.name}>
+          <span className="sub">{link(held.lore.name, held.lore.key)}: </span>
+          {held.spells.map((s, n) => (
+            <span key={n}>
+              {n > 0 && ", "}
+              {link(s.name, s.key)}
+            </span>
+          ))}
+        </p>
+      ))}
 
       {on.has("rules") && u.rules.length > 0 && (
         <details className="game-section" open>

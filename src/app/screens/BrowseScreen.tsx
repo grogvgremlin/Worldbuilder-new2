@@ -8,12 +8,14 @@ import type { Nav } from "../App";
 import { ViewMenu } from "../filter-menu";
 import { nameOf } from "./GameScreen";
 
-export type BrowseKind = "special-rule" | "equipment" | "magic-item" | "unit" | "race-profile" | "source" | "patch";
+export type BrowseKind = "special-rule" | "equipment" | "magic-item" | "spell" | "lore" | "unit" | "race-profile" | "source" | "patch";
 
 export const BROWSE_KINDS: { kind: BrowseKind; title: string }[] = [
   { kind: "special-rule", title: "Rules" },
   { kind: "equipment", title: "Equipment" },
   { kind: "magic-item", title: "Magic items" },
+  { kind: "spell", title: "Spells" },
+  { kind: "lore", title: "Lores" },
   { kind: "unit", title: "Units" },
   { kind: "race-profile", title: "Races" },
   { kind: "source", title: "Bibliography" },
@@ -81,6 +83,7 @@ function groupLabel(item: Item, by: GroupBy, all: Item[], categoryOf: Map<string
   if (item.kind === "special-rule") return item.ruleType ?? "No type given";
   if (item.kind === "equipment") return item.type ?? "No type given";
   if (item.kind === "magic-item") return item.type || "No type given";
+  if (item.kind === "spell") return item.spellType ?? "No type given";
   if (item.kind === "unit") return item.class === "mount" ? "Mount" : categoryOf.get(item.key) ?? "No category";
   if (item.kind === "race-profile") return Object.values(item.profile)[0] ?? "—";
   if (item.kind === "source") return item.sourceKind ?? "No kind given";
@@ -95,6 +98,8 @@ export function isEmpty(item: Item): boolean {
   if (item.kind === "special-rule") return blank(item.text) && blank(item.effectsAsWritten);
   if (item.kind === "equipment") return blank(item.text) && blank(item.stats) && blank(item.rules) && blank(item.cost) && blank(item.countsAs) && blank(item.save) && blank(item.range);
   if (item.kind === "magic-item") return blank(item.text) && blank(item.stats) && blank(item.rules) && blank(item.cost);
+  if (item.kind === "spell") return blank(item.text) && blank(item.castingValue);
+  if (item.kind === "lore") return item.spells.length === 0;
   if (item.kind === "race-profile") return blank(item.stats) && blank(item.rules);
   if (item.kind === "unit") return blank(item.rows[0].stats) && blank(item.rows[0].cost) && !item.inherits;
   if (item.kind === "source") return blank(item.sourceKind) && blank(item.by) && blank(item.published) && blank(item.link);

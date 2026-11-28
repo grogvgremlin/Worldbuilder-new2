@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import YAML from "yaml";
-import type { ArmyList, CompositionRule, Equipment, Game, Item, Limit, Source, Options as OptionsCell, Package, Patch, RaceProfile, SlotKind, SpecialRule, Stat, Stats, Term, Unit, UnitRow } from "../../items/items";
+import type { ArmyList, CompositionRule, Equipment, Game, Item, Limit, Source, Options as OptionsCell, Package, Patch, RaceProfile, SlotKind, SpecialRule, Spell, Lore, Stat, Stats, Term, Unit, UnitRow } from "../../items/items";
 import { writeStat } from "../../notation/values";
 import { unitAsPrinted } from "../../rules/race-deltas";
 import { dimensionsOf, gameOf } from "../../items/race-dimensions";
@@ -64,11 +64,16 @@ function Card({ item, ctx, view }: { item: Item; ctx: Ctx; view: View }) {
       return (
         <>
           {item.extremelyCommon && <p className="sub">Extremely common: may be taken more than once.</p>}
+          {item.repeats && <p className="sub">Repeats: one model may take it more than once, adding up.</p>}
           <EquipmentCard eq={{ ...item, kind: "equipment", aliases: [] }} ctx={ctx} />
         </>
       );
     case "special-rule":
       return <RuleCard rule={item} />;
+    case "spell":
+      return <SpellCard spell={item} ctx={ctx} />;
+    case "lore":
+      return <LoreCard lore={item} ctx={ctx} />;
     case "race-profile":
       return <RaceCard race={item} ctx={ctx} />;
     case "slot-kind":
@@ -287,6 +292,37 @@ function EquipmentCard({ eq, ctx }: { eq: Equipment; ctx: Ctx }) {
       <Field label="Also called">{eq.aliases.join(", ")}</Field>
       <Field label="Cost">{words.costText(eq.cost)}</Field>
       {eq.text && <p>{eq.text}</p>}
+    </>
+  );
+}
+
+// A spell reads like the book's: type, casting value, range, then what it does.
+function SpellCard({ spell, ctx }: { spell: Spell; ctx: Ctx }) {
+  return (
+    <>
+      <Field label="Type">{spell.spellType}</Field>
+      <Field label="Casting value">{spell.castingValue}</Field>
+      <Field label="Range">{spell.range}</Field>
+      <Field label="Rules">{spell.rules.length > 0 && <Links terms={spell.rules} ctx={ctx} />}</Field>
+      {spell.text && <p>{spell.text}</p>}
+    </>
+  );
+}
+
+// A lore: its spells in order, each a link; the signature spell marked; groups (High / Low) named.
+function LoreCard({ lore, ctx }: { lore: Lore; ctx: Ctx }) {
+  return (
+    <>
+      {lore.text && <p>{lore.text}</p>}
+      <ul className="plain">
+        {lore.spells.map((m, i) => (
+          <li key={i}>
+            <ItemLink name={m.spell.name} itemKey={m.spell.item} ctx={ctx} />
+            {m.signature && <span className="sub"> · signature spell</span>}
+            {m.group && <span className="sub"> · {m.group}</span>}
+          </li>
+        ))}
+      </ul>
     </>
   );
 }

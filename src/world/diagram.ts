@@ -7,7 +7,8 @@ import type { Item, Sandbox, Thing } from "../items/items";
 import { childrenOf, descendantsOf, topPlaces } from "./places";
 import { isOnlyAGroup } from "./groups";
 import { worldOf } from "./world";
-import { isNetwork, networkItems, networkLayers } from "./network";
+import { GROUPS, groupsOfView, isNetwork, networkItems, networkLayers } from "./network";
+import { effectiveMembers } from "./groups";
 
 export type Direction = "across" | "down";
 export const ROOT = "(world)"; // the world itself, at the root; never stored as an item
@@ -24,6 +25,7 @@ export type Box = { key: string; thing: Thing | null; parent: string | null; x: 
 // Leaves one step apart; a parent centred on its children. A network (a connection link kind) is laid
 // out by its own rule: networkLayout.
 export function autoLayout(items: Item[], world: string, tree: string | undefined, direction: Direction, folded: Set<string> = new Set(), workspace: string[] = []): Box[] {
+  if (tree?.startsWith(GROUPS)) return groupLayout(items, world, groupsOfView(tree), direction).boxes;
   if (isNetwork(items, world, tree)) return networkLayout(items, world, tree!, direction, workspace);
   const step = direction === "across" ? ACROSS : DOWN;
   const boxes: Box[] = [];
@@ -79,7 +81,7 @@ export function networkLayout(items: Item[], world: string, kind: string, direct
 // Which boxes move when one is dragged: the box alone, or with everything under it in this tree (a
 // network has no branches: the box alone).
 export function boxesThatMove(items: Item[], world: string, tree: string | undefined, key: string, withBranch: boolean): string[] {
-  if (!withBranch || isNetwork(items, world, tree)) return [key];
+  if (!withBranch || isNetwork(items, world, tree) || tree?.startsWith(GROUPS)) return [key];
   return [key, ...descendantsOf(items, world, key, tree).map((t) => t.key)];
 }
 
@@ -109,4 +111,34 @@ export function hasHandPlacing(items: Item[], world: string, tree: string | unde
 
 function updateWorld(items: Item[], world: string, change: (w: Sandbox) => Sandbox): Item[] {
   return items.map((i) => (i.kind === "sandbox" && i.key === world ? change(i) : i));
+}
+
+// Groups as mini diagrams (owner, 28 Nov): each group a frame, its members' boxes in a grid inside;
+// frames one after another (across: in a row; down: in a column). Worked out each time.
+export type Frame = { group: Thing; x: number; y: number; w: number; h: number };
+const FRAME_PAD = 14;
+const FRAME_TITLE = 26;
+
+export function groupLayout(items: Item[], world: string, groups: string[], direction: Direction): { frames: Frame[]; boxes: Box[] } {
+  const frames: Frame[] = [];
+  const boxes: Box[] = [];
+  let at = 0;
+  for (const key of groups) {
+    const group = items.find((i): i is Thing => i.kind === "thing" && i.key === key);
+    if (!group) continue;
+    const members = effectiveMembers(items, world, key).map((m) => m.thing).sort((a, b) => a.name.localeCompare(b.name));
+    const cols = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(members.length))));
+    const rows = Math.max(1, Math.ceil(members.length / cols));
+    const w = FRAME_PAD * 2 + cols * NODE_W + (cols - 1) * 12;
+    const h = FRAME_TITLE + FRAME_PAD + rows * NODE_H + (rows - 1) * 10;
+    const [fx, fy] = direction === "across" ? [at, 0] : [0, at];
+    frames.push({ group, x: fx, y: fy, w, h });
+    members.forEach((m, n) => {
+      const x = fx + FRAME_PAD + (n % cols) * (NODE_W + 12);
+      const y = fy + FRAME_TITLE + Math.floor(n / cols) * (NODE_H + 10);
+      boxes.push({ key: `${key}::${m.key}`, thing: m, parent: null, x, y, holds: 0, hidden: 0 });
+    });
+    at += (direction === "across" ? w : h) + 36;
+  }
+  return { frames, boxes };
 }

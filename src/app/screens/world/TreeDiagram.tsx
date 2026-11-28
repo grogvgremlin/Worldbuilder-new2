@@ -16,7 +16,10 @@
 // canvas as another view on the same structure). Layout: src/world/diagram.ts.
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from "react";
 import { bringIntoScope, descendantsOf, outOfScope, pathOf, removeFromScope, setParent, treeKinds } from "../../../world/places";
-import { networkOutOfScope } from "../../../world/network";
+import { groupOfBox, kindsOfView, memberOfBox, networkOutOfScope } from "../../../world/network";
+import { addToGroup, effectiveMembers, groupLinkKinds, groupOutOfScope, groupsOf, removeFromGroup } from "../../../world/groups";
+import { refusal as endRefusal } from "../../../world/kinds";
+import { groupLayout } from "../../../world/diagram";
 import { join, plainLinks as connectorsOf, removeLink } from "../../../world/links";
 import { ScopePanel } from "./scope-panel";
 import { groupOutlines, treeOutlines, type Outline } from "../../../world/outlines";
@@ -26,7 +29,7 @@ import { itemsWithMisfits, refusal } from "../../../world/kinds";
 import { iconOf } from "../../../world/maps";
 import { linkKindsIn, worldOf } from "../../../world/world";
 import { arrangedLayout, boxesThatMove, hasHandPlacing, moveBoxes, NODE_H, NODE_W, ROOT, tidyLayout, type Box, type Direction } from "../../../world/diagram";
-import { TreePicker, useChosenTree } from "./tree-picker";
+import { useDiagramView, viewKeyOf, ViewPicker } from "./tree-picker";
 import { useKept, useRemembered } from "./remembered";
 import { NewPlace, type Part } from "./WorldScreen";
 import { useUndo } from "./undo";
@@ -54,7 +57,12 @@ type Gesture =
 type Drag = { key: string; dragged: string[]; moving: string[]; dx: number; dy: number; over: string | null; refused: string | null };
 
 export function TreeDiagram({ data, nav, world, save }: Part) {
-  const [tree, setTree] = useChosenTree(data, world, true);
+  // What's shown (owner, 28 Nov): a tree, or networks or groups, several at once.
+  const [dview, setDview] = useDiagramView(data, world);
+  const tree = viewKeyOf(dview);
+  const groupView = dview.type === "group";
+  // A box's item: in a group view a box key is "group::member".
+  const itemOf = (boxKey: string) => memberOfBox(boxKey);
   // A network (a connection link kind) instead of a tree (owner, 27 Nov): no world box, no branches,
   // nothing to move inside; its own links drawn between the boxes.
   const network = isNetwork(data.items, world, tree);
@@ -80,7 +88,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const setWorkspace = (next: string[]) => tree && setWorkspaces({ ...workspaces, [tree]: next });
   const [scopeShown, setScopeShown] = useKept(`diagram-scope|${world}`, false);
   const [scopePicked, setScopePicked] = useState<string[]>([]);
-  const outside = tree ? (network ? networkOutOfScope(data.items, world, tree, workspace) : outOfScope(data.items, world, tree)) : [];
+  const outside = !tree ? [] : network ? networkOutOfScope(data.items, world, tree, workspace) : groupView ? groupOutOfScope(data.items, world, dview.groups) : outOfScope(data.items, world, tree);
   // Carrying items out of the panel onto the diagram: where the pointer is, until let go.
   const [carry, setCarry] = useState<{ keys: string[]; at: { x: number; y: number }; moved: boolean } | null>(null);
   const [newAt, setNewAt] = useState<Point | null>(null); // a double tap on empty space: a new item here
@@ -93,6 +101,8 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const folded = new Set(foldedList);
   const toggleFold = (key: string) => setFoldedList(folded.has(key) ? foldedList.filter((k) => k !== key) : [...foldedList, key]);
   const boxes = arrangedLayout(data.items, world, tree, direction, folded, workspace);
+  // Groups as mini diagrams (owner, 28 Nov): each group's frame, drawn round its members.
+  const frames = groupView ? groupLayout(data.items, world, dview.groups, direction).frames : [];
   // Outlines of groups and of other trees' containers round the boxes they hold (owner, 26 Nov).
   const [outlined, setOutlined] = useKept<string[]>(`diagram-outlines|${world}`, []); // "groups" and tree keys
   const [outlineMenu, setOutlineMenu] = useState(false);
@@ -168,11 +178,13 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   // The whole diagram in view, but never smaller than 60% so names stay readable.
   const fit = (): View | null => {
     if (!size) return null;
-    if (boxes.length === 0) return { k: 1, tx: 24, ty: 24 }; // an empty network: ready for the first box
-    const left = Math.min(...boxes.map((b) => b.x));
-    const top = Math.min(...boxes.map((b) => b.y));
-    const width = Math.max(...boxes.map((b) => b.x)) + NODE_W - left;
-    const height = Math.max(...boxes.map((b) => b.y)) + NODE_H - top;
+    if (boxes.length === 0 && frames.length === 0) return { k: 1, tx: 24, ty: 24 }; // an empty network: ready for the first box
+    // Everything drawn: the boxes, and a group view's frames round them.
+    const spans = [...boxes.map((b) => ({ x: b.x, y: b.y, w: NODE_W, h: NODE_H })), ...frames.map((f) => ({ x: f.x, y: f.y, w: f.w, h: f.h }))];
+    const left = Math.min(...spans.map((b) => b.x));
+    const top = Math.min(...spans.map((b) => b.y));
+    const width = Math.max(...spans.map((b) => b.x + b.w)) - left;
+    const height = Math.max(...spans.map((b) => b.y + b.h)) - top;
     const k = clamp(Math.min((size.w - 24) / width, (size.h - 24) / height), 0.6, 1);
     const fits = width * k <= size.w - 24 && height * k <= size.h - 24;
     if (fits) return { k, tx: (size.w - width * k) / 2 - left * k, ty: 12 - top * k };
@@ -274,6 +286,13 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
     if (!done) return;
     // Dropped on the Out of scope panel: out of scope (owner, 28 Nov).
     if (document.elementFromPoint(e.clientX, e.clientY)?.closest(".scope-panel")) return takeOutOfScope(done.dragged);
+    // A group view: dropped in another group's frame, the members move there (out of the one they were
+    // in); anywhere else, back where they were.
+    if (groupView) {
+      const frame = view ? frameAt(toDiagram(local(e), view)) : null;
+      if (frame) await moveBetweenGroups(done.dragged, frame);
+      return setSelected([]);
+    }
     if (done.refused) return; // dropped on a box that can't take it: back where it was
     if (done.over && mode === "join") return setJoining([done.key, done.over]); // back where they were; choose how
     if (done.over) {
@@ -306,7 +325,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       lastTap.current = null;
       setSelected(before.before); // the first tap of a double tap doesn't count as a select
       swallowNextClick();
-      return nav.open({ name: "place", key });
+      return nav.open({ name: "place", key: itemOf(key) });
     }
     lastTap.current = { key, time: Date.now(), before: selected };
     setPickedLinks([]);
@@ -333,6 +352,16 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
     let items = data.items;
     const inside = selected.length === 1 ? selected[0] : null;
     const ws = network ? [...workspace, key] : workspace;
+    if (groupView) {
+      const g = frameAt(newAt) ?? dview.groups[0];
+      if (g) {
+        const kind = groupLinkKinds(items, world)[0];
+        if (kind) items = addToGroup(items, world, key, kind.key, g).items;
+      }
+      await save(items);
+      setNewAt(null);
+      return setSelected([]);
+    }
     if (network) setWorkspace(ws);
     else if (inside) items = setParent(items, world, key, inside, tree).items;
     else if (tree) items = bringIntoScope(items, tree, key);
@@ -348,13 +377,24 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   // (with the network type shown), else into the workspace. Placed where dropped.
   const bringIn = async (keys: string[], at: Point | null, onto: string | null) => {
     if (!tree) return;
+    if (groupView) {
+      // Into the group whose frame (or member box) it was dropped on; Bring in: the first group shown.
+      const target = (onto && groupOfBox(onto)) ?? frameAt(at) ?? dview.groups[0];
+      if (target) await addMembers(keys, target);
+      return setScopePicked([]);
+    }
     let items = data.items;
     let ws = workspace;
     const problems: string[] = [];
     for (const key of keys) {
       if (network) {
         if (onto && onto !== ROOT) {
-          const result = join(items, world, key, tree, onto);
+          const kinds = kindsOfView(tree);
+          if (kinds.length > 1) {
+            setJoining([key, onto]); // several network types shown: choose which
+            continue;
+          }
+          const result = join(items, world, key, kinds[0], onto);
           if (result.problem) problems.push(`${nameOfKey(key)}: ${result.problem}`);
           else items = result.items;
         } else ws = [...new Set([...ws, key])];
@@ -380,8 +420,19 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   // of this type gone (asked first).
   const takeOutOfScope = async (keys: string[]) => {
     if (!tree) return;
+    if (groupView) {
+      // Out of the group it's shown in (the box's frame).
+      let items = data.items;
+      for (const k of keys) {
+        const g = groupOfBox(k);
+        const link = g ? groupsOf(items, world, itemOf(k)).find((m) => m.thing.key === g) : undefined;
+        if (g && link) items = removeFromGroup(items, world, itemOf(k), link.linkKind.key, g);
+      }
+      await undo.apply(items);
+      return setSelected([]);
+    }
     if (network) {
-      const gone = connectorsOf(data.items, world).filter((l) => l.linkKind === tree && (keys.includes(l.from) || keys.includes(l.to)));
+      const gone = connectorsOf(data.items, world).filter((l) => kindsOfView(tree).includes(l.linkKind) && (keys.includes(l.from) || keys.includes(l.to)));
       if (gone.length && !confirm(`Take ${keys.length === 1 ? nameOfKey(keys[0]) : `${keys.length} items`} out of this network? ${gone.length} connector${gone.length === 1 ? "" : "s"} go too.`)) return;
       let items = data.items;
       for (const l of gone) items = removeLink(items, l.key);
@@ -394,7 +445,35 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
     }
     setSelected([]);
   };
-  const nameOfKey = (key: string) => data.items.find((i) => i.key === key)?.name ?? key;
+  const nameOfKey = (key: string) => data.items.find((i) => i.key === itemOf(key))?.name ?? key;
+  const frameAt = (p: Point | null) => (p ? frames.find((f) => p.x >= f.x && p.x <= f.x + f.w && p.y >= f.y && p.y <= f.y + f.h)?.group.key ?? null : null);
+  const addMembers = async (keys: string[], group: string) => {
+    const kind = groupLinkKinds(data.items, world).find((k) => keys.every((key) => !endRefusal(data.items, world, k.key, "from", itemOf(key)))) ?? groupLinkKinds(data.items, world)[0];
+    if (!kind) return alert("This world has no group kind yet (Kinds → Containers → + New group).");
+    let items = data.items;
+    const problems: string[] = [];
+    for (const key of keys) {
+      const result = addToGroup(items, world, itemOf(key), kind.key, group);
+      if (result.problem) problems.push(`${nameOfKey(key)}: ${result.problem}`);
+      else items = result.items;
+    }
+    await undo.apply(items);
+    if (problems.length) alert(`Not added:\n${problems.join("\n")}`);
+  };
+  // Dragged from one group's frame to another's: in the new group, out of the old.
+  const moveBetweenGroups = async (boxKeys: string[], to: string) => {
+    let items = data.items;
+    for (const k of boxKeys) {
+      const from = groupOfBox(k);
+      if (!from || from === to) continue;
+      const link = groupsOf(items, world, itemOf(k)).find((m) => m.thing.key === from);
+      if (!link) continue;
+      const added = addToGroup(items, world, itemOf(k), link.linkKind.key, to);
+      if (added.problem && !/already/.test(added.problem)) { alert(`${nameOfKey(k)}: ${added.problem}`); continue; }
+      items = removeFromGroup(added.items, world, itemOf(k), link.linkKind.key, from);
+    }
+    await undo.apply(items);
+  };
   // A carry from the panel: follows the pointer anywhere on the page; let go over the diagram, it lands.
   const startCarry = (keys: string[], e: ReactPointerEvent) => {
     if (keys.length === 0) return;
@@ -468,9 +547,9 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
     return { p, via: mine.via };
   };
   // The network's own links are always drawn (they are its lines); others as Layers says.
-  const lines = linkLines(data.items, world, plainLinks(data.items, world).filter((l) => (network && l.linkKind === tree) || (linksOn && !hiddenOutlines.includes(linkRowId(l.linkKind)))), endAt);
+  const lines = groupView ? [] : linkLines(data.items, world, plainLinks(data.items, world).filter((l) => (network && kindsOfView(tree ?? "").includes(l.linkKind)) || (linksOn && !hiddenOutlines.includes(linkRowId(l.linkKind)))), endAt);
   const bulge = undefined; // lines run side to side, straight (spread apart when several share ends)
-  const bands = containersOn ? containerBands(data.items, world, linkContainersIn(data.items, world).filter((c) => !hiddenOutlines.includes(containerRowId(c.key))), endAt) : [];
+  const bands = containersOn && !groupView ? containerBands(data.items, world, linkContainersIn(data.items, world).filter((c) => !hiddenOutlines.includes(containerRowId(c.key))), endAt) : [];
   const worldName = worldOf(data.items, world)?.name ?? "World";
   const label = (b: Box) => (b.thing ? `${iconOf(data.items, b.thing)} ${b.thing.name}` : worldName);
   const handPlaced = hasHandPlacing(data.items, world, tree, direction);
@@ -482,13 +561,13 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
           <button className={direction === "across" ? "on" : ""} onClick={() => setDirection("across")}>Across</button>
           <button className={direction === "down" ? "on" : ""} onClick={() => setDirection("down")}>Down</button>
         </nav>
-        <nav className="segments small">
+        {!groupView && <nav className="segments small">
           <button className={mode === "arrange" ? "on" : ""} onClick={() => setMode("arrange")}>Arrange</button>
           {!network && <button className={mode === "inside" ? "on" : ""} onClick={() => setMode("inside")}>Move inside</button>}
           <button className={mode === "join" ? "on" : ""} onClick={() => setMode("join")}>Connect</button>
-        </nav>
-        {!network && <label className="choice"><input type="checkbox" checked={withBranch} onChange={() => setWithBranch(!withBranch)} /> Branch follows</label>}
-        <TreePicker data={data} world={world} tree={tree} onChoose={setTree} withNetworks onOpen={(key) => nav.open({ name: "link-kind", key })} />
+        </nav>}
+        {!network && !groupView && <label className="choice"><input type="checkbox" checked={withBranch} onChange={() => setWithBranch(!withBranch)} /> Branch follows</label>}
+        <ViewPicker data={data} world={world} view={dview} onChange={setDview} onOpen={(key) => nav.open({ name: groupView ? "place" : "link-kind", key })} />
         <label className="choice"><input type="checkbox" checked={scopeShown} onChange={() => setScopeShown(!scopeShown)} /> Out of scope ({outside.length})</label>
         <span className="map-tools outlines-menu">
           <button className={outlined.length || linksOn ? "tool on" : "tool"} onClick={() => setOutlineMenu(!outlineMenu)}>Layers ▾</button>
@@ -513,7 +592,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
           <>
             <div className="title">{selected.length} selected <span className="sub">· drag one to move them all</span></div>
             <div className="selection-buttons">
-              {selected.length === 2 && <button className="primary" onClick={() => setJoining([selected[0], selected[1]])}>Connect…</button>}
+              {selected.length === 2 && <button className="primary" onClick={() => setJoining([itemOf(selected[0]), itemOf(selected[1])])}>Connect…</button>}
               {selected.length > 1 && <button className={selected.length === 2 ? "" : "primary"} onClick={() => setGrouping(true)}>Group / move into…</button>}
               {tree && selected.some((k) => k !== ROOT) && <button onClick={() => takeOutOfScope(selected.filter((k) => k !== ROOT))}>Remove {selected.length > 1 ? `${selected.length} ` : ""}from scope</button>}
               <button onClick={() => setSelected([])}>Clear</button>
@@ -522,14 +601,14 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
         ) : (
           <span className="sub">
             Tap: select (two to connect) · lines: select (several: a link container) · double-tap: open, or a new item ·{" "}
-            {mode === "arrange" ? (network ? "drag to arrange" : withBranch ? "branches follow" : "boxes move on their own") : mode === "inside" ? "drop on a box: inside" : "drop on a box: connect"}
+            {groupView ? "drag a box into another group to move it there, onto Out of scope to take it out" : mode === "arrange" ? (network ? "drag to arrange" : withBranch ? "branches follow" : "boxes move on their own") : mode === "inside" ? "drop on a box: inside" : "drop on a box: connect"}
           </span>
         )}
       </div>
       <div className="map-layout">
       <div className="map-wrap diagram-wrap" ref={wrap} onTouchStart={(e) => e.stopPropagation()} onTouchEnd={(e) => e.preventDefault()} onWheel={wheel}>
         {size && view && (
-          <svg style={selectedLook(linkKindsIn(data.items, world).find((k) => k.key === tree))} width={size.w} height={size.h} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
+          <svg style={selectedLook(linkKindsIn(data.items, world).find((k) => k.key === kindsOfView(tree ?? "")[0]))} width={size.w} height={size.h} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
             <g transform={`translate(${view.tx} ${view.ty}) scale(${view.k})`}>
               {/* Each outlined member's box gets a border (offset per outline, so several nest), joined by a
                   line to the next member, the name on the first: no shape round boxes that aren't in it. */}
@@ -547,6 +626,12 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
                   </g>
                 );
               })}
+              {frames.map((f) => (
+                <g key={f.group.key} data-frame={f.group.key} className={"group-frame" + (drag && groupView && frameAt({ x: (byKey.get(drag.key)?.x ?? 0) + drag.dx + NODE_W / 2, y: (byKey.get(drag.key)?.y ?? 0) + drag.dy + NODE_H / 2 }) === f.group.key && groupOfBox(drag.key) !== f.group.key ? " target" : "")}>
+                  <rect x={f.x} y={f.y} width={f.w} height={f.h} rx={12} />
+                  <text x={f.x + 12} y={f.y + 18}>{f.group.name} ({effectiveMembers(data.items, world, f.group.key).length})</text>
+                </g>
+              ))}
               {boxes.filter((b) => b.parent).map((b) => (
                 <path key={`edge-${b.key}`} className="diagram-edge" d={edge(drawnAt(byKey.get(b.parent!)!), drawnAt(b))} />
               ))}
@@ -600,8 +685,8 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
         <GroupPopup
           data={data}
           world={world}
-          selected={selected}
-          tree={tree}
+          selected={selected.map(itemOf)}
+          tree={dview.type === "tree" ? tree : undefined}
           apply={async (items) => {
             await undo.apply(items);
             setSelected([]);

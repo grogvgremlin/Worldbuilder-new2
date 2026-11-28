@@ -3,7 +3,9 @@
 // Design: design/world-structure.md §3 ("different views are different link kinds").
 import type { AppData } from "../../app-data";
 import { treeKinds } from "../../../world/places";
-import { networkKinds } from "../../../world/network";
+import { groupsViewKey, networkKinds, networksViewKey } from "../../../world/network";
+import { groupsIn } from "../../../world/groups";
+import { useState } from "react";
 import { worldOf } from "../../../world/world";
 import { useRemembered } from "./remembered";
 
@@ -42,6 +44,88 @@ export function TreePicker({ data, world, tree, onChoose, withNetworks, always, 
       </select>
       {/* Its settings card (owner, 28 Nov). */}
       {onOpen && tree && <button className="tool" aria-label="Its settings" title="Its settings" onClick={() => onOpen(tree)}>⚙</button>}
+    </span>
+  );
+}
+
+// --- The Diagram's view (owner, 28 Nov): a tree (one), or networks or groups, several at once ---------
+export type ViewType = "tree" | "network" | "group";
+export type DiagramView = { type: ViewType; tree: string | undefined; networks: string[]; groups: string[] };
+
+export function useDiagramView(data: AppData, world: string): [DiagramView, (v: Partial<DiagramView>) => void] {
+  const [tree, setTree] = useChosenTree(data, world);
+  const networks = networkKinds(data.items, world);
+  const groups = groupsIn(data.items, world);
+  const [type, setType] = useRemembered<ViewType>(`${world}|view-type`, "tree");
+  const [nets, setNets] = useRemembered<string[]>(`${world}|view-networks`, networks[0] ? [networks[0].key] : []);
+  const [grps, setGrps] = useRemembered<string[]>(`${world}|view-groups`, groups[0] ? [groups[0].key] : []);
+  const view: DiagramView = {
+    type: type === "network" && networks.length === 0 ? "tree" : type === "group" && groups.length === 0 ? "tree" : type,
+    tree,
+    networks: nets.filter((k) => networks.some((n) => n.key === k)),
+    groups: grps.filter((k) => groups.some((g) => g.key === k)),
+  };
+  const set = (v: Partial<DiagramView>) => {
+    if (v.type) setType(v.type);
+    if (v.tree) setTree(v.tree);
+    if (v.networks) setNets(v.networks);
+    if (v.groups) setGrps(v.groups);
+  };
+  return [view, set];
+}
+
+// The key the view is laid out and kept under.
+export function viewKeyOf(view: DiagramView): string | undefined {
+  if (view.type === "network") return view.networks.length ? networksViewKey(view.networks) : undefined;
+  if (view.type === "group") return view.groups.length ? groupsViewKey(view.groups) : undefined;
+  return view.tree;
+}
+
+export function ViewPicker({ data, world, view, onChange, onOpen }: { data: AppData; world: string; view: DiagramView; onChange: (v: Partial<DiagramView>) => void; onOpen: (key: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const trees = treeKinds(data.items, world);
+  const networks = networkKinds(data.items, world);
+  const groups = groupsIn(data.items, world);
+  const list = view.type === "network" ? networks.map((k) => ({ key: k.key, name: k.name })) : groups.map((g) => ({ key: g.key, name: g.name }));
+  const chosen = view.type === "network" ? view.networks : view.groups;
+  const toggle = (key: string) => {
+    const next = chosen.includes(key) ? chosen.filter((k) => k !== key) : [...chosen, key];
+    onChange(view.type === "network" ? { networks: next } : { groups: next });
+  };
+  const summary = chosen.length === 0 ? "choose…" : chosen.length === 1 ? list.find((c) => c.key === chosen[0])?.name ?? "1" : `${chosen.length} shown`;
+  return (
+    <span className="tree-picker">
+      <select value={view.type} onChange={(e) => onChange({ type: e.target.value as ViewType })}>
+        <option value="tree">Tree</option>
+        {networks.length > 0 && <option value="network">Network</option>}
+        {groups.length > 0 && <option value="group">Group</option>}
+      </select>
+      {view.type === "tree" ? (
+        <>
+          <select value={view.tree ?? ""} onChange={(e) => onChange({ tree: e.target.value })}>
+            {trees.map((k) => <option key={k.key} value={k.key}>{k.name}</option>)}
+          </select>
+          {view.tree && <button className="tool" aria-label="Its settings" title="Its settings" onClick={() => onOpen(view.tree!)}>⚙</button>}
+        </>
+      ) : (
+        <span className="areas-menu">
+          <button className="tool" onClick={() => setOpen(!open)}>{summary} ▾</button>
+          {open && (
+            <>
+              <div className="menu-catcher" onClick={() => setOpen(false)} />
+              <div className="filter-panel view-choices">
+                <div className="sub">{view.type === "network" ? "Network types shown together" : "Groups shown together"}</div>
+                {list.map((c) => (
+                  <div key={c.key} className="view-choice">
+                    <label className="choice"><input type="checkbox" checked={chosen.includes(c.key)} onChange={() => toggle(c.key)} /> {c.name}</label>
+                    <button className="link" aria-label="Open" onClick={() => onOpen(c.key)}>⚙</button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </span>
+      )}
     </span>
   );
 }

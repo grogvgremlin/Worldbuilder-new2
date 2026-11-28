@@ -54,3 +54,33 @@ describe("a network", () => {
     expect(arrangedLayout(moved, W, road, "down").find((b) => b.key === key("a"))).toMatchObject({ x: a.x + 10, y: a.y + 20 });
   });
 });
+
+describe("several networks at once, and groups as mini diagrams (owner, 28 Nov)", () => {
+  it("two network types shown together: one view, joined by either", async () => {
+    const { networksViewKey, kindsOfView, isNetwork } = await import("../src/world/network");
+    const { items, road } = setUp();
+    const river: LinkKind = { key: `${W}.link-kind.river`, kind: "link-kind", world: W, name: "river", direction: "both ways", hierarchy: "none" };
+    const both = join([...items, river], W, key("d"), river.key, key("lonely")).items;
+    const view = networksViewKey([road, river.key]);
+    expect(kindsOfView(view).sort()).toEqual([road, river.key].sort());
+    expect(isNetwork(both, W, view)).toBe(true);
+    expect(arrangedLayout(both, W, view, "across").map((b) => b.thing?.name).sort()).toEqual(["a", "b", "c", "d", "lonely"]);
+    expect(networksViewKey([road])).toBe(road); // one alone keeps its own key
+  });
+
+  it("groups shown together: a frame each, its members inside; a member of both is in both", async () => {
+    const { groupLayout } = await import("../src/world/diagram");
+    const { addToGroup, groupLinkKinds, groupOutOfScope } = await import("../src/world/groups");
+    const { items } = setUp();
+    const inArea = groupLinkKinds(items, W)[0].key;
+    let next = addToGroup(items, W, key("a"), inArea, key("c")).items;
+    next = addToGroup(next, W, key("b"), inArea, key("c")).items;
+    next = addToGroup(next, W, key("a"), inArea, key("d")).items;
+    const { frames, boxes } = groupLayout(next, W, [key("c"), key("d")], "across");
+    expect(frames.map((f) => f.group.name)).toEqual(["c", "d"]);
+    expect(boxes.map((b) => b.key)).toEqual([`${key("c")}::${key("a")}`, `${key("c")}::${key("b")}`, `${key("d")}::${key("a")}`]);
+    const inFrame = (b: { x: number; y: number }, f: { x: number; y: number; w: number; h: number }) => b.x >= f.x && b.x <= f.x + f.w && b.y >= f.y && b.y <= f.y + f.h;
+    expect(boxes.every((b) => frames.some((f) => inFrame(b, f) && b.key.startsWith(f.group.key)))).toBe(true);
+    expect(groupOutOfScope(next, W, [key("c"), key("d")]).map((t) => t.name)).toEqual(["lonely"]);
+  });
+});

@@ -1,9 +1,9 @@
 // Choosing magic items for one allowance on one unit: the items it offers, by type, each with its
 // cost; one that can't be taken says why (over the budget, not for this bearer, a rule about magic
-// items). Tap to take or take off. Logic: src/lists/roster.ts (itemChoices), src/lists/magic-items.ts.
+// items). Tap to take or take off; an item that repeats (Dwarf runes marked *) has − and + for how many. Logic: src/lists/roster.ts (itemChoices), src/lists/magic-items.ts.
 import { useState } from "react";
 import type { Roster } from "../../../items/items";
-import { itemChoices, toggleItem, viewRoster } from "../../../lists/roster";
+import { addItemAgain, itemChoices, takeOneOff, toggleItem, viewRoster } from "../../../lists/roster";
 import type { AppData } from "../../app-data";
 import type { Nav } from "../../App";
 
@@ -39,9 +39,18 @@ export function RosterItemsScreen({ data, nav, rosterKey, unitId, where, allowan
               <input type="checkbox" checked={c.picked} disabled={!!c.why && mode === "grey"} onChange={() => save(toggleItem(roster, unitId, where, allowance, c.item.key))} />
               <span>
                 {c.item.name}
+                {(c.count ?? 0) > 1 && <strong> ×{c.count}</strong>}
                 {c.item.extremelyCommon && <span className="sub"> · extremely common</span>}
+                {c.item.repeats && !c.picked && <span className="sub"> · may be taken more than once</span>}
                 {c.why && <span className="full-note"> · {mode === "allow" ? "⚠ " : ""}{c.why}</span>}
+                {c.picked && c.item.repeats && c.again && <span className="full-note"> · another: {c.again}</span>}
               </span>
+              {c.picked && c.item.repeats && (
+                <span className="stepper" onClick={(e) => e.preventDefault()}>
+                  <button type="button" onClick={() => save(takeOneOff(roster, unitId, where, allowance, c.item.key))}>−</button>
+                  <button type="button" disabled={!!c.again && mode !== "allow"} onClick={() => save(addItemAgain(roster, unitId, where, allowance, c.item.key))}>+</button>
+                </span>
+              )}
               <span className="sub">{c.item.cost?.points ?? 0}</span>
             </label>
           ))}

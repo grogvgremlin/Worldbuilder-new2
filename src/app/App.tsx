@@ -87,7 +87,23 @@ const TOOLS: { id: Tool; label: string; comingNext: string }[] = [
 
 const ROOTS: Record<Tool, Screen | null> = { world: { name: "world-root" }, lists: { name: "lists" }, battle: null, campaign: null, settings: { name: "library" } };
 
+// Escape closes whatever pop-up or menu is open, the top one first (owner, 28 Nov): pop-ups close when
+// their backdrop is tapped, so Escape taps it.
+function useEscapeCloses() {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const open = [...document.querySelectorAll<HTMLElement>(".popup-back, .menu-catcher")];
+      const top = open[open.length - 1];
+      if (top) top.click();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+}
+
 export function App({ data }: { data: AppData }) {
+  useEscapeCloses();
   const [tool, setTool] = useState<Tool>(data.items.some((i) => i.kind === "game") ? "lists" : "settings");
   const [stacks, setStacks] = useState<Record<Tool, Screen[]>>({ world: [{ name: "world-root" }], lists: [{ name: "lists" }], battle: [], campaign: [], settings: [{ name: "library" }] });
   const [draft, setDraft] = useState<Draft | null>(null);

@@ -22,7 +22,7 @@ export const ALL = "(all)";
 // Choosing what a view shows (owner, 27 Nov: "the type, then which one"): on the Diagram, a tree or
 // a network (a connection link kind), then which; elsewhere, which tree. `always` shows it even with
 // one tree, so the screen says what it's showing.
-export function TreePicker({ data, world, tree, onChoose, withNetworks, always }: { data: AppData; world: string; tree: string | undefined; onChoose: (key: string) => void; withNetworks?: boolean; always?: boolean }) {
+export function TreePicker({ data, world, tree, onChoose, withNetworks, always, onOpen }: { data: AppData; world: string; tree: string | undefined; onChoose: (key: string) => void; withNetworks?: boolean; always?: boolean; onOpen?: (key: string) => void }) {
   const trees = treeKinds(data.items, world);
   const networks = withNetworks ? networkKinds(data.items, world) : [];
   if (trees.length + networks.length < (always ? 1 : 2)) return null;
@@ -40,6 +40,8 @@ export function TreePicker({ data, world, tree, onChoose, withNetworks, always }
       <select value={tree ?? ""} onChange={(e) => onChoose(e.target.value)}>
         {list.map((k) => <option key={k.key} value={k.key}>{k.name}</option>)}
       </select>
+      {/* Its settings card (owner, 28 Nov). */}
+      {onOpen && tree && <button className="tool" aria-label="Its settings" title="Its settings" onClick={() => onOpen(tree)}>⚙</button>}
     </span>
   );
 }

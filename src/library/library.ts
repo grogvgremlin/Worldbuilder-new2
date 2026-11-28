@@ -41,7 +41,10 @@ function makeStubs(unmatched: Unmatched[], items: Item[]): Item[] {
   const packages = new Map(items.filter((i): i is Package => i.kind === "package").map((p) => [p.key, p]));
   const made = new Map<string, Item>();
   const stubPackages = new Map<string, Package>();
-  for (const u of unmatched) {
+  // A name several books use but none enters is stubbed once, in the first of them by key, so the
+  // result doesn't depend on the order the books were uploaded in.
+  const byPackage = [...unmatched].sort((a, b) => (a.inPackage ?? "").localeCompare(b.inPackage ?? ""));
+  for (const u of byPackage) {
     const owner = u.inPackage ? packages.get(u.inPackage) : undefined;
     if (!owner || u.kinds[0] === "slot-kind") continue;
     const kind = u.kinds[0];

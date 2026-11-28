@@ -6,7 +6,7 @@ import { readFullYaml, writeFullYaml } from "../src/packages/full-yaml";
 import * as formats from "../src/packages/formats";
 import { exportPackage, exportSheets, importSheets } from "../src/packages/import-export";
 import { foundNeeds } from "../src/packages/resolve";
-import { refreshLibrary } from "../src/library/library";
+import { planUpload, refreshLibrary } from "../src/library/library";
 import { readCsv } from "../src/sheets/csv";
 import { cellDifferences, loadFolder, saveFolder } from "./helpers";
 import { hasTowData, readFolder, TOW_DATA } from "./read-folder";
@@ -24,9 +24,11 @@ describe.skipIf(!hasTowData)("TOW data from the data repo", () => {
         "Battle Magic", "Daemonology", "Dark Magic", "Elementalism", "Illusion", "Necromancy", "The Witch", "The Revenant", "The Mutant", "The Daemon",
         // In brackets and conditions (owner, 23 Nov): Two Handed[-Strike Last], +2 [Only(Charging)] …
         "Strike Last", "Charging", "Riding", "Mounted", "Commanders of the Empire", "Imperial Wizard", "non-magical template",
-        // The Dwarfs (photos, 28 Nov): their book-wide rules, rulebook rules and kit not entered yet.
-        "Deathblow", "Dwarf Crafted", "Gromril Armour", "Gromril Weapons", "Loner", "Multiple Shots", "Quick Shot",
-        "Requires Two Hands", "Resolute", "Rune Lore", "Shieldwall", "Throwing Axes",
+        // The Dwarfs (photos, 28 Nov): rulebook rules and kit not entered yet.
+        "Loner", "Multiple Shots", "Quick Shot",
+        "Requires Two Hands", "Shieldwall", "Throwing Axes",
+        // Part 2: war-machine weapons and rules not entered yet.
+        "Ambushers", "Fire Thrower", "Move & Shoot", "Stone Thrower",
       ]),
     );
     const stubs = first.items.find((i) => i.key === "tow.the-empire.stubs") as Package;
@@ -56,7 +58,8 @@ describe.skipIf(!hasTowData)("TOW data from the data repo", () => {
       const others = first.items.filter((i) => i.homePackage !== pkg.key && i.key !== pkg.key);
       const read = importSheets({ packages: [back] }, [game, ...others]);
       expect([...problems, ...read.problems]).toEqual([]);
-      const library = refreshLibrary([...others.filter((i) => i !== game), game, ...read.items]).items;
+      // Through the upload plan, as the app does: a name another book also has stays that book's own.
+      const library = planUpload(first.items, read.items).library;
       for (const item of first.items) expect(byKey(library).get(item.key), item.key).toEqual(item);
     }
   });

@@ -56,6 +56,7 @@ export function importSheets(sheets: GameSheets, known: Item[] = []): ImportResu
     pkg.needsStated = asList(info["needs"]).map((n) => findPackage(n, where));
   }
 
+  keepBothBooks(items, packages.map((p) => p.pkg));
   checkDuplicateKeys(items, problems);
   return { items, problems };
 }
@@ -109,6 +110,33 @@ function mergeArmyList(current: ArmyList | null, next: ArmyList): ArmyList {
   if (!current) return next;
   current.entries.push(...next.entries);
   return current;
+}
+
+// Two books in one upload with an item of the same name (the Empire's Steam Gun and the Dwarfs'):
+// both are kept, each book using its own (owner, 22 Nov: "keep both"). The copy in the earlier layer
+// (core before book before FAQ …; else the first folder) keeps the key; the other is keyed
+// <key>.<book>, as the clash review's "keep both" does across uploads. Names find their own book's first.
+// Two items with one key inside one book stay a problem.
+const LAYER_ORDER = ["core", "book", "faq", "house", "campaign"];
+
+function keepBothBooks(items: Item[], packages: Package[]): void {
+  const layer = (item: Item) => LAYER_ORDER.indexOf(packages.find((p) => p.key === item.homePackage)?.layer ?? "campaign");
+  const first = new Map<string, Item>();
+  for (const item of items) {
+    const earlier = first.get(item.key);
+    if (!earlier) {
+      first.set(item.key, item);
+      continue;
+    }
+    if (!item.homePackage || !earlier.homePackage || item.homePackage === earlier.homePackage) continue;
+    const [keeps, moves] = layer(item) < layer(earlier) ? [item, earlier] : [earlier, item];
+    const ownKey = `${moves.key}.${moves.homePackage!.split(".").pop()}`;
+    const home = packages.find((p) => p.key === moves.homePackage);
+    if (home) home.members = home.members.map((m) => (m === moves.key ? ownKey : m));
+    moves.key = ownKey;
+    first.set(keeps.key, keeps);
+    first.set(ownKey, moves);
+  }
 }
 
 function checkDuplicateKeys(items: Item[], problems: tabs.Problem[]): void {

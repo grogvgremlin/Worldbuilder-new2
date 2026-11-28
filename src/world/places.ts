@@ -76,35 +76,72 @@ export function pathOf(items: Item[], world: string, thing: string, tree?: strin
   return path;
 }
 
-// The items with no parent in this tree: they sit straight in the world. Left out: items that don't
-// belong in the tree at all (a Person in "in terrain": what it takes), and loose items (nothing above,
-// nothing inside) when the tree hides them, all or chosen ones (owner, 26 Nov).
+// --- Scope (owner, 28 Nov: "loose" is now "out of scope") -----------------------------------------
+// An item is in a tree's scope when it's in the tree (inside something, or holding something), or
+// brought in at the top though it holds nothing yet (kept on the tree: `inScope`). Everything else
+// the tree would take is out of scope: offered at the side of the Diagram, to be brought in.
+
+function scopeList(items: Item[], tree: string | undefined): string[] {
+  return (items.find((i): i is LinkKind => i.kind === "link-kind" && i.key === tree)?.inScope ?? []);
+}
+
+export function isInScope(items: Item[], world: string, thing: string, tree?: string): boolean {
+  const kind = treeOrMain(items, world, tree);
+  return treeLinks(items, world, kind).some((l) => l.from === thing || l.to === thing) || scopeList(items, kind).includes(thing);
+}
+
+// The items at the top of the tree: in scope, with nothing above them.
 export function topPlaces(items: Item[], world: string, tree?: string): Thing[] {
   const kind = treeOrMain(items, world, tree);
-  const links = treeLinks(items, world, tree);
+  const links = treeLinks(items, world, kind);
   const hasParent = new Set(links.map((l) => l.from));
   const holds = new Set(links.map((l) => l.to));
-  const rule = linkKindsIn(items, world).find((k) => k.key === kind);
-  const hidden = (t: Thing) => !holds.has(t.key) && (rule?.loose === "hide" || (rule?.hiddenHere ?? []).includes(t.key));
-  return byName(thingsIn(items, world).filter((t) => !hasParent.has(t.key) && fitsTree(items, world, kind, t.key) && !hidden(t)));
+  const top = new Set(scopeList(items, kind));
+  return byName(thingsIn(items, world).filter((t) => !hasParent.has(t.key) && (holds.has(t.key) || top.has(t.key)) && fitsTree(items, world, kind, t.key)));
 }
 
-// Items sitting loose in a tree (nothing above, nothing inside), hidden or not: for "show again".
-export function looseIn(items: Item[], world: string, tree?: string): Thing[] {
-  const links = treeLinks(items, world, tree);
-  const linked = new Set(links.flatMap((l) => [l.from, l.to]));
+// What the tree would take but isn't in its scope.
+export function outOfScope(items: Item[], world: string, tree?: string): Thing[] {
   const kind = treeOrMain(items, world, tree);
-  return byName(thingsIn(items, world).filter((t) => !linked.has(t.key) && fitsTree(items, world, kind, t.key)));
+  return byName(thingsIn(items, world).filter((t) => fitsTree(items, world, kind, t.key) && !isInScope(items, world, t.key, kind)));
 }
 
-// Hides an item from a tree's view, or shows it again (only while it sits loose there).
-export function hideHere(items: Item[], tree: string, thing: string, hide: boolean): Item[] {
-  return items.map((i) => {
-    if (i.kind !== "link-kind" || i.key !== tree) return i;
-    const now = (i.hiddenHere ?? []).filter((k) => k !== thing);
-    const next = hide ? [...now, thing] : now;
-    return { ...i, hiddenHere: next.length ? next : undefined };
-  });
+// Brings an item into a tree's scope at the top (or keeps it there).
+export function bringIntoScope(items: Item[], tree: string, thing: string): Item[] {
+  return items.map((i) => (i.kind === "link-kind" && i.key === tree && !(i.inScope ?? []).includes(thing) ? { ...i, inScope: [...(i.inScope ?? []), thing] } : i));
+}
+
+function dropFromScopeList(items: Item[], tree: string, thing: string): Item[] {
+  return items.map((i) => (i.kind === "link-kind" && i.key === tree && (i.inScope ?? []).includes(thing) ? { ...i, inScope: i.inScope!.filter((k) => k !== thing) } : i));
+}
+
+// Takes an item out of a tree's scope: out of its container, off the top. What it held moves up to the
+// top, still in scope (nothing else leaves with it).
+export function removeFromScope(items: Item[], world: string, thing: string, tree?: string): Item[] {
+  const kind = treeOrMain(items, world, tree);
+  if (!kind) return items;
+  let out = items;
+  for (const child of childrenOf(items, world, thing, kind)) out = setParent(out, world, child.key, null, kind).items;
+  out = out.filter((i) => !(i.kind === "link" && i.world === world && i.linkKind === kind && i.from === thing));
+  return dropFromScopeList(out, kind, thing);
+}
+
+// Earlier (before 28 Nov) a tree showed its loose items unless it hid them (all, or chosen ones). On
+// first reading, those it showed are brought into scope at the top (owner, 28 Nov: "keep them in
+// scope"), and the old settings go.
+export function upgradeScopes(items: Item[]): Item[] {
+  let out = items;
+  for (const kind of items.filter((i): i is LinkKind => i.kind === "link-kind" && i.hierarchy === "one parent" && i.inScope === undefined)) {
+    const links = treeLinks(out, kind.world, kind.key);
+    const linked = new Set(links.flatMap((l) => [l.from, l.to]));
+    const shown = kind.loose === "hide" ? [] : thingsIn(out, kind.world).filter((t) => !linked.has(t.key) && fitsTree(out, kind.world, kind.key, t.key) && !(kind.hiddenHere ?? []).includes(t.key)).map((t) => t.key);
+    out = out.map((i) => {
+      if (i !== kind) return i;
+      const { loose, hiddenHere, ...rest } = kind;
+      return { ...rest, inScope: shown };
+    });
+  }
+  return out;
 }
 
 // How deep an item sits: 0 at the top.
@@ -129,13 +166,12 @@ export function setParent(items: Item[], world: string, thing: string, parent: s
   if (parent && descendantsOf(items, world, thing, kind).some((d) => d.key === parent)) return { items, problem: "that item is inside this one already" };
   const wrong = parent ? refusal(items, world, kind, "from", thing) ?? refusal(items, world, kind, "to", parent) : null;
   if (wrong) return { items, problem: wrong };
-  // An item hidden from this tree holds nothing in it (owner, 27 Nov: holding something showed it as
-  // loose, and taking that out hid it again). Show it first.
-  if (parent && hiddenByHand(items, kind, parent)) return { items, problem: `${thingsIn(items, world).find((t) => t.key === parent)?.name ?? parent} is hidden from this tree: show it first` };
   const kept = items.filter((i) => !(i.kind === "link" && i.world === world && i.linkKind === kind && i.from === thing));
-  if (!parent) return { items: kept };
-  // Put inside something, it's in the tree by choice: no longer hidden from it.
-  return { items: [...hideHere(kept, kind, thing, false), newLink(kept, world, thing, kind, parent)] };
+  // At the top, it stays in scope (owner, 28 Nov); inside something, it's in the tree by its link.
+  if (!parent) return { items: bringIntoScope(kept, kind, thing) };
+  // A container out of scope comes into scope at the top as it takes something in.
+  const placed = isInScope(kept, world, parent, kind) ? kept : bringIntoScope(kept, kind, parent);
+  return { items: [...dropFromScopeList(placed, kind, thing), newLink(placed, world, thing, kind, parent)] };
 }
 
 // What can't be walked or looks wrong in a tree (§11): two parents at once; a loop.
@@ -173,21 +209,4 @@ export function looseItems(items: Item[], world: string): Thing[] {
   const hierarchical = new Set(linkKindsIn(items, world).filter((k) => k.hierarchy !== "none").map((k) => k.key));
   const linked = new Set(linksIn(items, world).filter((l) => hierarchical.has(l.linkKind)).flatMap((l) => [l.from, l.to]));
   return byName(thingsIn(items, world).filter((t) => !linked.has(t.key)));
-}
-
-// Why an item doesn't show in a tree's view, or null if it does: hidden by hand ("hide here"), or
-// loose while the tree hides loose items (owner, 26 Nov: "how do I add an item removed from a tree
-// back").
-// Whether an item is on the tree's "hidden here" list.
-export function hiddenByHand(items: Item[], tree: string, thing: string): boolean {
-  return items.some((i) => i.kind === "link-kind" && i.key === tree && (i.hiddenHere ?? []).includes(thing));
-}
-
-export function hiddenIn(items: Item[], world: string, tree: string, thing: string): "by hand" | "loose hidden" | null {
-  const kind = linkKindsIn(items, world).find((k) => k.key === tree);
-  const links = treeLinks(items, world, tree);
-  const loose = !links.some((l) => l.from === thing || l.to === thing);
-  if (!kind || !loose) return null;
-  if ((kind.hiddenHere ?? []).includes(thing)) return "by hand";
-  return kind.loose === "hide" ? "loose hidden" : null;
 }

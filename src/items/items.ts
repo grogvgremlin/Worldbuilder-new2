@@ -598,7 +598,10 @@ export const LinkKind = z.strictObject({
   // For a tree: items sitting loose in it (nothing above, nothing inside) shown or not, and ones
   // hidden here by hand (owner, 26 Nov: a dynasty of Nuln's rulers without everyone else).
   loose: z.enum(["show", "hide"]).optional(), // absent: show
-  hiddenHere: z.array(z.string()).optional(), // thing keys
+  hiddenHere: z.array(z.string()).optional(), // earlier: thing keys hidden; upgraded on read into inScope
+  // A tree's scope (owner, 28 Nov): items brought in at the top though they hold nothing yet. Items in
+  // the tree by a link are in scope anyway; everything else it would take is out of scope.
+  inScope: z.array(z.string()).optional(),
   // What its links carry: named fields, offered on each link (owner, 27 Nov: "links may carry multiple
   // values … and those values may be asymmetrical"). §3's "carries a value"; speed by direction (§4),
   // conductance by direction (§6). "A kind" (fear, kinship type) comes later.

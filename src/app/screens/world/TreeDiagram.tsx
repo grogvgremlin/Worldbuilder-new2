@@ -15,7 +15,10 @@
 // is refused), §5 (abstract views laid out by containment); spec/session-20-notes-3.md §0.1 (a
 // canvas as another view on the same structure). Layout: src/world/diagram.ts.
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from "react";
-import { descendantsOf, hideHere, looseIn, pathOf, setParent, treeKinds } from "../../../world/places";
+import { bringIntoScope, descendantsOf, outOfScope, pathOf, removeFromScope, setParent, treeKinds } from "../../../world/places";
+import { networkOutOfScope } from "../../../world/network";
+import { join, plainLinks as connectorsOf, removeLink } from "../../../world/links";
+import { ScopePanel } from "./scope-panel";
 import { groupOutlines, treeOutlines, type Outline } from "../../../world/outlines";
 import { colourOf } from "./area-colours";
 import { OverlayList, OverlayMenu, type OverlayRow, type OverlaySet } from "./overlays";
@@ -25,7 +28,7 @@ import { linkKindsIn, worldOf } from "../../../world/world";
 import { arrangedLayout, boxesThatMove, hasHandPlacing, moveBoxes, NODE_H, NODE_W, ROOT, tidyLayout, type Box, type Direction } from "../../../world/diagram";
 import { TreePicker, useChosenTree } from "./tree-picker";
 import { useKept, useRemembered } from "./remembered";
-import { HiddenNote, NewPlace, type Part } from "./WorldScreen";
+import { NewPlace, type Part } from "./WorldScreen";
 import { useUndo } from "./undo";
 import { GroupPopup } from "./GroupPopup";
 import { JoinPopup } from "./JoinPopup";
@@ -70,8 +73,16 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const [linksShown, setLinksShown] = useKept(`diagram-links|${world}`, true); // the Links set
   const [containersShown, setContainersShown] = useKept(`diagram-link-containers|${world}`, true); // the Made of links set
   const flagged = itemsWithMisfits(data.items, world, tree); // in one of this tree's links that doesn't fit
-  const looseKeys = new Set(looseIn(data.items, world, tree).map((t) => t.key));
-  const looseSelected = selected.filter((k) => looseKeys.has(k));
+  // Scope (owner, 28 Nov): a network's workspace holds items brought in to be connected (for now,
+  // not stored); the Out of scope panel shows what the view would take but isn't in it.
+  const [workspaces, setWorkspaces] = useRemembered<Record<string, string[]>>(`${world}|workspaces`, {});
+  const workspace = (network && tree ? workspaces[tree] : undefined) ?? [];
+  const setWorkspace = (next: string[]) => tree && setWorkspaces({ ...workspaces, [tree]: next });
+  const [scopeShown, setScopeShown] = useKept(`diagram-scope|${world}`, false);
+  const [scopePicked, setScopePicked] = useState<string[]>([]);
+  const outside = tree ? (network ? networkOutOfScope(data.items, world, tree, workspace) : outOfScope(data.items, world, tree)) : [];
+  // Carrying items out of the panel onto the diagram: where the pointer is, until let go.
+  const [carry, setCarry] = useState<{ keys: string[]; at: { x: number; y: number }; moved: boolean } | null>(null);
   const [newAt, setNewAt] = useState<Point | null>(null); // a double tap on empty space: a new item here
   const lastTap = useRef<{ key: string; time: number; before: string[] } | null>(null);
   const undo = useUndo(data, world, save);
@@ -81,7 +92,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const [foldedList, setFoldedList] = useRemembered<string[]>(`${world}|folded|${tree}`, []);
   const folded = new Set(foldedList);
   const toggleFold = (key: string) => setFoldedList(folded.has(key) ? foldedList.filter((k) => k !== key) : [...foldedList, key]);
-  const boxes = arrangedLayout(data.items, world, tree, direction, folded);
+  const boxes = arrangedLayout(data.items, world, tree, direction, folded, workspace);
   // Outlines of groups and of other trees' containers round the boxes they hold (owner, 26 Nov).
   const [outlined, setOutlined] = useKept<string[]>(`diagram-outlines|${world}`, []); // "groups" and tree keys
   const [outlineMenu, setOutlineMenu] = useState(false);
@@ -156,7 +167,8 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
 
   // The whole diagram in view, but never smaller than 60% so names stay readable.
   const fit = (): View | null => {
-    if (!size || boxes.length === 0) return null;
+    if (!size) return null;
+    if (boxes.length === 0) return { k: 1, tx: 24, ty: 24 }; // an empty network: ready for the first box
     const left = Math.min(...boxes.map((b) => b.x));
     const top = Math.min(...boxes.map((b) => b.y));
     const width = Math.max(...boxes.map((b) => b.x)) + NODE_W - left;
@@ -260,6 +272,8 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
     const done = drag;
     setDrag(null);
     if (!done) return;
+    // Dropped on the Out of scope panel: out of scope (owner, 28 Nov).
+    if (document.elementFromPoint(e.clientX, e.clientY)?.closest(".scope-panel")) return takeOutOfScope(done.dragged);
     if (done.refused) return; // dropped on a box that can't take it: back where it was
     if (done.over && mode === "join") return setJoining([done.key, done.over]); // back where they were; choose how
     if (done.over) {
@@ -313,16 +327,97 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
     setSelected([]);
   };
 
-  // A new item from a double tap: inside the one selected box (in this tree), placed where tapped.
+  // A new item from a double tap: inside the one selected box (in this tree), placed where tapped; made
+  // in the view, it's in its scope (owner, 28 Nov): at the top of a tree, in a network's workspace.
   const madeHere = async (key: string) => {
     let items = data.items;
     const inside = selected.length === 1 ? selected[0] : null;
-    if (inside && !network) items = setParent(items, world, key, inside, tree).items;
-    const box = arrangedLayout(items, world, tree, direction).find((b) => b.key === key);
-    if (box && newAt) items = moveBoxes(items, world, tree, direction, [key], newAt.x - NODE_W / 2 - box.x, newAt.y - NODE_H / 2 - box.y);
+    const ws = network ? [...workspace, key] : workspace;
+    if (network) setWorkspace(ws);
+    else if (inside) items = setParent(items, world, key, inside, tree).items;
+    else if (tree) items = bringIntoScope(items, tree, key);
+    const box = arrangedLayout(items, world, tree, direction, new Set(), ws).find((b) => b.key === key);
+    if (box && newAt) items = moveBoxes(items, world, tree, direction, [key], newAt.x - NODE_W / 2 - box.x, newAt.y - NODE_H / 2 - box.y, ws);
     await save(items);
     setNewAt(null);
     setSelected([key]);
+  };
+
+  // --- Scope: bringing items in and taking them out (owner, 28 Nov) ---------------------------------
+  // Into a tree: inside a box (if dropped on one), else at the top. Into a network: connected to a box
+  // (with the network type shown), else into the workspace. Placed where dropped.
+  const bringIn = async (keys: string[], at: Point | null, onto: string | null) => {
+    if (!tree) return;
+    let items = data.items;
+    let ws = workspace;
+    const problems: string[] = [];
+    for (const key of keys) {
+      if (network) {
+        if (onto && onto !== ROOT) {
+          const result = join(items, world, key, tree, onto);
+          if (result.problem) problems.push(`${nameOfKey(key)}: ${result.problem}`);
+          else items = result.items;
+        } else ws = [...new Set([...ws, key])];
+      } else if (onto && onto !== ROOT) {
+        const result = setParent(items, world, key, onto, tree);
+        if (result.problem) problems.push(`${nameOfKey(key)}: ${result.problem}`);
+        else items = result.items;
+      } else items = bringIntoScope(items, tree, key);
+    }
+    if (network) setWorkspace(ws);
+    // Where it was dropped (empty space only): each one a step down from the last.
+    if (at && !onto) {
+      keys.forEach((key, n) => {
+        const box = arrangedLayout(items, world, tree, direction, new Set(), ws).find((b) => b.key === key);
+        if (box) items = moveBoxes(items, world, tree, direction, [key], at.x - NODE_W / 2 - box.x, at.y - NODE_H / 2 - box.y + n * (NODE_H + 10), ws);
+      });
+    }
+    await undo.apply(items);
+    setScopePicked([]);
+    if (problems.length) alert(`Not brought in:\n${problems.join("\n")}`);
+  };
+  // Out of scope: off a tree (what they held moves up); out of a network's workspace, and its connectors
+  // of this type gone (asked first).
+  const takeOutOfScope = async (keys: string[]) => {
+    if (!tree) return;
+    if (network) {
+      const gone = connectorsOf(data.items, world).filter((l) => l.linkKind === tree && (keys.includes(l.from) || keys.includes(l.to)));
+      if (gone.length && !confirm(`Take ${keys.length === 1 ? nameOfKey(keys[0]) : `${keys.length} items`} out of this network? ${gone.length} connector${gone.length === 1 ? "" : "s"} go too.`)) return;
+      let items = data.items;
+      for (const l of gone) items = removeLink(items, l.key);
+      setWorkspace(workspace.filter((k) => !keys.includes(k)));
+      await undo.apply(items);
+    } else {
+      let items = data.items;
+      for (const key of keys) items = removeFromScope(items, world, key, tree);
+      await undo.apply(items);
+    }
+    setSelected([]);
+  };
+  const nameOfKey = (key: string) => data.items.find((i) => i.key === key)?.name ?? key;
+  // A carry from the panel: follows the pointer anywhere on the page; let go over the diagram, it lands.
+  const startCarry = (keys: string[], e: ReactPointerEvent) => {
+    if (keys.length === 0) return;
+    const start = { x: e.clientX, y: e.clientY };
+    let current = { keys, at: start, moved: false };
+    const onMove = (ev: PointerEvent) => {
+      const moved = current.moved || Math.hypot(ev.clientX - start.x, ev.clientY - start.y) > tapSlop(ev.pointerType);
+      current = { keys, at: { x: ev.clientX, y: ev.clientY }, moved };
+      if (moved) setCarry(current);
+    };
+    const onUp = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      setCarry(null);
+      if (!current.moved || !view || !wrap.current) return;
+      const r = wrap.current.getBoundingClientRect();
+      if (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom) return;
+      const onto = document.elementFromPoint(ev.clientX, ev.clientY)?.closest("[data-node]")?.getAttribute("data-node") ?? null;
+      swallowNextClick();
+      bringIn(keys, toDiagram({ x: ev.clientX - r.left, y: ev.clientY - r.top }, view), onto);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
   };
 
   const wheel = (e: WheelEvent) => {
@@ -394,6 +489,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
         </nav>
         {!network && <label className="choice"><input type="checkbox" checked={withBranch} onChange={() => setWithBranch(!withBranch)} /> Branch follows</label>}
         <TreePicker data={data} world={world} tree={tree} onChoose={setTree} withNetworks onOpen={(key) => nav.open({ name: "link-kind", key })} />
+        <label className="choice"><input type="checkbox" checked={scopeShown} onChange={() => setScopeShown(!scopeShown)} /> Out of scope ({outside.length})</label>
         <span className="map-tools outlines-menu">
           <button className={outlined.length || linksOn ? "tool on" : "tool"} onClick={() => setOutlineMenu(!outlineMenu)}>Layers ▾</button>
           {outlineMenu && (
@@ -407,8 +503,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
           <button className="tool" onClick={() => setView(fit())}>Fit</button>
         </span>
       </div>
-      {tree && <HiddenNote data={data} nav={nav} world={world} tree={tree} />}
-      {network && boxes.length === 0 && <p className="hint">Nothing in this network yet: connect two items with it (Connect, or select two and Connect…), or show its loose items (its link kind's page).</p>}
+      {network && boxes.length === 0 && <p className="hint">Nothing in this network yet: bring items in from Out of scope (drag one onto another to connect them), or connect two with Connect.</p>}
       {/* What's selected, in a bar of its own that keeps its height (owner, 26 Nov: the Group button
           was cut off in the hint line until something else changed). */}
       <div className="selection-bar diagram-selection">
@@ -420,14 +515,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
             <div className="selection-buttons">
               {selected.length === 2 && <button className="primary" onClick={() => setJoining([selected[0], selected[1]])}>Connect…</button>}
               {selected.length > 1 && <button className={selected.length === 2 ? "" : "primary"} onClick={() => setGrouping(true)}>Group / move into…</button>}
-              {tree && looseSelected.length > 0 && (
-                <button onClick={async () => {
-                  let items = data.items;
-                  for (const k of looseSelected) items = hideHere(items, tree, k, true);
-                  await undo.apply(items);
-                  setSelected([]);
-                }}>Hide {looseSelected.length} loose from this {network ? "network" : "tree"}</button>
-              )}
+              {tree && selected.some((k) => k !== ROOT) && <button onClick={() => takeOutOfScope(selected.filter((k) => k !== ROOT))}>Remove {selected.length > 1 ? `${selected.length} ` : ""}from scope</button>}
               <button onClick={() => setSelected([])}>Clear</button>
             </div>
           </>
@@ -485,7 +573,13 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
           </svg>
         )}
       </div>
-      <OverlayList heading="Key" sets={outlineSets} picked={outlineHover} onRow={pickRow} onHover={setOutlineHover} onOpen={(row) => nav.open({ name: row.opens, key: row.key })} />
+      <div className="side-column">
+        {scopeShown && tree && (
+          <ScopePanel data={data} world={world} things={outside} network={network} selected={scopePicked} onSelect={setScopePicked} onOpen={(key) => nav.open({ name: "place", key })} onBringIn={(keys) => bringIn(keys, null, null)} onCarry={startCarry} />
+        )}
+        <OverlayList heading="Key" sets={outlineSets} picked={outlineHover} onRow={pickRow} onHover={setOutlineHover} onOpen={(row) => nav.open({ name: row.opens, key: row.key })} />
+      </div>
+      {carry?.moved && <div className="carry-ghost" style={{ left: carry.at.x + 12, top: carry.at.y + 12 }}>{carry.keys.length === 1 ? nameOfKey(carry.keys[0]) : `${carry.keys.length} items`}</div>}
       </div>
       {joining && (
         <JoinPopup

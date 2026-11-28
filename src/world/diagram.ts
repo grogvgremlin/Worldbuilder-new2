@@ -23,8 +23,8 @@ export type Box = { key: string; thing: Thing | null; parent: string | null; x: 
 
 // Leaves one step apart; a parent centred on its children. A network (a connection link kind) is laid
 // out by its own rule: networkLayout.
-export function autoLayout(items: Item[], world: string, tree: string | undefined, direction: Direction, folded: Set<string> = new Set()): Box[] {
-  if (isNetwork(items, world, tree)) return networkLayout(items, world, tree!, direction);
+export function autoLayout(items: Item[], world: string, tree: string | undefined, direction: Direction, folded: Set<string> = new Set(), workspace: string[] = []): Box[] {
+  if (isNetwork(items, world, tree)) return networkLayout(items, world, tree!, direction, workspace);
   const step = direction === "across" ? ACROSS : DOWN;
   const boxes: Box[] = [];
   let leaf = 0;
@@ -48,9 +48,9 @@ function savedFor(items: Item[], world: string, tree: string | undefined, direct
 }
 
 // The boxes as drawn: where the owner put them, else where the layout puts them.
-export function arrangedLayout(items: Item[], world: string, tree: string | undefined, direction: Direction, folded: Set<string> = new Set()): Box[] {
+export function arrangedLayout(items: Item[], world: string, tree: string | undefined, direction: Direction, folded: Set<string> = new Set(), workspace: string[] = []): Box[] {
   const saved = new Map((savedFor(items, world, tree, direction)?.positions ?? []).map((p) => [p.thing, p]));
-  return autoLayout(items, world, tree, direction, folded).map((b) => {
+  return autoLayout(items, world, tree, direction, folded, workspace).map((b) => {
     const p = saved.get(b.key);
     return p ? { ...b, x: p.x, y: p.y } : b;
   });
@@ -59,7 +59,7 @@ export function arrangedLayout(items: Item[], world: string, tree: string | unde
 // A network: each part in layers out from its best-joined item (across: layers run right, an item's
 // layer down the page; down: the other way round); parts one after another; loose items in a last
 // row (across: column) after them. No world box: a network has no top.
-export function networkLayout(items: Item[], world: string, kind: string, direction: Direction): Box[] {
+export function networkLayout(items: Item[], world: string, kind: string, direction: Direction, workspace: string[] = []): Box[] {
   const step = direction === "across" ? ACROSS : DOWN;
   const boxes: Box[] = [];
   const put = (thing: Thing, along: number, spot: number) =>
@@ -70,7 +70,7 @@ export function networkLayout(items: Item[], world: string, kind: string, direct
     layers.forEach((layer, along) => layer.forEach((t, n) => put(t, along, start + n + (widest - layer.length) / 2)));
     start += widest + 1;
   }
-  const loose = networkItems(items, world, kind).loose;
+  const loose = networkItems(items, world, kind, workspace).loose; // the workspace: brought in to be joined
   const perLine = 6;
   loose.forEach((t, n) => put(t, n % perLine, start + Math.floor(n / perLine)));
   return boxes;
@@ -84,9 +84,9 @@ export function boxesThatMove(items: Item[], world: string, tree: string | undef
 }
 
 // Keeps where boxes now are, moved by (dx, dy) from where they were drawn.
-export function moveBoxes(items: Item[], world: string, tree: string | undefined, direction: Direction, keys: string[], dx: number, dy: number): Item[] {
+export function moveBoxes(items: Item[], world: string, tree: string | undefined, direction: Direction, keys: string[], dx: number, dy: number, workspace: string[] = []): Item[] {
   if (!tree) return items;
-  const drawn = new Map(arrangedLayout(items, world, tree, direction).map((b) => [b.key, b]));
+  const drawn = new Map(arrangedLayout(items, world, tree, direction, new Set(), workspace).map((b) => [b.key, b]));
   const moved = keys.filter((k) => drawn.has(k)).map((k) => ({ thing: k, x: Math.round(drawn.get(k)!.x + dx), y: Math.round(drawn.get(k)!.y + dy) }));
   return updateWorld(items, world, (w) => {
     const others = (w.diagrams ?? []).filter((d) => !(d.tree === tree && d.direction === direction));

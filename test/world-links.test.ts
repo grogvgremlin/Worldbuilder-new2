@@ -8,7 +8,7 @@ import { linkKindsIn, newWorld, thingKindsIn } from "../src/world/world";
 import { fieldSummary, fieldsOfLink, linkValue, removeLinkField, setLinkValue } from "../src/world/links";
 import { upgradeItems } from "../src/items/race-dimensions";
 import { changeLink, changeLinkKind, join, linkOf, linksFrom, linkStyle, linkTitle, offersFor, removeLink, swapEnds } from "../src/world/links";
-import { hiddenIn, hideHere, parentOf, setParent } from "../src/world/places";
+import { isInScope, parentOf, setParent } from "../src/world/places";
 import { misfitLinks } from "../src/world/kinds";
 
 const W = "mine";
@@ -149,21 +149,14 @@ describe("one link", () => {
   });
 });
 
-describe("hidden from a tree (owner, 27 Nov)", () => {
-  it("holds nothing there: putting something inside it is refused", () => {
+describe("scope and joining (owner, 28 Nov)", () => {
+  it("a container out of scope comes into scope as it takes something in", () => {
     const { items, kinds } = setUp();
     const tree = kinds.get("in")!;
-    const hidden = hideHere(items, tree, key("averland"), true);
-    expect(setParent(hidden, W, key("nuln"), key("averland"), tree).problem).toMatch(/hidden from this tree/);
-  });
-
-  it("put inside something, it's no longer hidden", () => {
-    const { items, kinds } = setUp();
-    const tree = kinds.get("in")!;
-    const hidden = hideHere(items, tree, key("nuln"), true);
-    const moved = setParent(hidden, W, key("nuln"), key("averland"), tree).items;
+    const moved = setParent(items, W, key("nuln"), key("averland"), tree).items;
+    expect(isInScope(moved, W, key("averland"), tree)).toBe(true);
     const out = setParent(moved, W, key("nuln"), null, tree).items;
-    expect(hiddenIn(out, W, tree, key("nuln"))).toBeNull(); // taken out again, it's loose, not hidden
+    expect(isInScope(out, W, key("nuln"), tree)).toBe(true); // taken out to the top: still in scope
   });
 });
 

@@ -8,7 +8,8 @@ import { linkKindsIn, linksIn, newKey, removeThingKind, thingKindsIn, thingsIn, 
 import { cloneLinkKind, fieldsOffered, flavoursOf, hasKind, kindTree, misfitLinks, removeLinkKind, setEndsDiffer, setFlavourOf } from "../../../world/kinds";
 import { MisfitList } from "./WorldScreen";
 import type { AppData } from "../../app-data";
-import { firstTree } from "../../../world/places";
+import { firstTree, outOfScope } from "../../../world/places";
+import { networkOutOfScope } from "../../../world/network";
 import { containerKindsFor, fieldSummary, linkKindStyle, linkTitle } from "../../../world/links";
 import { linkContainersIn } from "./link-lines";
 import { SwipeRow } from "../../swipe";
@@ -225,28 +226,15 @@ export function LinkKindScreen({ data, nav, kindKey, draft }: { data: AppData; n
       <KindChips label="Leaves out (both ends)" hint="Their flavours too, unless ticked to take." kinds={thingKinds} on={kind.exclude} onToggle={(k) => change({ exclude: toggle(kind.exclude, k) })} />
         </>
       )}
-      {(kind.hierarchy === "one parent" || kind.hierarchy === "none") && (
+      {(kind.hierarchy === "one parent" || kind.hierarchy === "none") && !isDraft && (
         <>
-          <h2>Loose items in this {kind.hierarchy === "none" ? "network" : "tree"}</h2>
+          {/* Scope (owner, 28 Nov: "loose" is now "out of scope"). */}
+          <h2>Scope</h2>
           <p className="sub">
             {kind.hierarchy === "none"
-              ? "Items that fit this link kind but are on none of its links: shown after the network on the Diagram (choose it under Show), or not."
-              : "Items that fit this tree but sit loose in it (nothing above, nothing inside): shown at the top of the tree, or not: a dynasty of rulers without everyone else."}
+              ? `In scope: the items with a connector of this type. ${networkOutOfScope(data.items, kind.world, kind.key).length} more it would join are out of scope: on the Diagram (Show → Network, then this), the Out of scope panel brings them into the workspace to be connected.`
+              : `In scope: the items in this tree, and ${(kind.inScope ?? []).length} brought in at the top. ${outOfScope(data.items, kind.world, kind.key).length} more it would take are out of scope: the Diagram's Out of scope panel brings them in (dragged onto a box, inside it; elsewhere, at the top).`}
           </p>
-          <nav className="segments small">
-            <button className={kind.loose !== "hide" ? "on" : ""} onClick={() => change({ loose: undefined })}>Show</button>
-            <button className={kind.loose === "hide" ? "on" : ""} onClick={() => change({ loose: "hide" })}>Hide</button>
-          </nav>
-          {(kind.hiddenHere ?? []).length > 0 && (
-            <>
-              <p className="sub">Hidden here by hand (swipe on Items, or select on the Diagram):</p>
-              <ul className="plain">
-                {(kind.hiddenHere ?? []).map((k) => (
-                  <li key={k}>{thingsIn(data.items, kind.world).find((t) => t.key === k)?.name ?? k} · <button className="link" onClick={() => replace({ ...kind, hiddenHere: kind.hiddenHere!.filter((h) => h !== k).length ? kind.hiddenHere!.filter((h) => h !== k) : undefined })}>Show again</button></li>
-                ))}
-              </ul>
-            </>
-          )}
         </>
       )}
       {!isLinkContainer && <p className="sub">{count} link{count === 1 ? "" : "s"} of this kind.</p>}

@@ -9,6 +9,7 @@ import { moveItem, planUpload, removeGame, removePackages, type ClashChoice, typ
 import { pickupSandbox } from "../context/context";
 import { isWorldItem } from "../world/world";
 import { WorldHistory } from "../world/history";
+import { upgradeScopes } from "../world/places";
 import { readFullYaml } from "../packages/full-yaml";
 import { readUploads, type UploadFile } from "../library/upload";
 import type { Problem } from "../packages/formats";
@@ -28,7 +29,7 @@ export class AppData {
   // Reads what's kept, and makes the permanent Pick-up sandbox if it isn't there.
   async load(): Promise<void> {
     // Items stored by an older build are brought up to date (race cells as a profile: 24 Nov).
-    this.items = upgradeItems(unitsToDifferences((await this.store.listItems()).map((i) => upgradeItem(i) as Item)));
+    this.items = upgradeScopes(upgradeItems(unitsToDifferences((await this.store.listItems()).map((i) => upgradeItem(i) as Item))));
     if (!this.items.some((i) => i.kind === "sandbox" && i.key === "pickup")) {
       this.items = [...this.items, pickupSandbox()];
       await this.store.replaceItems(this.items);

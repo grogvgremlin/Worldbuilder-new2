@@ -8,7 +8,7 @@ import type { Item, LinkKind, Thing, ThingKind } from "../../../items/items";
 import { LinkKindScreen, ThingKindScreen } from "./KindScreens";
 import { linkKindsIn, linksIn, mapsIn, newKey, removeThing, removeThingKind, thingKindsIn, thingsIn, worldOf } from "../../../world/world";
 import { SwipeRow } from "../../swipe";
-import { childrenOf, firstTree, hideHere, isContainer, looseIn, looseItems, pathOf, setParent, topPlaces, treeKinds, treeWarnings } from "../../../world/places";
+import { childrenOf, firstTree, isContainer, looseItems, outOfScope, removeFromScope, pathOf, setParent, topPlaces, treeKinds, treeWarnings } from "../../../world/places";
 import { iconOf, newMap } from "../../../world/maps";
 import { addToGroup, effectiveMembers, groupLinkKinds, groupsIn, isOnlyAGroup, membersOf, newGroupLinkKind } from "../../../world/groups";
 import type { AppData } from "../../app-data";
@@ -94,7 +94,7 @@ function Items({ data, nav, world, save }: Part) {
     { id: "groups", label: "Groups", show: true },
     { id: "linkContainers", label: "Link containers", show: linkContainerKinds(data.items, world).length > 0 || linkContainersIn(data.items, world).length > 0 },
     { id: "connections", label: `Connectors (${plainLinks(data.items, world).length})`, show: true },
-    { id: "loose", label: `Loose (${looseItems(data.items, world).length})`, show: true },
+    { id: "loose", label: `Unplaced (${looseItems(data.items, world).length})`, show: true },
     { id: "misfits", label: `⚠ Doesn't fit (${misfits.length})`, show: misfits.length > 0 },
   ];
   const pick = (choices: { key: string; name: string }[], anyLabel: string) => (
@@ -179,7 +179,7 @@ function Items({ data, nav, world, save }: Part) {
           )}
           {view === "loose" && (
             <>
-              <p className="sub">In no tree and no group: neither inside anything nor holding anything.</p>
+              <p className="sub">Unplaced: in no tree and no group, neither inside anything nor holding anything.</p>
               <ul className="list">{looseItems(data.items, world).map(row)}</ul>
             </>
           )}
@@ -268,16 +268,10 @@ export function MisfitList({ data, nav, misfits, save }: { data: AppData; nav: N
 
 // How many loose items a tree hides, with the way to show them again (the link kind's page).
 export function HiddenNote({ data, nav, world, tree }: { data: AppData; nav: Nav; world: string; tree: string }) {
-  const kind = linkKindsIn(data.items, world).find((k) => k.key === tree);
-  const loose = looseIn(data.items, world, tree);
-  const hidden = kind?.loose === "hide" ? loose.length : loose.filter((t) => (kind?.hiddenHere ?? []).includes(t.key)).length;
-  if (!kind || hidden === 0) return kind?.hierarchy === "none" ? null : <p className="sub swipe-hint">Swipe a loose item left to hide it from this tree.</p>;
-  return (
-    <p className="sub">
-      {hidden} loose item{hidden === 1 ? "" : "s"} hidden from "{kind.name}" ·{" "}
-      <button className="link" onClick={() => nav.open({ name: "link-kind", key: tree })}>Show or hide loose items</button>
-    </p>
-  );
+  // Out of scope (owner, 28 Nov: was "loose"): what this tree would take but isn't in it.
+  const out = outOfScope(data.items, world, tree).length;
+  if (out === 0) return null;
+  return <p className="sub">{out} item{out === 1 ? "" : "s"} out of this tree's scope · the Diagram's <b>Out of scope</b> panel brings them in.</p>;
 }
 
 // Containers split (owner, 26 Nov): those holding something in each tree, by tree, then groups.
@@ -453,7 +447,7 @@ function Branch({ data, nav, world, tree, thing, depth, save }: { data: AppData;
         )}
         {/* Loose at the top of a tree (nothing above, nothing inside): swipe hides it from this tree. */}
         {depth === 1 && children.length === 0 && tree ? (
-          <SwipeRow action="Hide here" onAction={() => save(hideHere(data.items, tree, thing.key, true))}>
+          <SwipeRow action="Out of scope" onAction={() => save(removeFromScope(data.items, world, thing.key, tree))}>
             <PlaceRow data={data} thing={thing} count={0} tree={tree} onOpen={() => nav.open({ name: "place", key: thing.key })} />
           </SwipeRow>
         ) : (
@@ -698,7 +692,7 @@ export type NewKindWhat = "item" | LinkKind["hierarchy"];
 
 export function NewKindScreen({ data, nav, world, what }: { data: AppData; nav: Nav; world: string; what: NewKindWhat }) {
   if (what === "item") return <ThingKindScreen data={data} nav={nav} draft={{ key: "", kind: "thing-kind", world, name: "", fields: [] }} />;
-  const draft: LinkKind = { key: "", kind: "link-kind", world, name: "", direction: "one-way", hierarchy: what, ...(what === "links" ? { reverseName: "part of", endsDiffer: true } : {}) };
+  const draft: LinkKind = { key: "", kind: "link-kind", world, name: "", direction: "one-way", hierarchy: what, ...(what === "links" ? { reverseName: "part of", endsDiffer: true } : {}), ...(what === "one parent" ? { inScope: [] } : {}) };
   return <LinkKindScreen data={data} nav={nav} draft={draft} />;
 }
 

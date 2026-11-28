@@ -5,7 +5,7 @@
 //
 // Stubs are made again from the names every time the library changes, so they never go stale.
 
-import type { Equipment, Item, Package, SpecialRule, Unit } from "../items/items";
+import type { Equipment, Item, Package, SpecialRule, Spell, Unit } from "../items/items";
 import { itemKey } from "../items/keys";
 import { NameIndex, resolveNames, type Unmatched } from "../packages/resolve";
 import { unitsToDifferences } from "../rules/race-deltas";
@@ -79,6 +79,7 @@ function stubItem(kind: string, key: string, name: string, homePackage: string):
   const common = { key, name, homePackage, status: "stub" as const };
   if (kind === "equipment") return { ...common, kind: "equipment", countsAs: [], aliases: [], stats: {}, rules: [] } satisfies Equipment;
   if (kind === "unit") return { ...common, kind: "unit", class: "unit", rows: [{ type: "Unit", stats: {}, equipment: [], rules: [], statuses: [] }] } satisfies Unit;
+  if (kind === "spell") return { ...common, kind: "spell", rules: [] } satisfies Spell;
   return { ...common, kind: "special-rule" } satisfies SpecialRule;
 }
 

@@ -8,7 +8,11 @@ import { itemKey, matchName } from "../items/keys";
 import type { RaceDimension } from "../items/items";
 import { DEFAULT_DIMENSIONS, dimensionsOf, gameOf, profileKey } from "../items/race-dimensions";
 
-export type Kind = "unit" | "equipment" | "magic-item" | "special-rule" | "slot-kind";
+export type Kind = "unit" | "equipment" | "magic-item" | "special-rule" | "spell" | "lore" | "slot-kind";
+
+// What a unit's rules and rules options name: a special rule, or a lore (a Wizard's lore choice;
+// the Anvil of Doom's "Strike the Runes" is a rule and a lore of the same name).
+const RULES: Kind[] = ["special-rule", "lore"];
 
 // Every item of the matchable kinds, by kind and by matched name (including aliases).
 export class NameIndex {
@@ -25,6 +29,8 @@ export class NameIndex {
       }
       if (item.kind === "magic-item") this.add("magic-item", item.name, item);
       if (item.kind === "special-rule") this.add("special-rule", item.name, item);
+      if (item.kind === "spell") this.add("spell", item.name, item);
+      if (item.kind === "lore") this.add("lore", item.name, item);
       if (item.kind === "slot-kind") this.add("slot-kind", item.code, item);
     }
   }
@@ -92,9 +98,9 @@ export function resolveNames(items: Item[], index: NameIndex): Unmatched[] {
       for (const row of item.rows) {
         statConditions(row.stats, where);
         row.equipment.forEach((t) => look(t, equipmentKinds(t), where + ", equipment"));
-        terms(row.rules.filter((t) => t.change !== "replace"), ["special-rule"], where + ", rules");
+        terms(row.rules.filter((t) => t.change !== "replace"), RULES, where + ", rules");
         resolveOptions(row.equipmentOptions, (o) => equipmentKinds(o), look, where + ", equipment options", condition);
-        resolveOptions(row.rulesOptions, () => ["special-rule"], look, where + ", rules options", condition);
+        resolveOptions(row.rulesOptions, () => RULES, look, where + ", rules options", condition);
         row.slots?.slots.forEach((s) => {
           s.item = index.find(s.code, ["slot-kind"]);
           if (s.item === null) unmatched.push({ name: s.code, where: where + ", slots", inPackage, kinds: ["slot-kind"] });
@@ -121,15 +127,17 @@ export function resolveNames(items: Item[], index: NameIndex): Unmatched[] {
         const u = change.unit;
         if (u) {
           u.equipment?.filter((t) => t.change !== "remove").forEach((t) => look(t, equipmentKinds(t), where + ", equipment"));
-          terms(u.rules?.filter((t) => t.change !== "replace" && t.change !== "remove"), ["special-rule"], where + ", rules");
+          terms(u.rules?.filter((t) => t.change !== "replace" && t.change !== "remove"), RULES, where + ", rules");
           resolveOptions(u.equipmentOptions, (o) => equipmentKinds(o), look, where + ", equipment options", condition);
-          resolveOptions(u.rulesOptions, () => ["special-rule"], look, where + ", rules options", condition);
+          resolveOptions(u.rulesOptions, () => RULES, look, where + ", rules options", condition);
           u.slots?.slots.forEach((sl) => (sl.item = index.find(sl.code, ["slot-kind"])));
         }
         terms(change.equipment?.rules?.filter(isRuleName), ["special-rule"], where + ", rules");
       }
     }
     if (item.kind === "slot-kind") terms(item.equipment, ["equipment"], where + ", equipment");
+    if (item.kind === "spell") terms(item.rules.filter(isRuleName), ["special-rule"], where + ", rules");
+    if (item.kind === "lore") item.spells.forEach((m) => look(m.spell, ["spell"], where + ", spells"));
   }
   return unmatched;
 }
@@ -202,6 +210,8 @@ export function referencesOf(item: Item, dims: RaceDimension[] = DEFAULT_DIMENSI
   if (item.kind === "equipment" || item.kind === "magic-item") (terms(item.countsAs), terms(item.rules));
   if (item.kind === "race-profile") terms(item.rules);
   if (item.kind === "slot-kind") terms(item.equipment);
+  if (item.kind === "spell") terms(item.rules);
+  if (item.kind === "lore") terms(item.spells.map((m) => m.spell));
   if (item.kind === "patch")
     for (const change of item.changes) {
       out.push(change.target.item); // a patch needs what it changes

@@ -2,7 +2,7 @@
 // Data structure: rebuild/data-structure.md §2–5. Names are matched afterwards, across the whole
 // library, by `refreshLibrary` (library.ts), which also makes the stubs.
 
-import type { ArmyList, CompositionRule, Equipment, Game, GamePreset, GameSetting, Item, MagicItem, Package, Patch, RaceProfile, SettingValue, SlotKind, Source, SpecialRule, Unit } from "../items/items";
+import type { ArmyList, CompositionRule, Equipment, Game, GamePreset, GameSetting, Item, Lore, MagicItem, Spell, Package, Patch, RaceProfile, SettingValue, SlotKind, Source, SpecialRule, Unit } from "../items/items";
 import { slug } from "../items/keys";
 import { dimensionsOf } from "../items/race-dimensions";
 import type { Row } from "../sheets/csv";
@@ -101,6 +101,8 @@ function readTab(id: TabId, rows: Row[], ctx: tabs.TabContext, categories: strin
   if (id === "rules") return tabs.readRuleRows(rows, ctx);
   if (id === "equipment") return tabs.readEquipmentRows(rows, ctx);
   if (id === "magic items") return tabs.readMagicItemRows(rows, ctx);
+  if (id === "spells") return tabs.readSpellRows(rows, ctx);
+  if (id === "lores") return tabs.readLoreRows(rows, ctx);
   const result = tabs.readArmyEntryRows(rows, ctx, categories);
   if (result.armyList) onArmyList(result.armyList);
   return [...result.units, ...result.composition];
@@ -247,6 +249,8 @@ export function exportPackage(pkg: Package, byKey: Map<string, Item>): PackageSh
   put("rules", ofKind("special-rule").map((i) => tabs.writeRuleRow(i as SpecialRule)));
   put("equipment", ofKind("equipment").map((i) => tabs.writeEquipmentRow(i as Equipment)));
   put("magic items", ofKind("magic-item").map((i) => tabs.writeMagicItemRow(i as MagicItem)));
+  put("spells", ofKind("spell").map((i) => tabs.writeSpellRow(i as Spell)));
+  put("lores", ofKind("lore").flatMap((i) => tabs.writeLoreRows(i as Lore)));
   // Stats back as printed: each unit's race + the difference stored (races-and-units.md §2).
   const all = [...byKey.values()];
   put("units", ofKind("unit").flatMap((u) => tabs.writeUnitRows(unitAsPrinted(u as Unit, all, byKey), categoryOf.get(u.key), columns)));

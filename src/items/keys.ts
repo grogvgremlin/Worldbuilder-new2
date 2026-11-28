@@ -27,6 +27,8 @@ const KIND_IN_KEY: Record<string, string> = {
   equipment: "equipment",
   "magic-item": "magic-item",
   "special-rule": "rule",
+  spell: "spell",
+  lore: "lore",
   "slot-kind": "slot",
   "army-list": "army-list",
   "composition-rule": "composition",

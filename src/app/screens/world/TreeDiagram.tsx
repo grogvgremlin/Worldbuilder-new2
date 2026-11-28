@@ -29,7 +29,7 @@ import { HiddenNote, NewPlace, type Part } from "./WorldScreen";
 import { useUndo } from "./undo";
 import { GroupPopup } from "./GroupPopup";
 import { JoinPopup } from "./JoinPopup";
-import { ContainerBands, containerBands, containerRowId, LINK_CONTAINERS_SET, linkContainerSet, linkContainersIn, LinkBar, LinkLines, linkLines, linkRowId, LINKS_SET, linkSet } from "./link-lines";
+import { ContainerBands, containerBands, containerRowId, LINK_CONTAINERS_SET, linkContainerSet, linkContainersIn, LinkBar, LinkContainerPopup, LinkLines, linkLines, linkRowId, LINKS_SET, linkSet } from "./link-lines";
 import { plainLinks } from "../../../world/links";
 import { isNetwork } from "../../../world/network";
 import { DOUBLE_TAP_MS, swallowNextClick, tapSlop } from "./gestures";
@@ -64,7 +64,8 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
   const [selected, setSelected] = useState<string[]>([]);
   const [grouping, setGrouping] = useState(false);
   const [joining, setJoining] = useState<[string, string] | null>(null); // two items to join, in order (owner, 27 Nov)
-  const [pickedLink, setPickedLink] = useState<string | null>(null); // a link tapped on the Diagram
+  const [pickedLinks, setPickedLinks] = useState<string[]>([]); // links tapped (several, as items: owner, 28 Nov)
+  const [linkContainer, setLinkContainer] = useState(false); // a link tapped on the Diagram
   const [linksShown, setLinksShown] = useKept(`diagram-links|${world}`, true); // the Links set
   const [containersShown, setContainersShown] = useKept(`diagram-link-containers|${world}`, true); // the Made of links set
   const flagged = itemsWithMisfits(data.items, world, tree); // in one of this tree's links that doesn't fit
@@ -280,7 +281,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
     }
     lastTap.current = { key: `link:${key}`, time: Date.now(), before: selected };
     setSelected([]);
-    setPickedLink(pickedLink === key ? null : key);
+    setPickedLinks(pickedLinks.includes(key) ? pickedLinks.filter((k) => k !== key) : [...pickedLinks, key]);
   };
 
   // One tap selects or unselects; a second on the same box soon after opens it.
@@ -293,7 +294,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       return nav.open({ name: "place", key });
     }
     lastTap.current = { key, time: Date.now(), before: selected };
-    setPickedLink(null);
+    setPickedLinks([]);
     setSelected(selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key]);
   };
 
@@ -307,7 +308,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       return setNewAt(at);
     }
     lastTap.current = { key: "", time: Date.now(), before: selected };
-    setPickedLink(null);
+    setPickedLinks([]);
     setSelected([]);
   };
 
@@ -393,8 +394,8 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       {/* What's selected, in a bar of its own that keeps its height (owner, 26 Nov: the Group button
           was cut off in the hint line until something else changed). */}
       <div className="selection-bar diagram-selection">
-        {pickedLink && selected.length === 0 ? (
-          <LinkBar data={data} world={world} linkKey={pickedLink} onOpen={() => nav.open({ name: "link", key: pickedLink })} apply={(items) => undo.apply(items)} onClose={() => setPickedLink(null)} />
+        {pickedLinks.length > 0 && selected.length === 0 ? (
+          <LinkBar data={data} world={world} linkKeys={pickedLinks} onOpen={(key) => nav.open({ name: "link", key })} onContainer={() => setLinkContainer(true)} apply={(items) => undo.apply(items)} onClose={() => setPickedLinks([])} />
         ) : selected.length > 0 ? (
           <>
             <div className="title">{selected.length} selected <span className="sub">· drag one to move them all</span></div>
@@ -414,7 +415,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
           </>
         ) : (
           <span className="sub">
-            Tap: select (two to connect) · a line: its link · double-tap: open, or a new item ·{" "}
+            Tap: select (two to connect) · lines: select (several: a link container) · double-tap: open, or a new item ·{" "}
             {mode === "arrange" ? (network ? "drag to arrange" : withBranch ? "branches follow" : "boxes move on their own") : mode === "inside" ? "drop on a box: inside" : "drop on a box: connect"}
           </span>
         )}
@@ -444,7 +445,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
                 <path key={`edge-${b.key}`} className="diagram-edge" d={edge(drawnAt(byKey.get(b.parent!)!), drawnAt(b))} />
               ))}
               <ContainerBands bands={bands} k={1} bulge={bulge} />
-              <LinkLines lines={lines} k={1} picked={pickedLink} gap={14} bulge={bulge} />
+              <LinkLines lines={lines} k={1} picked={pickedLinks} gap={14} bulge={bulge} />
               {boxes.map((b) => {
                 const p = drawnAt(b);
                 const classes = ["diagram-node", b.key === ROOT ? "root" : "", flagged.has(b.key) ? "misfit" : "", selected.includes(b.key) ? "selected" : "", drag?.moving.includes(b.key) ? "moving" : "", drag?.over === b.key ? "target" : "", drag?.refused === b.key ? "refused" : ""];
@@ -479,6 +480,9 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
           }}
           onClose={() => setJoining(null)}
         />
+      )}
+      {linkContainer && pickedLinks.length > 0 && (
+        <LinkContainerPopup data={data} world={world} linkKeys={pickedLinks} apply={async (items) => (await undo.apply(items), setPickedLinks([]))} onClose={() => setLinkContainer(false)} />
       )}
       {grouping && (
         <GroupPopup

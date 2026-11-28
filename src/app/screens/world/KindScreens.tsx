@@ -98,6 +98,8 @@ export function ThingKindScreen({ data, nav, kindKey }: { data: AppData; nav: Na
         ))}
       <div className="buttons">
         <button className="danger" onClick={async () => {
+          const only = used.filter((t) => t.kinds.length === 1 && t.kinds[0] === kind.key).length;
+          if (only) return alert(`${only} item${only === 1 ? " has" : "s have"} no other kind than ${kind.name}: every item needs a kind, so give ${only === 1 ? "it" : "them"} another first.`);
           if (!confirm(`Remove the kind ${kind.name}?${used.length ? ` ${used.length} item${used.length > 1 ? "s" : ""} lose it; their fields stay as their own.` : ""}`)) return;
           await data.setItems(removeThingKind(data.items, kind.key));
           nav.back();
@@ -144,18 +146,8 @@ export function LinkKindScreen({ data, nav, kindKey }: { data: AppData; nav: Nav
           </select>
         </div>
       )}
-      {/* A container is a tree or a group (switchable); a link container and a connection are what they are. */}
-      {(kind.hierarchy === "one parent" || kind.hierarchy === "several parents") ? (
-        <div className="field">
-          <span className="label">Container</span>
-          <select value={kind.hierarchy} onChange={(e) => change({ hierarchy: e.target.value as LinkKind["hierarchy"] })}>
-            <option value="one parent">a tree: one container at a time (in, part of)</option>
-            <option value="several parents">a group: many at once, no loops (in area, member of)</option>
-          </select>
-        </div>
-      ) : (
-        <p className="sub">{isConnection ? "A connection: joins two items." : "A link container: an item that holds connections (a road made of its stretches, a border, a trade route)."}</p>
-      )}
+      {/* What it is, set when it was made (owner, 28 Nov: the switch was redundant). */}
+      <p className="sub">{isConnection ? "A connection: joins two items." : kind.hierarchy === "one parent" ? "A tree: one container at a time." : kind.hierarchy === "several parents" ? "A group: many at once, no loops." : "A link container: an item that holds connections (a road made of its stretches, a border, a trade route)."}</p>
       {/* What its links carry, and how they're drawn (owner, 27 Nov): connections only. */}
       {isConnection && <LinkFields kind={kind} change={change} />}
       {isConnection ? (
@@ -388,7 +380,7 @@ function whatItDoes(kind: LinkKind, isMain: boolean): string[] {
     return lines;
   } else {
     lines.push("A connection: it joins two items and contains nothing (a road, an alliance).");
-    lines.push("Join two items with it from the map or the Diagram (select two, Join…) or an item's card (Connections). Its links are drawn on both, switched under Layers ▾ → Links, and listed under Connections on each item's page.");
+    lines.push("Connect two items with it from the map or the Diagram (select two, Connect…, or the Connect mode) or an item's card (Connect to…). Its links are drawn on both, switched under Layers ▾ → Links, and listed under Connections on each item's page.");
   }
   if (kind.fields?.length) lines.push(`Each link carries ${kind.fields.map((f) => (f.byDirection ? `${f.name} (each way)` : f.name)).join(", ")}, filled in on the link's card.`);
   lines.push(kind.direction === "both ways" ? "Both ways: it reads the same from either end." : `One way: from the other end it reads "${kind.reverseName ?? `${kind.name} (from)`}".`);

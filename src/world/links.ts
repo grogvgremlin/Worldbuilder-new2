@@ -26,8 +26,9 @@ export function linkKindsInOrder(items: Item[], world: string): LinkKind[] {
 
 // Every link kind, for A then B: those that fit first, then the reversed ones, then the rest; each
 // group in the world's order.
-export function offersFor(items: Item[], world: string, from: string, to: string): Offer[] {
-  const offers = linkKindsInOrder(items, world).filter((k) => k.hierarchy !== "links").map((kind) => offerOne(items, world, kind, from, to));
+export function offersFor(items: Item[], world: string, from: string, to: string, connectionsOnly = false): Offer[] {
+  // Connect offers connections only (owner, 28 Nov: trees are Move inside, groups are Group).
+  const offers = linkKindsInOrder(items, world).filter((k) => (connectionsOnly ? k.hierarchy === "none" : k.hierarchy !== "links")).map((kind) => offerOne(items, world, kind, from, to));
   const rank = (o: Offer) => (o.fits === "yes" && o.canPick ? 0 : o.fits === "reversed" && o.canPick ? 1 : o.canPick ? 2 : 3);
   return offers.map((o, n) => ({ o, n })).sort((a, b) => rank(a.o) - rank(b.o) || a.n - b.n).map(({ o }) => o);
 }
@@ -486,9 +487,10 @@ function pinHalfway(map: WorldMap, a: string, b: string, at: string): WorldMap {
 
 // Makes a world item stand for a link (a stretch with its own name, entry and links). Named from the
 // link ("Nuln – Wurtbad"), of the kinds given; the link stays and points at it.
-export function makeLinkAThing(items: Item[], world: string, key: string, kinds: string[] = []): { items: Item[]; thing?: string; problem?: string } {
+export function makeLinkAThing(items: Item[], world: string, key: string, kinds: string[]): { items: Item[]; thing?: string; problem?: string } {
   const link = linkOf(items, key);
   if (!link) return { items, problem: "that link isn't there" };
+  if (kinds.length === 0) return { items, problem: "a world item needs a kind" };
   if (link.asThing) return { items, thing: link.asThing };
   const name = `${nameOf(items, link.from)} – ${nameOf(items, link.to)}`;
   const thingKey = newKey(items, world, "thing", name);
@@ -508,4 +510,15 @@ export function unlinkThing(items: Item[], key: string): Item[] {
     const { asThing, ...rest } = i;
     return rest;
   });
+}
+
+// A new connection kind made to fit two items (owner, 28 Nov: "pre populate the types"): its ends take
+// the first kind of each (the same at both ends when they share it), both ways when they do, else one
+// way from the first to the second.
+export function newConnectionKindFor(items: Item[], world: string, name: string, from: string, to: string): LinkKind {
+  const kindOf = (k: string) => items.find((i): i is Thing => i.kind === "thing" && i.key === k)?.kinds[0];
+  const [a, b] = [kindOf(from), kindOf(to)];
+  const key = newKey(items, world, "link-kind", name);
+  const ends = a && a === b ? { scope: [a], direction: "both ways" as const } : { endsDiffer: true, expectsFrom: a ? [a] : undefined, expectsTo: b ? [b] : undefined, direction: "one-way" as const };
+  return { key, kind: "link-kind", world, name: name.trim(), hierarchy: "none", ...ends };
 }

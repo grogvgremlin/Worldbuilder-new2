@@ -240,10 +240,26 @@ describe("roads and links that become things (owner, 27 Nov)", () => {
     const { removeThing } = await import("../src/world/world");
     const { items, kinds } = setUp();
     const made = join(items, W, key("nuln"), kinds.get("adjacent to")!, key("averland"));
-    const thing = makeLinkAThing(made.items, W, made.link!);
+    expect(makeLinkAThing(made.items, W, made.link!, []).problem).toMatch(/needs a kind/);
+    const thing = makeLinkAThing(made.items, W, made.link!, [thingKindsIn(made.items, W)[0].key]);
     expect(thing.items.find((i) => i.key === thing.thing)!.name).toBe("nuln – averland");
     expect(linkStoodFor(thing.items, thing.thing!)!.key).toBe(made.link);
     const gone = removeThing(thing.items, thing.thing!);
     expect(linkOf(gone, made.link!)!.asThing).toBeUndefined();
+  });
+});
+
+describe("Connect (owner, 28 Nov)", () => {
+  it("offers connections only, and a new one fitted to the two items", async () => {
+    const { newConnectionKindFor } = await import("../src/world/links");
+    const { items, kinds } = setUp();
+    expect(offersFor(items, W, key("nuln"), key("averland"), true).every((o) => o.kind.hierarchy === "none")).toBe(true);
+    const place = thingKindsIn(items, W)[0].key;
+    const same = newConnectionKindFor(items, W, "road", key("nuln"), key("averland"));
+    expect([same.scope, same.direction]).toEqual([[place], "both ways"]);
+    const differ = newConnectionKindFor(items, W, "rules", key("countess"), key("nuln"));
+    expect([differ.expectsFrom, differ.expectsTo, differ.direction]).toEqual([[`${W}.kind.person`], [place], "one-way"]);
+    expect(join([...items, same], W, key("nuln"), same.key, key("averland")).link).toBeDefined();
+    expect(kinds.size).toBeGreaterThan(0);
   });
 });

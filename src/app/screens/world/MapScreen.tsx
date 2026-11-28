@@ -389,7 +389,7 @@ export function MapScreen({ data, nav, mapKey, focus, place }: { data: AppData; 
           <LinkBar data={data} world={map.world} linkKey={pickedLink} onOpen={() => nav.open({ name: "link", key: pickedLink })} apply={(items) => undo.apply(items)} onClose={() => setPickedLink(null)} />
         </div>
       ) : selected.length === 0 ? (
-        <div className="selection-bar empty sub">Tap: select (two to join, more to move) · a line: its link · double-tap: open · on empty space: a new item</div>
+        <div className="selection-bar empty sub">Tap: select (two to connect, more to move) · a line: its link · double-tap: open · on empty space: a new item</div>
       ) : (
         <SelectionCard
           data={data}
@@ -628,7 +628,7 @@ function SelectionCard({ data, map, selected, onOpen, onUnpin, onSelect, onGroup
       )}
       <div className="selection-buttons">
         {one && <button className="primary" onClick={() => onOpen(one.key)}>Open</button>}
-        {selected.length === 2 && <button className="primary" onClick={onJoin}>Join {selected[0].name} → {selected[1].name}…</button>}
+        {selected.length === 2 && <button className="primary" onClick={onJoin}>Connect {selected[0].name} → {selected[1].name}…</button>}
         {selected.length > 1 && <button className={selected.length === 2 ? "" : "primary"} onClick={onGroup}>Group / move into…</button>}
         {inside.length > 0 && <button onClick={() => onSelect([...selected.map((t) => t.key), ...inside])}>Select what's inside ({inside.length})</button>}
         {pinned.length > 0 && <button onClick={() => onUnpin(pinned.map((t) => t.key))}>Take {pinned.length > 1 ? `${pinned.length} ` : ""}off this map</button>}

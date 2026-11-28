@@ -29,7 +29,7 @@ export function linkSet(items: Item[], world: string, on: boolean, isOn: (linkKi
       const style = linkKindStyle(items, world, k);
       return { id: linkRowId(k.key), name: k.name, key: k.key, opens: "link-kind", depth: 0, on: on && isOn(k.key), colour: style.colour, line: style.line };
     });
-  return { id: LINKS_SET, title: "Links", on, rows };
+  return { id: LINKS_SET, title: "Connectors", on, rows };
 }
 
 // Lines for links whose two ends have a position (`at` gives one, or null), in the link kinds shown.
@@ -111,7 +111,7 @@ export function LinkBar({ data, world, linkKeys, onOpen, onContainer, apply, onC
   return (
     <>
       <button className="link popup-close" aria-label="Close" onClick={onClose}>✕</button>
-      <div className="title">{one ? linkTitle(data.items, one) : `${links.length} links selected`}</div>
+      <div className="title">{one ? linkTitle(data.items, one) : `${links.length} connectors selected`}</div>
       <div className="selection-buttons">
         {one && <button className="primary" onClick={() => onOpen(one.key)}>Open</button>}
         <button className={one ? "" : "primary"} onClick={onContainer}>Link container…</button>
@@ -148,7 +148,7 @@ export function LinkContainerPopup({ data, world, linkKeys, apply, onClose }: { 
     <div className="popup-back" onClick={onClose}>
       <div className="popup" onClick={(e) => e.stopPropagation()}>
         <button className="link popup-close" aria-label="Close" onClick={onClose}>✕</button>
-        <h2>{linkKeys.length} link{linkKeys.length === 1 ? "" : "s"} into a link container</h2>
+        <h2>{linkKeys.length} connector{linkKeys.length === 1 ? "" : "s"} into a link container</h2>
         {fitting.length > 0 && (
           <label className="stack">
             <span className="sub">Into one they all fit</span>

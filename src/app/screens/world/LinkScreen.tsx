@@ -105,7 +105,7 @@ export function LinkScreen({ data, nav, linkKey }: { data: AppData; nav: Nav; li
           if (!confirm(`Remove this link: ${name(link.from)} ${kind?.name ?? ""} ${name(link.to)}?`)) return;
           await data.setItems(removeLink(data.items, link.key));
           nav.back();
-        }}>Remove this link</button>
+        }}>Remove this connector</button>
       </div>
     </article>
   );

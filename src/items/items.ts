@@ -613,6 +613,11 @@ export const LinkKind = z.strictObject({
   colour: z.string().optional(), // "#2f6f8f"
   line: z.enum(["solid", "dashed", "dotted"]).optional(),
   arrows: z.boolean().optional(), // one-way links drawn with an arrow; absent: yes
+  // Diagram settings for its view (owner, 28 Nov): how a selected box is marked when this tree or network
+  // is shown. Absent: the app's own.
+  selectedColour: z.string().optional(), // border colour
+  selectedLine: z.enum(["solid", "dashed", "dotted"]).optional(), // border style
+  selectedFill: z.boolean().optional(), // filled with a tint of the colour (highlighted); absent: yes
   about: z.string().optional(),
 });
 export type LinkKind = z.infer<typeof LinkKind>;

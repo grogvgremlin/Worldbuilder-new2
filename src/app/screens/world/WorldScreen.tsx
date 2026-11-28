@@ -4,7 +4,8 @@
 // kinds"), §4 (containment; groups as area things), §5 (maps); spec/session-20-notes-3.md §0.1
 // (structure first on the phone, a canvas as another view).
 import { useState, type ReactNode } from "react";
-import type { Item, LinkKind, Thing } from "../../../items/items";
+import type { Item, LinkKind, Thing, ThingKind } from "../../../items/items";
+import { LinkKindScreen, ThingKindScreen } from "./KindScreens";
 import { linkKindsIn, linksIn, mapsIn, newKey, removeThing, removeThingKind, thingKindsIn, thingsIn, worldOf } from "../../../world/world";
 import { SwipeRow } from "../../swipe";
 import { childrenOf, firstTree, hideHere, isContainer, looseIn, looseItems, pathOf, setParent, topPlaces, treeKinds, treeWarnings } from "../../../world/places";
@@ -92,7 +93,7 @@ function Items({ data, nav, world, save }: Part) {
     { id: "trees", label: "Trees", show: true },
     { id: "groups", label: "Groups", show: true },
     { id: "linkContainers", label: "Link containers", show: linkContainerKinds(data.items, world).length > 0 || linkContainersIn(data.items, world).length > 0 },
-    { id: "connections", label: `Connections (${plainLinks(data.items, world).length})`, show: true },
+    { id: "connections", label: `Connectors (${plainLinks(data.items, world).length})`, show: true },
     { id: "loose", label: `Loose (${looseItems(data.items, world).length})`, show: true },
     { id: "misfits", label: `⚠ Doesn't fit (${misfits.length})`, show: misfits.length > 0 },
   ];
@@ -172,7 +173,7 @@ function Items({ data, nav, world, save }: Part) {
           )}
           {view === "connections" && (
             <>
-              {networkKinds(data.items, world).length > 1 && pick(networkKinds(data.items, world), "Every connection")}
+              {networkKinds(data.items, world).length > 1 && pick(networkKinds(data.items, world), "Every network type")}
               <LinksList data={data} nav={nav} world={world} save={save} only={which || undefined} />
             </>
           )}
@@ -207,8 +208,8 @@ function LinksList({ data, nav, world, save, only }: { data: AppData; nav: Nav; 
   const folds = useFoldAll();
   const kinds = linkKindsInOrder(data.items, world).filter((k) => k.hierarchy === "none" && (!only || k.key === only));
   const links = plainLinks(data.items, world);
-  if (kinds.length === 0) return <p className="sub">No connection link kinds yet: add one under Kinds (Makes: connections).</p>;
-  if (links.length === 0) return <p className="sub">No links yet. Select two items on a map or the Diagram and Connect, or use Connect to… on an item's card.</p>;
+  if (kinds.length === 0) return <p className="sub">No network types yet: add one under Kinds → Network types.</p>;
+  if (links.length === 0) return <p className="sub">No connectors yet. Select two items on a map or the Diagram and Connect, or use Connect to… on an item's card.</p>;
   return (
     <>
       <p className="sub">{folds.controls}</p>
@@ -594,14 +595,13 @@ function Maps({ data, nav, world, save }: Part) {
 
 // --- Kinds: kinds of item, kinds of link, and the main tree --------------------------------------
 
-// World → Kinds (owner, 27 Nov): three sections, each with an Add button that opens a new kind to name
-// (nothing is saved without a name):
-//   - Items: kinds of item, with flavours and fields;
-//   - Connections: join two items; one way or both;
-//   - Containers: hold things, always one way; the type comes first (a tree, a group, or a link
-//     container: an item that holds connections), then the list split by type.
+// World → Kinds: the world's settings (owner, 27–28 Nov). Three folding sections, each kind opening its
+// card; Add goes straight to a new card, saved once it has a name:
+//   - Items: kinds of item, with flavours (each kind's flavours fold under it) and fields;
+//   - Network types: what a connector is (joins two items); one way or both;
+//   - Containers: trees, groups and link containers, each with its own Add; always one way.
 function Kinds({ data, nav, world, save }: Part) {
-  const thingKinds = kindTree(data.items, world);
+  const folds = useFoldAll();
   const linkKinds = inOrder(data.items, world, linkKindsIn(data.items, world)); // the owner's display order
   const of = (h: LinkKind["hierarchy"]) => linkKinds.filter((k) => k.hierarchy === h);
   const removeKind = async (key: string, name: string) => {
@@ -613,85 +613,93 @@ function Kinds({ data, nav, world, save }: Part) {
   };
   const removeLink = async (key: string, name: string) => {
     const count = linksIn(data.items, world).filter((l) => l.linkKind === key).length;
-    if (!confirm(`Remove the kind ${name}?${count ? ` Its ${count} link${count === 1 ? "" : "s"} go too.` : ""}`)) return;
+    if (!confirm(`Remove ${name}?${count ? ` Its ${count} connector${count === 1 ? "" : "s"} go too.` : ""}`)) return;
     await save(removeLinkKind(data.items, world, key));
   };
   const add = (what: NewKindWhat) => nav.open({ name: "new-kind", world, what });
+  const section = (id: string, title: string, children: ReactNode) => (
+    <details key={`${id}|${folds.epoch}`} className="fold kinds-section" open={folds.openFor(true)}>
+      <summary>{title}</summary>
+      {children}
+    </details>
+  );
 
   return (
     <>
-      <p className="sub">A world's kinds are its own: change them freely. Swipe one left to remove it; ↑ ↓ set the order they're shown in.</p>
-      <h2>Items</h2>
-      <p className="sub">Kinds of item, each with its fields; a kind can be a flavour of another (set on its card).</p>
-      <ul className="list">
-        {thingKinds.map(({ kind: k, depth }) => {
-          const siblings = thingKindsIn(data.items, world).filter((o) => o.flavourOf === k.flavourOf);
-          return (
-            <li key={k.key} className="ordered-row" style={{ paddingLeft: depth * 18 }}>
-              <SwipeRow action="Remove" onAction={() => removeKind(k.key, k.name)}>
-                <button onClick={() => nav.open({ name: "thing-kind", key: k.key })}>
-                  <span className="title">{depth > 0 ? "↳ " : ""}{k.icon} {k.name}</span>
-                  <span className="sub">{[k.about, k.fields.map((f) => f.name).join(", ")].filter(Boolean).join(" · ") || (depth > 0 ? "its parent's fields" : "no fields yet")}</span>
-                </button>
-              </SwipeRow>
-              <OrderArrows onMove={(by) => save(moveInOrder(data.items, world, siblings, k.key, by))} />
-            </li>
-          );
-        })}
-      </ul>
-      <div className="buttons"><button className="primary" onClick={() => add("item")}>+ New kind of item</button></div>
-
-      <h2>Connections</h2>
-      <p className="sub">Connect two items (a road, an alliance, a feud), one way or both: drawn as lines on maps and the Diagram, with fields; each can be shown as a network on the Diagram.</p>
-      <LinkKindList data={data} nav={nav} world={world} save={save} kinds={of("none")} onRemove={removeLink} />
-      <div className="buttons"><button className="primary" onClick={() => add("none")}>+ New connection</button></div>
-
-      <h2>Containers</h2>
-      <p className="sub">Hold things, always one way: a tree (one container at a time), a group (many at once), or a link container (an item that holds connections: a road of its stretches, a border).</p>
-      <select className="tree-select" value="" onChange={(e) => e.target.value && add(e.target.value as NewKindWhat)}>
-        <option value="">+ New container…</option>
-        <option value="one parent">a tree</option>
-        <option value="several parents">a group</option>
-        <option value="links">a link container</option>
-      </select>
-      <div className="sub field-group">Trees · shown in this order: the first is used wherever no tree is chosen</div>
-      <LinkKindList data={data} nav={nav} world={world} save={save} kinds={of("one parent")} onRemove={removeLink} />
-      <div className="sub field-group">Groups</div>
-      <LinkKindList data={data} nav={nav} world={world} save={save} kinds={of("several parents")} onRemove={removeLink} />
-      <div className="sub field-group">Link containers</div>
-      <LinkKindList data={data} nav={nav} world={world} save={save} kinds={of("links")} onRemove={removeLink} />
+      <p className="sub">The world's settings: its kinds are its own, change them freely. Swipe one left to remove it; ↑ ↓ set the order. {folds.controls}</p>
+      {section("items", "Items", (
+        <>
+          <p className="sub">Kinds of item, each with its fields; a kind can be a flavour of another (set on its card), folding under it here.</p>
+          <ItemKindRows data={data} nav={nav} world={world} save={save} parent={undefined} depth={0} onRemove={removeKind} />
+          <div className="buttons"><button className="primary" onClick={() => add("item")}>+ New kind of item</button></div>
+        </>
+      ))}
+      {section("networks", "Network types", (
+        <>
+          <p className="sub">What a connector is: it joins two items (a road, an alliance, a feud), one way or both. Drawn as lines on maps and the Diagram, with fields; each type can be shown as a network on the Diagram.</p>
+          <LinkKindList data={data} nav={nav} world={world} save={save} kinds={of("none")} onRemove={removeLink} />
+          <div className="buttons"><button className="primary" onClick={() => add("none")}>+ New network type</button></div>
+        </>
+      ))}
+      {section("containers", "Containers", (
+        <>
+          <p className="sub">Hold things, always one way: a tree (one container at a time), a group (many at once), or a link container (an item that holds connectors: a road of its stretches, a border).</p>
+          <div className="sub field-group">Trees · shown in this order: the first is used wherever no tree is chosen</div>
+          <LinkKindList data={data} nav={nav} world={world} save={save} kinds={of("one parent")} onRemove={removeLink} />
+          <div className="buttons"><button onClick={() => add("one parent")}>+ New tree</button></div>
+          <div className="sub field-group">Groups</div>
+          <LinkKindList data={data} nav={nav} world={world} save={save} kinds={of("several parents")} onRemove={removeLink} />
+          <div className="buttons"><button onClick={() => add("several parents")}>+ New group</button></div>
+          <div className="sub field-group">Link containers</div>
+          <LinkKindList data={data} nav={nav} world={world} save={save} kinds={of("links")} onRemove={removeLink} />
+          <div className="buttons"><button onClick={() => add("links")}>+ New link container</button></div>
+        </>
+      ))}
     </>
   );
 }
 
-// A new kind, named before it's saved (owner, 27 Nov: "if you don't add a name just don't save it").
+// Kinds of item in their flavour tree: a kind with flavours has a twisty to fold them (owner, 28 Nov:
+// "the flavours … need to be collapsible").
+function ItemKindRows({ data, nav, world, save, parent, depth, onRemove }: Part & { parent: string | undefined; depth: number; onRemove: (key: string, name: string) => void }) {
+  const all = thingKindsIn(data.items, world);
+  const keys = new Set(all.map((k) => k.key));
+  const here = inOrder(data.items, world, all.filter((k) => (parent ? k.flavourOf === parent : !k.flavourOf || !keys.has(k.flavourOf))));
+  if (here.length === 0) return null;
+  return (
+    <ul className="list">
+      {here.map((k) => <ItemKindRow key={k.key} data={data} nav={nav} world={world} save={save} kind={k} siblings={here} depth={depth} onRemove={onRemove} />)}
+    </ul>
+  );
+}
+
+function ItemKindRow({ data, nav, world, save, kind: k, siblings, depth, onRemove }: Part & { kind: ThingKind; siblings: ThingKind[]; depth: number; onRemove: (key: string, name: string) => void }) {
+  const [open, setOpen] = useRemembered(`${world}|kind-open|${k.key}`, true);
+  const flavours = thingKindsIn(data.items, world).filter((f) => f.flavourOf === k.key);
+  return (
+    <li>
+      <div className="ordered-row" style={{ paddingLeft: depth * 18 }}>
+        {flavours.length > 0 ? <button className="twisty" aria-label={open ? "Fold" : "Unfold"} onClick={() => setOpen(!open)}>{open ? "▾" : "▸"}</button> : <span className="twisty-space" />}
+        <SwipeRow action="Remove" onAction={() => onRemove(k.key, k.name)}>
+          <button onClick={() => nav.open({ name: "thing-kind", key: k.key })}>
+            <span className="title">{depth > 0 ? "↳ " : ""}{k.icon} {k.name}</span>
+            <span className="sub">{[flavours.length ? `${flavours.length} flavour${flavours.length === 1 ? "" : "s"}` : "", k.about, k.fields.map((f) => f.name).join(", ")].filter(Boolean).join(" · ") || (depth > 0 ? "its parent's fields" : "no fields yet")}</span>
+          </button>
+        </SwipeRow>
+        <OrderArrows onMove={(by) => save(moveInOrder(data.items, world, siblings, k.key, by))} />
+      </div>
+      {open && <ItemKindRows data={data} nav={nav} world={world} save={save} parent={k.key} depth={depth + 1} onRemove={onRemove} />}
+    </li>
+  );
+}
+
+// A new kind: its card straight away, held until it has a name (owner, 28 Nov).
 export type NewKindWhat = "item" | LinkKind["hierarchy"];
-const NEW_KIND_TITLE: Record<NewKindWhat, string> = { item: "A new kind of item", none: "A new connection", "one parent": "A new tree", "several parents": "A new group", links: "A new link container" };
-const NEW_KIND_EXAMPLE: Record<NewKindWhat, string> = { item: "e.g. City", none: "e.g. road, feud with", "one parent": "e.g. in, part of", "several parents": "e.g. in area, member of", links: "e.g. route, border" };
 
 export function NewKindScreen({ data, nav, world, what }: { data: AppData; nav: Nav; world: string; what: NewKindWhat }) {
-  const [name, setName] = useState("");
-  const create = async () => {
-    const n = name.trim();
-    if (!n) return;
-    const item = what === "item"
-      ? { key: newKey(data.items, world, "thing-kind", n), kind: "thing-kind" as const, world, name: n, fields: [] }
-      : { key: newKey(data.items, world, "link-kind", n), kind: "link-kind" as const, world, name: n, direction: "one-way" as const, hierarchy: what, ...(what === "links" ? { reverseName: "part of", endsDiffer: true } : {}) };
-    await data.setItems([...data.items, item]);
-    nav.back();
-    nav.open(what === "item" ? { name: "thing-kind", key: item.key } : { name: "link-kind", key: item.key });
-  };
-  return (
-    <article className="card">
-      <h1>{NEW_KIND_TITLE[what]}</h1>
-      <input className="name-box" autoFocus placeholder={`Its name (${NEW_KIND_EXAMPLE[what]})`} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && create()} />
-      <div className="buttons">
-        <button className="primary" disabled={!name.trim()} onClick={create}>Create</button>
-        <button onClick={() => nav.back()}>Cancel</button>
-      </div>
-      <p className="sub">Nothing is saved until it has a name. The rest is set on its card.</p>
-    </article>
-  );
+  if (what === "item") return <ThingKindScreen data={data} nav={nav} draft={{ key: "", kind: "thing-kind", world, name: "", fields: [] }} />;
+  const draft: LinkKind = { key: "", kind: "link-kind", world, name: "", direction: "one-way", hierarchy: what, ...(what === "links" ? { reverseName: "part of", endsDiffer: true } : {}) };
+  return <LinkKindScreen data={data} nav={nav} draft={draft} />;
 }
 
 // One section's link kinds: tap to open, swipe to remove, ↑ ↓ to order within the section.

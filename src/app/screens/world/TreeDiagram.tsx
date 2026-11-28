@@ -21,7 +21,7 @@ import { colourOf } from "./area-colours";
 import { OverlayList, OverlayMenu, type OverlayRow, type OverlaySet } from "./overlays";
 import { itemsWithMisfits, refusal } from "../../../world/kinds";
 import { iconOf } from "../../../world/maps";
-import { worldOf } from "../../../world/world";
+import { linkKindsIn, worldOf } from "../../../world/world";
 import { arrangedLayout, boxesThatMove, hasHandPlacing, moveBoxes, NODE_H, NODE_W, ROOT, tidyLayout, type Box, type Direction } from "../../../world/diagram";
 import { TreePicker, useChosenTree } from "./tree-picker";
 import { useKept, useRemembered } from "./remembered";
@@ -32,6 +32,7 @@ import { JoinPopup } from "./JoinPopup";
 import { ContainerBands, containerBands, containerRowId, LINK_CONTAINERS_SET, linkContainerSet, linkContainersIn, LinkBar, LinkContainerPopup, LinkLines, linkLines, linkRowId, LINKS_SET, linkSet } from "./link-lines";
 import { plainLinks } from "../../../world/links";
 import { isNetwork } from "../../../world/network";
+import { selectedLook } from "./selected-look";
 import { DOUBLE_TAP_MS, swallowNextClick, tapSlop } from "./gestures";
 
 
@@ -423,7 +424,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
       <div className="map-layout">
       <div className="map-wrap diagram-wrap" ref={wrap} onTouchStart={(e) => e.stopPropagation()} onTouchEnd={(e) => e.preventDefault()} onWheel={wheel}>
         {size && view && (
-          <svg width={size.w} height={size.h} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
+          <svg style={selectedLook(linkKindsIn(data.items, world).find((k) => k.key === tree))} width={size.w} height={size.h} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
             <g transform={`translate(${view.tx} ${view.ty}) scale(${view.k})`}>
               {/* Each outlined member's box gets a border (offset per outline, so several nest), joined by a
                   line to the next member, the name on the first: no shape round boxes that aren't in it. */}

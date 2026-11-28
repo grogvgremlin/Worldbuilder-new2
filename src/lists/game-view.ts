@@ -99,7 +99,8 @@ function gameUnit(u: UnitView, reach: Item[], game: Game | undefined, all: Item[
     // Printed numbers on the row are its own (its race + difference); "+1" changes are to the unit's line.
     const owner = t.chain.find((c) => c.rows.includes(row));
     const printed = owner ? unitAsPrinted(owner, all).rows[owner.rows.indexOf(row)].stats : row.stats;
-    lines.push({ name: row.name, stats: patchStats(base, printed) });
+    const n = ru.slotCounts?.[row.name] ?? 1;
+    lines.push({ name: n > 1 ? `${row.name} ×${n}` : row.name, stats: patchStats(base, printed) });
   }
   for (const m of [...t.equipment.filter((e) => e.as === "Mount"), ...unitOptions.filter((o) => o.as === "Mount")]) {
     const mount = reach.find((i): i is Unit => i.kind === "unit" && (i.key === m.item || matchName(i.name) === matchName(m.name)));

@@ -167,3 +167,14 @@ export function broughtOptions(items: Item[], world: string, thing: string, tree
   if (members > 0) out.push({ scope: { brings: "members" }, label: `with its members (${members})` });
   return out;
 }
+
+// Out of scope for groups shown together (owner, 28 Nov: groups as mini diagrams): what a group kind
+// would take as a member but is in none of them (nor one of the groups itself).
+export function groupOutOfScope(items: Item[], world: string, groups: string[]): Thing[] {
+  const kinds = groupLinkKinds(items, world);
+  const inside = new Set(groups.flatMap((g) => effectiveMembers(items, world, g).map((m) => m.thing.key)));
+  return thingsIn(items, world)
+    .filter((t) => !groups.includes(t.key) && !inside.has(t.key))
+    .filter((t) => kinds.some((k) => !refusal(items, world, k.key, "from", t.key)))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}

@@ -17,14 +17,32 @@ export function networkKinds(items: Item[], world: string): LinkKind[] {
   return inOrder(items, world, linkKindsIn(items, world).filter((k) => k.hierarchy === "none"));
 }
 
+// Several network types shown at once (owner, 28 Nov) are one view, keyed "networks:a,b" (its hand
+// placing is kept under that key); one alone is keyed by its own key, as before.
+export const NETWORKS = "networks:";
+
+export function networksViewKey(kinds: string[]): string {
+  const sorted = [...new Set(kinds)].sort();
+  return sorted.length === 1 ? sorted[0] : `${NETWORKS}${sorted.join(",")}`;
+}
+
+// The network types a view key shows.
+export function kindsOfView(key: string | string[]): string[] {
+  if (Array.isArray(key)) return key;
+  return key.startsWith(NETWORKS) ? key.slice(NETWORKS.length).split(",").filter(Boolean) : [key];
+}
+
 export function isNetwork(items: Item[], world: string, key: string | undefined): boolean {
-  return !!key && linkKindsIn(items, world).some((k) => k.key === key && k.hierarchy === "none");
+  if (!key) return false;
+  if (key.startsWith(NETWORKS)) return true;
+  return linkKindsIn(items, world).some((k) => k.key === key && k.hierarchy === "none");
 }
 
 // Items joined to one another by this link kind, each with who it's joined to.
-export function neighbours(items: Item[], world: string, kind: string): Map<string, Set<string>> {
+export function neighbours(items: Item[], world: string, kind: string | string[]): Map<string, Set<string>> {
+  const kinds = kindsOfView(kind);
   const out = new Map<string, Set<string>>();
-  for (const l of linksIn(items, world).filter((l) => l.linkKind === kind)) {
+  for (const l of linksIn(items, world).filter((l) => kinds.includes(l.linkKind))) {
     if (!out.has(l.from)) out.set(l.from, new Set());
     if (!out.has(l.to)) out.set(l.to, new Set());
     out.get(l.from)!.add(l.to);
@@ -35,7 +53,7 @@ export function neighbours(items: Item[], world: string, kind: string): Map<stri
 
 // What the network shows (owner, 28 Nov): its joined items (in scope: they have a connector of this
 // type), then the items brought into its workspace to be joined (in scope for now, not stored).
-export function networkItems(items: Item[], world: string, kind: string, workspace: string[] = []): { joined: Thing[]; loose: Thing[] } {
+export function networkItems(items: Item[], world: string, kind: string | string[], workspace: string[] = []): { joined: Thing[]; loose: Thing[] } {
   const near = neighbours(items, world, kind);
   const joined = thingsIn(items, world).filter((t) => near.has(t.key));
   const loose = thingsIn(items, world).filter((t) => workspace.includes(t.key) && !near.has(t.key));
@@ -43,17 +61,18 @@ export function networkItems(items: Item[], world: string, kind: string, workspa
 }
 
 // What a network type would join but has no connector of it (and isn't in the workspace): out of scope.
-export function networkOutOfScope(items: Item[], world: string, kind: string, workspace: string[] = []): Thing[] {
+export function networkOutOfScope(items: Item[], world: string, kind: string | string[], workspace: string[] = []): Thing[] {
   const near = neighbours(items, world, kind);
+  const kinds = kindsOfView(kind);
   return thingsIn(items, world)
     .filter((t) => !near.has(t.key) && !workspace.includes(t.key))
-    .filter((t) => misfit(items, world, kind, "from", t.key) === null || misfit(items, world, kind, "to", t.key) === null)
+    .filter((t) => kinds.some((k) => misfit(items, world, k, "from", t.key) === null || misfit(items, world, k, "to", t.key) === null))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // Each separate part of the network (items reachable from one another), its items in layers: the
 // best-joined item first, then those one link away, then two … Parts with more items come first.
-export function networkLayers(items: Item[], world: string, kind: string): Thing[][][] {
+export function networkLayers(items: Item[], world: string, kind: string | string[]): Thing[][][] {
   const near = neighbours(items, world, kind);
   const things = new Map(networkItems(items, world, kind).joined.map((t) => [t.key, t]));
   const degree = (k: string) => near.get(k)?.size ?? 0;
@@ -79,4 +98,25 @@ export function networkLayers(items: Item[], world: string, kind: string): Thing
     parts.push(layers);
   }
   return parts.sort((a, b) => b.flat().length - a.flat().length);
+}
+
+// --- Groups as mini diagrams (owner, 28 Nov: "I kind of see them as mini diagrams"): each chosen group a
+// frame holding its members' boxes; no lines. Keyed "groups:a,b". A member of two chosen groups is in
+// both frames: its box keys are "group::member".
+export const GROUPS = "groups:";
+
+export function groupsViewKey(groups: string[]): string {
+  return `${GROUPS}${[...new Set(groups)].sort().join(",")}`;
+}
+
+export function groupsOfView(key: string): string[] {
+  return key.startsWith(GROUPS) ? key.slice(GROUPS.length).split(",").filter(Boolean) : [];
+}
+
+export function memberOfBox(boxKey: string): string {
+  return boxKey.includes("::") ? boxKey.slice(boxKey.indexOf("::") + 2) : boxKey;
+}
+
+export function groupOfBox(boxKey: string): string | null {
+  return boxKey.includes("::") ? boxKey.slice(0, boxKey.indexOf("::")) : null;
 }

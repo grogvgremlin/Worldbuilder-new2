@@ -492,3 +492,9 @@ main:has(.map-screen), main:has(.diagram-wrap) { max-width: none; }
 .side-column .scope-panel { max-height: 45dvh; overflow: auto; }
 .scope-panel .scope-row.on { background: var(--panel); outline: 2px solid var(--link); border-radius: 6px; }
 .carry-ghost { position: fixed; z-index: 60; pointer-events: none; background: var(--ground); border: 2px solid var(--accent); border-radius: 8px; padding: 4px 8px; font-weight: 600; font-size: .9rem; }
+
+/* The Diagram's view picker: several networks or groups at once (owner, 28 Nov). */
+.view-choices { min-width: 220px; } .view-choice { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.group-frame rect { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 6 4; }
+.group-frame text { font-size: 13px; font-weight: 700; fill: var(--muted); }
+.group-frame.target rect { stroke: var(--accent); stroke-width: 3; stroke-dasharray: none; }

@@ -24,6 +24,9 @@ describe.skipIf(!hasTowData)("TOW data from the data repo", () => {
         "Battle Magic", "Daemonology", "Dark Magic", "Elementalism", "Illusion", "Necromancy", "The Witch", "The Revenant", "The Mutant", "The Daemon",
         // In brackets and conditions (owner, 23 Nov): Two Handed[-Strike Last], +2 [Only(Charging)] …
         "Strike Last", "Charging", "Riding", "Mounted", "Commanders of the Empire", "Imperial Wizard", "non-magical template",
+        // The Dwarfs (photos, 28 Nov): their book-wide rules, rulebook rules and kit not entered yet.
+        "Deathblow", "Dwarf Crafted", "Gromril Armour", "Gromril Weapons", "Loner", "Multiple Shots", "Quick Shot",
+        "Requires Two Hands", "Resolute", "Rune Lore", "Shieldwall", "Throwing Axes",
       ]),
     );
     const stubs = first.items.find((i) => i.key === "tow.the-empire.stubs") as Package;
@@ -79,5 +82,12 @@ describe.skipIf(!hasTowData)("TOW data from the data repo", () => {
     expect([...needs.keys()].sort()).toEqual(["tow.races", "tow.rulebook", "tow.the-empire.stubs"]);
     expect(needs.get("tow.rulebook")).toContain("Close Order");
     expect(empire.needsStated).toEqual(["tow.forces-of-fantasy"]);
+  });
+
+  it("finds what the Dwarfs need, and nothing of the Empire's", () => {
+    const dwarfs = first.items.find((i) => i.key === "tow.dwarfen-mountain-holds") as Package;
+    const needs = foundNeeds(dwarfs, first.items);
+    expect([...needs.keys()].sort()).toEqual(["tow.dwarfen-mountain-holds.stubs", "tow.races", "tow.rulebook"]);
+    expect(dwarfs.needsStated).toEqual(["tow.forces-of-fantasy"]);
   });
 });

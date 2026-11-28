@@ -502,6 +502,9 @@ export const RosterUnit = z.strictObject({
   size: z.number().int().min(1),
   picks: z.array(z.string()), // options taken, by where and name: "options|Handguns instead of Crossbow", "slot:Sergeant|…"
   slots: z.array(z.string()), // command taken, by name: "Sergeant", "Musician"
+  // How many models take a slot that may be taken more than once (owner, 28 Nov: "any number of
+  // models may be upgraded to Giant Slayers"): { "Giant Slayer": 3 }. A slot not listed counts 1.
+  slotCounts: z.record(z.string(), z.number().int().min(1)).optional(),
   general: z.boolean(), // holds the General role
   note: z.string().optional(), // the owner's own note, shown in the game view
   battleNote: z.string().optional(), // a note for the battle being played (Show → Battle → Battle notes)

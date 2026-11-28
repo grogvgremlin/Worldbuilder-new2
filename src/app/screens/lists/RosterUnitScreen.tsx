@@ -1,7 +1,7 @@
 // One unit in a list: its size, the General, its options and command, what it costs and why.
 import { useEffect, useState } from "react";
 import type { Context, Game, Roster } from "../../../items/items";
-import { removeUnit, toggleChoice, updateUnit, viewRoster, type ChoiceGroup } from "../../../lists/roster";
+import { removeUnit, setSlotCount, slotCount, toggleChoice, updateUnit, viewRoster, type ChoiceGroup } from "../../../lists/roster";
 import type { AppData } from "../../app-data";
 import { setLeaveGuard, type Nav } from "../../App";
 import { headingFor } from "../../../items/race-dimensions";
@@ -131,7 +131,19 @@ export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppDa
             </span>
             {block.map((g) => (
               <div key={u.choices.indexOf(g)}>
-                {g.choices.map((c) => (
+                {g.choices.map((c) =>
+                  c.counted ? (
+                    // A command slot taken by a number of models ("any number may be upgraded to Giant Slayers").
+                    <label key={c.pick} className="choice counted">
+                      <NumberBox
+                        value={ru.slots.includes(c.label) ? slotCount(ru, c.label) : 0}
+                        min={0}
+                        onChange={(n) => save(setSlotCount(roster, ru.id, c.label, n))}
+                      />
+                      <span>{c.label}</span>
+                      <span className="sub">{c.costText}{c.counted.most !== null ? ` · up to ${c.counted.most}` : ""}</span>
+                    </label>
+                  ) : (
                   <label key={c.pick} className={"choice" + (c.blocked && !isOn(g.where, c.pick) ? " unavailable" : "")}>
                     <input
                       type={g.oneOf ? "radio" : "checkbox"}
@@ -144,7 +156,8 @@ export function RosterUnitScreen({ data, nav, rosterKey, unitId }: { data: AppDa
                     <span>{c.label}</span>
                     <span className="sub">{c.costText}</span>
                   </label>
-                ))}
+                  ),
+                )}
                 {g.allowance && <AllowanceBlock group={g} />}
                 {g.full && <span className="full-note">{g.full}</span>}
               </div>

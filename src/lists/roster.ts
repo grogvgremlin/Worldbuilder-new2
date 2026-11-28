@@ -26,7 +26,8 @@ export type Issue = { severity: "illegal" | "warning"; message: string; units: s
 
 // A choice the unit offers: an option in a group, or a command slot.
 // `blocked`: greyed out, and why (the limit mode "grey").
-export type Choice = { pick: string; label: string; costText: string; cost?: Cost; blocked?: string };
+// `counted`: a command slot taken by a number of models rather than once (its most: null = any).
+export type Choice = { pick: string; label: string; costText: string; cost?: Cost; blocked?: string; counted?: { most: number | null } };
 // `full`: the group's limit is reached by other units, so its choices aren't offered here (the reason).
 // An allowance: points to spend on items of some types ("Magic Items: up to 50 pts").
 export type Allowance = { name: string; budget: number | null; most: number | null; text: string };
@@ -133,7 +134,14 @@ function viewUnit(ru: RosterUnit, reach: Item[], patches: Patch[], categoryOf: M
       continue;
     }
     const cost = choice.cost;
+    if (choice.counted) view.issues.push(...countIssues(ru, choice));
     if (!cost || cost.points === 0) continue;
+    if (choice.counted) {
+      const n = slotCount(ru, choice.label);
+      view.points += cost.points * n;
+      view.breakdown.push(`${choice.label}: ${n} × ${cost.points} = ${cost.points * n}`);
+      continue;
+    }
     const n = cost.per === "model" ? ru.size : 1;
     view.points += cost.points * n;
     view.breakdown.push(cost.per === "model" ? `${choice.label}: ${ru.size} × ${cost.points} = ${cost.points * n}` : `${choice.label} +${cost.points}`);
@@ -141,6 +149,21 @@ function viewUnit(ru: RosterUnit, reach: Item[], patches: Patch[], categoryOf: M
   costItems(view, reach);
   view.issues.push(...unitIssues(ru, taken, view.choices));
   return view;
+}
+
+// How many models take a command slot (1 unless counted).
+export function slotCount(ru: RosterUnit, name: string): number {
+  return ru.slotCounts?.[name] ?? 1;
+}
+
+// A counted slot can't have more models than the unit, or than its most.
+function countIssues(ru: RosterUnit, choice: Choice): Issue[] {
+  const n = slotCount(ru, choice.label);
+  const most = choice.counted?.most ?? null;
+  const out: Issue[] = [];
+  if (n > ru.size) out.push({ severity: "illegal", message: `${n} ${choice.label}s in a unit of ${ru.size}`, units: [ru.id] });
+  if (most !== null && n > most) out.push({ severity: "illegal", message: `${n} ${choice.label}s, at most ${most}`, units: [ru.id] });
+  return out;
 }
 
 // The magic items picked: each costed, and each allowance kept to its budget and number of items.
@@ -206,7 +229,9 @@ function choicesFor(taken: UnitAsTaken, slotKinds: Map<string, string>, heading:
     const row = slot.fromUnitRows ? taken.slotRows.find((r) => r.slotCode === slot.code) : undefined;
     const name = row?.name ?? slotKinds.get(slot.code) ?? slot.code;
     const cost = row?.cost ?? slot.cost;
-    command.push({ pick: `command|${name}`, label: name, costText: costText(cost), cost });
+    const range = slot.count ?? row?.size; // "GS(0-;upgrade;+7)", or the row's Min/Max
+    const counted = range && range.max !== 1 ? { most: range.max } : undefined;
+    command.push({ pick: `command|${name}`, label: name, costText: costText(cost) + (counted ? " each" : ""), cost, counted });
   }
   if (command.length) groups.push({ where: "command", title: heading("Slots"), required: false, oneOf: false, choices: command });
   taken.options.forEach((g, i) => groups.push(groupChoices(g, "options", i === 0 ? heading("Equipment Options") : "")));
@@ -538,6 +563,21 @@ export function toggleChoice(roster: Roster, id: string, group: ChoiceGroup, cho
     picks.push(choice.pick);
   }
   return updateUnit(roster, id, { picks });
+}
+
+// Sets how many models take a counted command slot: 0 takes it off (with its items).
+export function setSlotCount(roster: Roster, id: string, name: string, n: number): Roster {
+  const ru = roster.units.find((u) => u.id === id);
+  if (!ru) return roster;
+  const counts = { ...(ru.slotCounts ?? {}) };
+  delete counts[name];
+  if (n <= 0) {
+    const picks = ru.picks.filter((p) => !p.startsWith(`item:slot:${name}|`));
+    return updateUnit(roster, id, { slots: ru.slots.filter((s) => s !== name), picks, slotCounts: Object.keys(counts).length ? counts : undefined });
+  }
+  if (n > 1) counts[name] = n;
+  const slots = ru.slots.includes(name) ? ru.slots : [...ru.slots, name];
+  return updateUnit(roster, id, { slots, slotCounts: Object.keys(counts).length ? counts : undefined });
 }
 
 // --- Picking magic items --------------------------------------------------------------------------

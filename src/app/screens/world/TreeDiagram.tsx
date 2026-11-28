@@ -6,7 +6,7 @@
 //   - Move inside: the same, and dropped on another box they move inside it (on the world's box: to
 //     the top). Dropped on empty space they stay where dropped, as in Arrange (owner, 27 Nov: "move
 //     inside should just allow holding but not stop arrangement").
-//   - Join: the same, but dropped on another box it joins them instead (owner, 27 Nov: "a third mode
+//   - Connect: the same, but dropped on another box it connects them instead (owner, 27 Nov: "a third mode
 //     … same as move, but just creates a link"): the Join choices open, the dragged box first; the
 //     boxes go back where they were. Dropped on empty space they stay where dropped.
 // A container's round button folds its branch away (and shows how many are hidden).
@@ -371,7 +371,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
         <nav className="segments small">
           <button className={mode === "arrange" ? "on" : ""} onClick={() => setMode("arrange")}>Arrange</button>
           {!network && <button className={mode === "inside" ? "on" : ""} onClick={() => setMode("inside")}>Move inside</button>}
-          <button className={mode === "join" ? "on" : ""} onClick={() => setMode("join")}>Join</button>
+          <button className={mode === "join" ? "on" : ""} onClick={() => setMode("join")}>Connect</button>
         </nav>
         {!network && <label className="choice"><input type="checkbox" checked={withBranch} onChange={() => setWithBranch(!withBranch)} /> Branch follows</label>}
         <TreePicker data={data} world={world} tree={tree} onChoose={setTree} withNetworks />
@@ -389,7 +389,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
         </span>
       </div>
       {tree && <HiddenNote data={data} nav={nav} world={world} tree={tree} />}
-      {network && boxes.length === 0 && <p className="hint">Nothing in this network yet: join two items with it (Join, or select two and Join…), or show its loose items (its link kind's page).</p>}
+      {network && boxes.length === 0 && <p className="hint">Nothing in this network yet: connect two items with it (Connect, or select two and Connect…), or show its loose items (its link kind's page).</p>}
       {/* What's selected, in a bar of its own that keeps its height (owner, 26 Nov: the Group button
           was cut off in the hint line until something else changed). */}
       <div className="selection-bar diagram-selection">
@@ -399,7 +399,7 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
           <>
             <div className="title">{selected.length} selected <span className="sub">· drag one to move them all</span></div>
             <div className="selection-buttons">
-              {selected.length === 2 && <button className="primary" onClick={() => setJoining([selected[0], selected[1]])}>Join…</button>}
+              {selected.length === 2 && <button className="primary" onClick={() => setJoining([selected[0], selected[1]])}>Connect…</button>}
               {selected.length > 1 && <button className={selected.length === 2 ? "" : "primary"} onClick={() => setGrouping(true)}>Group / move into…</button>}
               {tree && looseSelected.length > 0 && (
                 <button onClick={async () => {
@@ -414,8 +414,8 @@ export function TreeDiagram({ data, nav, world, save }: Part) {
           </>
         ) : (
           <span className="sub">
-            Tap: select (two to join) · a line: its link · double-tap: open, or a new item ·{" "}
-            {mode === "arrange" ? (network ? "drag to arrange" : withBranch ? "branches follow" : "boxes move on their own") : mode === "inside" ? "drop on a box: inside" : "drop on a box: join"}
+            Tap: select (two to connect) · a line: its link · double-tap: open, or a new item ·{" "}
+            {mode === "arrange" ? (network ? "drag to arrange" : withBranch ? "branches follow" : "boxes move on their own") : mode === "inside" ? "drop on a box: inside" : "drop on a box: connect"}
           </span>
         )}
       </div>

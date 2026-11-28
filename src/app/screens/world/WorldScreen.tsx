@@ -208,7 +208,7 @@ function LinksList({ data, nav, world, save, only }: { data: AppData; nav: Nav; 
   const kinds = linkKindsInOrder(data.items, world).filter((k) => k.hierarchy === "none" && (!only || k.key === only));
   const links = plainLinks(data.items, world);
   if (kinds.length === 0) return <p className="sub">No connection link kinds yet: add one under Kinds (Makes: connections).</p>;
-  if (links.length === 0) return <p className="sub">No links yet. Select two items on a map or the Diagram and Join, or use Join to… on an item's card.</p>;
+  if (links.length === 0) return <p className="sub">No links yet. Select two items on a map or the Diagram and Connect, or use Connect to… on an item's card.</p>;
   return (
     <>
       <p className="sub">{folds.controls}</p>
@@ -306,7 +306,7 @@ function ByKind({ data, world, things, row }: { data: AppData; world: string; th
   const folds = useFoldAll();
   const sections = [
     ...kindTree(data.items, world).map(({ kind, depth }) => ({ id: kind.key, title: `${"↳ ".repeat(depth ? 1 : 0)}${kind.icon ?? ""} ${kind.name}`, depth, list: things.filter((t) => t.kinds.includes(kind.key)) })),
-    { id: "none", title: "No kind", depth: 0, list: things.filter((t) => t.kinds.length === 0) },
+    { id: "none", title: "⚠ No kind: give each one a kind", depth: 0, list: things.filter((t) => t.kinds.length === 0) },
   ].filter((sec) => sec.list.length > 0);
   return (
     <>
@@ -402,7 +402,7 @@ function NewGroup({ data, world, save, onMade }: { data: AppData; world: string;
     if (!name.trim()) return;
     const key = newKey(data.items, world, "thing", name);
     const kind = groupKindFor(data.items, world, linkKind.key); // one the group's link kind takes (owner, 26 Nov)
-    let items: Item[] = [...data.items, { key, kind: "thing", world, name: name.trim(), kinds: kind ? [kind] : kinds.length === 1 ? [kinds[0].key] : [], fields: [] }];
+    let items: Item[] = [...data.items, { key, kind: "thing", world, name: name.trim(), kinds: kind ? [kind] : kinds[0] ? [kinds[0].key] : [], fields: [] }]; // every item has a kind
     for (const member of picked) items = addToGroup(items, world, member, linkKind.key, key, scopes.get(member)).items;
     await save(items);
     setName("");
@@ -486,14 +486,15 @@ export function NewPlace({ data, world, save, onMade, inside, insideTree, autoFo
   const [name, setName] = useState("");
   // With one kind (the starter's generic Place), every new item has it; with several, the kind most
   // of its new siblings have.
-  const [kind, setKind] = useState(kinds.length === 1 ? kinds[0].key : inside ? usualKindInside(data.items, world, inside) : "");
+  // Every item has a kind (owner, 28 Nov): the usual one inside its container, else the first.
+  const [kind, setKind] = useState((inside ? usualKindInside(data.items, world, inside) : "") || kinds[0]?.key || "");
   const [parent, setParentKey] = useState(inside ?? "");
   const tree = firstTree(data.items, world) ?? "";
   const places = thingsIn(data.items, world).filter((t) => !refusal(data.items, world, tree, "to", t.key)).sort((a, b) => a.name.localeCompare(b.name));
   const make = async () => {
-    if (!name.trim()) return;
+    if (!name.trim() || !kind) return;
     const key = newKey(data.items, world, "thing", name);
-    const thing: Thing = { key, kind: "thing", world, name: name.trim(), kinds: kind ? [kind] : [], fields: [] };
+    const thing: Thing = { key, kind: "thing", world, name: name.trim(), kinds: [kind], fields: [] };
     let items: Item[] = [...data.items, thing];
     if (parent) items = setParent(items, world, key, parent, inside ? insideTree : undefined).items; // "inside" a container in its tree
     await save(items);
@@ -503,13 +504,13 @@ export function NewPlace({ data, world, save, onMade, inside, insideTree, autoFo
   return (
     <div className="form">
       <h2>{inside ? "Add an item inside" : "New item"}</h2>
+      {kinds.length === 0 && <p className="sub warn">Every item has a kind: add a kind of item first (Kinds → Items).</p>}
       <input className="filter" placeholder="Name" autoFocus={autoFocus} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && make()} />
       <div className="row-fields">
         {kinds.length > 1 && (
         <label className="stack">
           <span className="sub">Kind</span>
           <select value={kind} onChange={(e) => setKind(e.target.value)}>
-            <option value="">(none)</option>
             {kinds.map((k) => <option key={k.key} value={k.key}>{k.icon} {k.name}</option>)}
           </select>
         </label>
@@ -525,7 +526,7 @@ export function NewPlace({ data, world, save, onMade, inside, insideTree, autoFo
         )}
       </div>
       <div className="buttons">
-        <button className="primary" disabled={!name.trim()} onClick={make}>Add</button>
+        <button className="primary" disabled={!name.trim() || !kind} onClick={make}>Add</button>
       </div>
     </div>
   );
@@ -604,6 +605,8 @@ function Kinds({ data, nav, world, save }: Part) {
   const linkKinds = inOrder(data.items, world, linkKindsIn(data.items, world)); // the owner's display order
   const of = (h: LinkKind["hierarchy"]) => linkKinds.filter((k) => k.hierarchy === h);
   const removeKind = async (key: string, name: string) => {
+    const only = thingsIn(data.items, world).filter((t) => t.kinds.length === 1 && t.kinds[0] === key).length;
+    if (only) return alert(`${only} item${only === 1 ? " has" : "s have"} no other kind than ${name}: every item needs a kind, so give ${only === 1 ? "it" : "them"} another first.`);
     const count = thingsIn(data.items, world).filter((t) => t.kinds.includes(key)).length;
     if (!confirm(`Remove the kind ${name}?${count ? ` ${count} item${count === 1 ? "" : "s"} lose it; their fields stay as their own.` : ""}`)) return;
     await save(removeThingKind(data.items, key));
@@ -639,7 +642,7 @@ function Kinds({ data, nav, world, save }: Part) {
       <div className="buttons"><button className="primary" onClick={() => add("item")}>+ New kind of item</button></div>
 
       <h2>Connections</h2>
-      <p className="sub">Join two items (a road, an alliance, a feud), one way or both: drawn as lines on maps and the Diagram, with fields; each can be shown as a network on the Diagram.</p>
+      <p className="sub">Connect two items (a road, an alliance, a feud), one way or both: drawn as lines on maps and the Diagram, with fields; each can be shown as a network on the Diagram.</p>
       <LinkKindList data={data} nav={nav} world={world} save={save} kinds={of("none")} onRemove={removeLink} />
       <div className="buttons"><button className="primary" onClick={() => add("none")}>+ New connection</button></div>
 

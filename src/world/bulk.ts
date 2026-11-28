@@ -30,7 +30,7 @@ export function groupSelected(items: Item[], world: string, selected: string[], 
 export function newGroupOf(items: Item[], world: string, selected: string[], name: string, kind?: string, scopes: Map<string, Brings> = new Map()): BulkResult & { group?: string } {
   if (!name.trim()) return { items, done: 0, problems: ["a group needs a name"] };
   const key = newKey(items, world, "thing", name);
-  const chosen = kind ?? groupKindFor(items, world);
+  const chosen = kind ?? groupKindFor(items, world) ?? thingKindsIn(items, world)[0]?.key; // every item has a kind
   const group: Thing = { key, kind: "thing", world, name: name.trim(), kinds: chosen ? [chosen] : [], fields: [] };
   return { ...groupSelected([...items, group], world, selected, key, undefined, scopes), group: key };
 }

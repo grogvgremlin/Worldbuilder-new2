@@ -176,7 +176,8 @@ function AsAThing({ data, nav, link, things, save }: { data: AppData; nav: Nav; 
   const [name, setName] = useState("");
   // A new one starts as the first kind a link container kind holding this link takes (its settings).
   const holders = holderKindsFor(data.items, world, link.linkKind);
-  const [kind, setKind] = useState(holders[0] ?? "");
+  const [kind, setKind] = useState(holders[0] ?? kinds[0]?.key ?? "");
+  const [asKind, setAsKind] = useState(kinds[0]?.key ?? ""); // the kind of item this link becomes
   const stood = things.find((t) => t.key === link.asThing);
   const inside = (link.partOf ?? []).map((k) => things.find((t) => t.key === k)).filter((t): t is Thing => !!t);
   const fit = (key: string) => canBePartOf(data.items, world, link.key, key);
@@ -187,7 +188,7 @@ function AsAThing({ data, nav, link, things, save }: { data: AppData; nav: Nav; 
     await save(result.items);
   };
   const makeWhole = async () => {
-    if (!name.trim()) return;
+    if (!name.trim() || !kind) return; // every item has a kind (owner, 28 Nov)
     const key = newKey(data.items, world, "thing", name);
     const thing: Thing = { key, kind: "thing", world, name: name.trim(), kinds: kind ? [kind] : [], fields: [] };
     await add([...data.items, thing], key);
@@ -223,7 +224,6 @@ function AsAThing({ data, nav, link, things, save }: { data: AppData; nav: Nav; 
           <div className="inline-add">
             <input className="filter" placeholder="Or a new one (e.g. The Great North Road)" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && makeWhole()} />
             <select value={kind} onChange={(e) => setKind(e.target.value)}>
-              {holders.length === 0 && <option value="">no kind</option>}
               {(holders.length ? kinds.filter((k) => holders.includes(k.key)) : kinds).map((k) => <option key={k.key} value={k.key}>{k.name}</option>)}
             </select>
             <button onClick={makeWhole}>Make</button>
@@ -241,13 +241,18 @@ function AsAThing({ data, nav, link, things, save }: { data: AppData; nav: Nav; 
         </p>
       ) : (
         <>
-          <p className="sub">When this link needs a name, an entry or links of its own (a bridge, a treaty, a stretch ruled by someone), make it a world item.</p>
-          <button onClick={async () => {
-            const result = makeLinkAThing(data.items, world, link.key);
-            if (result.problem) return alert(result.problem);
-            await save(result.items);
-            nav.open({ name: "place", key: result.thing! });
-          }}>Make this link a world item</button>
+          <p className="sub">When this link needs a name, an entry or links of its own (a bridge, a treaty, a stretch ruled by someone), make it a world item, of a kind.</p>
+          <div className="inline-add">
+            <select value={asKind} onChange={(e) => setAsKind(e.target.value)}>
+              {kinds.map((k) => <option key={k.key} value={k.key}>{k.name}</option>)}
+            </select>
+            <button disabled={!asKind} onClick={async () => {
+              const result = makeLinkAThing(data.items, world, link.key, [asKind]);
+              if (result.problem) return alert(result.problem);
+              await save(result.items);
+              nav.open({ name: "place", key: result.thing! });
+            }}>Make this link a world item</button>
+          </div>
         </>
       )}
     </>
@@ -264,7 +269,7 @@ function SplitAt({ data, nav, link, things, save }: { data: AppData; nav: Nav; l
   const ends = [link.from, link.to];
   const endKinds = things.find((t) => t.key === link.from)?.kinds ?? [];
   const [name, setName] = useState("");
-  const [kind, setKind] = useState(endKinds[0] ?? "");
+  const [kind, setKind] = useState(endKinds[0] ?? kinds[0]?.key ?? "");
   const [done, setDone] = useState<string | null>(null); // the second half, once split
   const strict = isStrict(data.items, link.linkKind);
   const fits = (key: string) => !misfit(data.items, world, link.linkKind, "from", key) && !misfit(data.items, world, link.linkKind, "to", key);
@@ -275,7 +280,7 @@ function SplitAt({ data, nav, link, things, save }: { data: AppData; nav: Nav; l
     setDone(result.second!);
   };
   const splitNew = async () => {
-    if (!name.trim()) return;
+    if (!name.trim() || !kind) return; // every item has a kind (owner, 28 Nov)
     const key = newKey(data.items, world, "thing", name);
     const thing: Thing = { key, kind: "thing", world, name: name.trim(), kinds: kind ? [kind] : [], fields: [] };
     await split([...data.items, thing], key);
@@ -300,7 +305,6 @@ function SplitAt({ data, nav, link, things, save }: { data: AppData; nav: Nav; l
       <div className="inline-add">
         <input className="filter" placeholder="Or a new item (e.g. The Red Moon inn)" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && splitNew()} />
         <select value={kind} onChange={(e) => setKind(e.target.value)}>
-          <option value="">no kind</option>
           {kinds.map((k) => <option key={k.key} value={k.key}>{k.name}</option>)}
         </select>
         <button onClick={splitNew}>Split</button>

@@ -20,7 +20,7 @@ import { recalled, rememberAll, useRemembered } from "./remembered";
 import { fitsTree, isStrict, kindLine, kindTree, refusal } from "../../../world/kinds";
 import { addPartOf, alongLinks, canBePartOf, linkStoodFor, linkTitle, partOfMisfit, plainLinks, removePartOf } from "../../../world/links";
 import { fieldSummary, join, linksFrom, offersFor, removeLink, type Offer } from "../../../world/links";
-import { JoinChoices } from "./JoinPopup";
+import { JoinChoices, NewConnection } from "./JoinPopup";
 
 export function PlaceScreen({ data, nav, thingKey }: { data: AppData; nav: Nav; thingKey: string }) {
   const [editing, setEditing] = useState(false);
@@ -174,14 +174,20 @@ function Breadcrumb({ nav, path, label }: { nav: Nav; path: Thing[]; label?: str
 // Kinds as chips; editing, every kind of the world to switch on or off, flavours after their kind.
 function Kinds({ data, thing, editing, change }: { data: AppData; thing: Thing; editing: boolean; change: (p: Partial<Thing>) => void }) {
   const kinds = kindTree(data.items, thing.world).map((k) => k.kind);
-  if (kinds.length <= 1) return null; // one generic kind: nothing to show or choose
-  const shown = editing ? kinds : kinds.filter((k) => thing.kinds.includes(k.key));
-  if (shown.length === 0) return null;
-  const toggle = (key: string) => change({ kinds: thing.kinds.includes(key) ? thing.kinds.filter((k) => k !== key) : [...thing.kinds, key] });
+  // Every item has a kind (owner, 28 Nov): one without is flagged, and its last kind can't be taken off.
+  const none = thing.kinds.length === 0;
+  if (kinds.length <= 1 && !none) return null; // one generic kind, and it has it: nothing to show or choose
+  const shown = editing || none ? kinds : kinds.filter((k) => thing.kinds.includes(k.key));
+  if (shown.length === 0) return <p className="sub warn">⚠ No kind: add a kind of item (Kinds → Items), then give it one.</p>;
+  const toggle = (key: string) => {
+    if (thing.kinds.length === 1 && thing.kinds[0] === key) return alert("Every item has a kind: choose another before taking this one off.");
+    change({ kinds: thing.kinds.includes(key) ? thing.kinds.filter((k) => k !== key) : [...thing.kinds, key] });
+  };
   return (
-    <div className={editing ? "chips" : "chips static"}>
+    <div className={editing || none ? "chips" : "chips static"}>
+      {none && <span className="sub warn">⚠ No kind: choose one</span>}
       {shown.map((k) =>
-        editing ? (
+        editing || none ? (
           <button key={k.key} className={thing.kinds.includes(k.key) ? "on" : ""} onClick={() => toggle(k.key)}>{k.icon} {k.name}</button>
         ) : (
           <span key={k.key} className="chip">{k.icon} {k.name}</span>
@@ -671,10 +677,11 @@ function Connections({ data, nav, thing, editing, save }: { data: AppData; nav: 
       {editing && (
         <>
           <select className="tree-select" value={other} onChange={(e) => setOther(e.target.value)}>
-            <option value="">Join to…</option>
+            <option value="">Connect to…</option>
             {others.map((t) => <option key={t.key} value={t.key}>{t.name}</option>)}
           </select>
-          {other && <JoinChoices data={data} offers={offersFor(data.items, world, thing.key, other)} from={thing.name} to={names.get(other) ?? other} onPick={pick} />}
+          {other && <JoinChoices data={data} offers={offersFor(data.items, world, thing.key, other, true)} from={thing.name} to={names.get(other) ?? other} onPick={pick} />}
+          {other && <NewConnection data={data} world={world} from={thing.key} to={other} onMade={async (items) => (await save(items), setOther(""))} />}
         </>
       )}
       <ul className="list">

@@ -1,9 +1,9 @@
 // World: places, containment and pins (design/world-structure.md §3–5).
 import { describe, expect, it } from "vitest";
-import type { Item, Thing, WorldMap } from "../src/items/items";
+import type { LinkKind, Item, Thing, WorldMap } from "../src/items/items";
 import { Item as ItemSchema } from "../src/items/items";
 import { linksIn, mapsIn, newKey, newWorld, removeThing, removeThingKind, thingsIn, worldOf } from "../src/world/world";
-import { childrenOf, firstTree, hiddenIn, hideHere, isContainer, looseIn, looseItems, parentOf, pathOf, setParent, topPlaces, treeKinds, treeWarnings } from "../src/world/places";
+import { bringIntoScope, childrenOf, firstTree, isContainer, isInScope, looseItems, outOfScope, removeFromScope, upgradeScopes, parentOf, pathOf, setParent, topPlaces, treeKinds, treeWarnings } from "../src/world/places";
 import { areasOn, convexHull, notOnMap, placePin, removePin, sheetOf } from "../src/world/maps";
 
 const sample = () => newWorld([], "Averland borders", "sample");
@@ -179,34 +179,48 @@ describe("loose items (owner, 26 Nov)", () => {
   });
 });
 
-describe("loose items in a tree, shown or hidden (owner, 26 Nov)", () => {
+describe("a tree's scope (owner, 28 Nov: loose is now out of scope)", () => {
   const W = "averland-borders";
-  it("hidden all, or chosen ones; an item holding something is never hidden", () => {
+  function withDrifter() {
     const items = sample();
     const place = items.find((i) => i.kind === "thing-kind")!.key;
     const drifter: Item = { key: `${W}.thing.drifter`, kind: "thing", world: W, name: "Drifter", kinds: [place], fields: [] };
-    const withDrifter = [...items, drifter];
-    const tree = treeKinds(withDrifter, W)[0].key;
-    expect(firstTree(withDrifter, W)).toBe(tree);
-    expect(looseIn(withDrifter, W).map((t) => t.name)).toContain("Drifter");
-    const hidden = hideHere(withDrifter, tree, drifter.key, true);
-    expect(topPlaces(hidden, W).map((t) => t.name)).not.toContain("Drifter");
-    expect(topPlaces(hideHere(hidden, tree, drifter.key, false), W).map((t) => t.name)).toContain("Drifter");
-    const all = withDrifter.map((i) => (i.key === tree ? { ...i, loose: "hide" as const } : i));
-    expect(topPlaces(all, W).map((t) => t.name)).toEqual(["The Empire"]); // the empire holds things: still shown
+    return { items: [...items, drifter], drifter: drifter.key, tree: treeKinds(items, W)[0].key };
+  }
+
+  it("an item the tree would take, in it by no link and not brought in, is out of scope", () => {
+    const { items, drifter, tree } = withDrifter();
+    expect(outOfScope(items, W, tree).map((t) => t.key)).toContain(drifter);
+    expect(topPlaces(items, W).map((t) => t.key)).not.toContain(drifter);
+  });
+
+  it("brought into scope, it sits at the top though it holds nothing; removed, it's out again", () => {
+    const { items, drifter, tree } = withDrifter();
+    const brought = bringIntoScope(items, tree, drifter);
+    expect(topPlaces(brought, W).map((t) => t.key)).toContain(drifter);
+    expect(isInScope(removeFromScope(brought, W, drifter, tree), W, drifter, tree)).toBe(false);
+  });
+
+  it("taken out of its container it stays in scope at the top; removed from scope, what it held moves up", () => {
+    const { items, drifter, tree } = withDrifter();
+    const inside = setParent(items, W, drifter, key(items, "Averland"), tree).items;
+    expect(isInScope(inside, W, drifter, tree)).toBe(true);
+    const top = setParent(inside, W, drifter, null, tree).items;
+    expect(topPlaces(top, W).map((t) => t.key)).toContain(drifter);
+    const averland = key(items, "Averland");
+    const out = removeFromScope(items, W, averland, tree);
+    expect(isInScope(out, W, averland, tree)).toBe(false);
+    expect(topPlaces(out, W).map((t) => t.name)).toEqual(expect.arrayContaining(["Averheim", "The Empire"]));
+  });
+
+  it("earlier data: what a tree showed loose comes in at the top; what it hid stays out", () => {
+    const { items, drifter, tree } = withDrifter();
+    const other: Item = { ...(items.find((i) => i.key === drifter) as Item), key: `${W}.thing.other`, name: "Other" } as Item;
+    const old = [...items, other].map((i) => (i.key === tree ? { ...(i as LinkKind), inScope: undefined, hiddenHere: [other.key] } : i));
+    const up = upgradeScopes(old);
+    expect((up.find((i) => i.key === tree) as LinkKind).inScope).toContain(drifter);
+    expect((up.find((i) => i.key === tree) as LinkKind).inScope).not.toContain(other.key);
+    expect((up.find((i) => i.key === tree) as LinkKind).hiddenHere).toBeUndefined();
   });
 });
 
-describe("why an item is hidden from a tree (owner, 26 Nov)", () => {
-  it("by hand, or because the tree hides loose items; never once it's linked there", () => {
-    const W = "averland-borders";
-    const items = sample();
-    const place = items.find((i) => i.kind === "thing-kind")!.key;
-    const drifter: Item = { key: `${W}.thing.drifter`, kind: "thing", world: W, name: "Drifter", kinds: [place], fields: [] };
-    const tree = treeKinds(items, W)[0].key;
-    let all = hideHere([...items, drifter], tree, drifter.key, true);
-    expect(hiddenIn(all, W, tree, drifter.key)).toBe("by hand");
-    all = setParent(all, W, drifter.key, key(all, "Averland")).items;
-    expect(hiddenIn(all, W, tree, drifter.key)).toBeNull();
-  });
-});

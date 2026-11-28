@@ -11,7 +11,7 @@
 import type { Item, Link, LinkKind, Thing, WorldMap } from "../items/items";
 import { inOrder, isStrict, itemFits, misfit } from "./kinds";
 import { addToGroup } from "./groups";
-import { descendantsOf, hiddenByHand, hideHere, parentOf, setParent } from "./places";
+import { descendantsOf, parentOf, setParent } from "./places";
 import { linkKindsIn, linksIn, newKey, newLink } from "./world";
 
 // One link kind offered for joining A to B.
@@ -57,7 +57,6 @@ function blockedBy(items: Item[], world: string, kind: LinkKind, from: string, t
   if (kind.hierarchy === "one parent") {
     if (parentOf(items, world, from, kind.key) === to) return `${nameOf(items, from)} is in ${nameOf(items, to)} already`;
     if (descendantsOf(items, world, from, kind.key).some((d) => d.key === to)) return `${nameOf(items, to)} is inside ${nameOf(items, from)} already`;
-    if (hiddenByHand(items, kind.key, to)) return `${nameOf(items, to)} is hidden from this tree`;
   }
   if (kind.hierarchy === "several parents") {
     if (linksIn(items, world).some((l) => l.linkKind === kind.key && l.from === from && l.to === to)) return `${nameOf(items, from)} is in that group already`;
@@ -90,11 +89,9 @@ export function join(items: Item[], world: string, from: string, linkKind: strin
   return { items: result.items, link: made?.key };
 }
 
-// A plain link; both ends are then in its network by choice, so no longer hidden from it (as an item
-// put inside something is no longer hidden from its tree).
+// A plain link: both ends are then in its network's scope.
 function addPlain(items: Item[], world: string, from: string, linkKind: string, to: string): { items: Item[]; problem?: string } {
-  const shown = hideHere(hideHere(items, linkKind, from, false), linkKind, to, false);
-  return { items: [...shown, newLink(items, world, from, linkKind, to)] };
+  return { items: [...items, newLink(items, world, from, linkKind, to)] };
 }
 
 // --- One link --------------------------------------------------------------------------------------
@@ -475,7 +472,7 @@ export function splitLink(items: Item[], world: string, key: string, at: string)
     else if (i.kind === "map") out.push(pinHalfway(i, link.from, link.to, at));
     else out.push(i);
   }
-  return { items: hideHere(out, link.linkKind, at, false), second: second.key };
+  return { items: out, second: second.key };
 }
 
 function pinHalfway(map: WorldMap, a: string, b: string, at: string): WorldMap {

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { Item, LinkKind, ThingKind } from "../src/items/items";
 import { newWorld, thingKindsIn, worldOf } from "../src/world/world";
 import { cloneLinkKind, fieldsOffered, fitsExpected, fitsTree, flavoursOf, hasKind, inOrder, kindLine, kindTree, linkMisfits, misfit, moveInOrder, removeLinkKind, setFlavourOf } from "../src/world/kinds";
-import { setParent, topPlaces } from "../src/world/places";
+import { outOfScope, setParent, topPlaces } from "../src/world/places";
 import { addToGroup } from "../src/world/groups";
 
 const W = "mine";
@@ -80,7 +80,9 @@ describe("what a tree or group takes (owner, 26 Nov: places can't hold people)",
   it("a tree leaves out what doesn't belong in it", () => {
     const { items, tree } = setUp();
     expect(fitsTree(items, W, tree, `${W}.thing.bob`)).toBe(false);
-    expect(topPlaces(items, W).map((t) => t.name)).toEqual(["Hills", "Town"]);
+    // Added after the world was made: out of scope until brought in (owner, 28 Nov); Bob isn't even that.
+    expect(outOfScope(items, W, tree).map((t) => t.name)).toEqual(["Hills", "Town"]);
+    expect(topPlaces(items, W)).toEqual([]);
   });
 
   it("groups follow their link kind's Expects too", () => {

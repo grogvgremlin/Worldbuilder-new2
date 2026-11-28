@@ -9,8 +9,7 @@
 // view on the same structure).
 
 import type { Item, LinkKind, Thing } from "../items/items";
-import { inOrder } from "./kinds";
-import { looseIn } from "./places";
+import { inOrder, misfit } from "./kinds";
 import { linkKindsIn, linksIn, thingsIn } from "./world";
 
 // Connection link kinds, in the world's order: each can be shown as a network.
@@ -34,13 +33,22 @@ export function neighbours(items: Item[], world: string, kind: string): Map<stri
   return out;
 }
 
-// What the network shows: its joined items, then its loose ones unless hidden (all, or by hand).
-export function networkItems(items: Item[], world: string, kind: string): { joined: Thing[]; loose: Thing[] } {
+// What the network shows (owner, 28 Nov): its joined items (in scope: they have a connector of this
+// type), then the items brought into its workspace to be joined (in scope for now, not stored).
+export function networkItems(items: Item[], world: string, kind: string, workspace: string[] = []): { joined: Thing[]; loose: Thing[] } {
   const near = neighbours(items, world, kind);
-  const rule = linkKindsIn(items, world).find((k) => k.key === kind);
   const joined = thingsIn(items, world).filter((t) => near.has(t.key));
-  const loose = rule?.loose === "hide" ? [] : looseIn(items, world, kind).filter((t) => !(rule?.hiddenHere ?? []).includes(t.key));
+  const loose = thingsIn(items, world).filter((t) => workspace.includes(t.key) && !near.has(t.key));
   return { joined, loose };
+}
+
+// What a network type would join but has no connector of it (and isn't in the workspace): out of scope.
+export function networkOutOfScope(items: Item[], world: string, kind: string, workspace: string[] = []): Thing[] {
+  const near = neighbours(items, world, kind);
+  return thingsIn(items, world)
+    .filter((t) => !near.has(t.key) && !workspace.includes(t.key))
+    .filter((t) => misfit(items, world, kind, "from", t.key) === null || misfit(items, world, kind, "to", t.key) === null)
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // Each separate part of the network (items reachable from one another), its items in layers: the

@@ -5,6 +5,7 @@
 import YAML from "yaml";
 import { Item } from "../items/items";
 import { upgradeItem, upgradeItems } from "../items/race-dimensions";
+import { upgradeScopes } from "../world/places";
 
 export function writeFullYaml(items: Item[]): string {
   return YAML.stringify({ items }, { lineWidth: 0 });
@@ -20,5 +21,5 @@ export function readFullYaml(text: string): { items: Item[]; problems: string[] 
     if (result.success) items.push(result.data);
     else problems.push(`item ${i + 1}: ${result.error.issues.map((x) => `${x.path.join(".")}: ${x.message}`).join("; ")}`);
   });
-  return { items: upgradeItems(items), problems };
+  return { items: upgradeScopes(upgradeItems(items)), problems };
 }

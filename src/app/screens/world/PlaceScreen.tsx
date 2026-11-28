@@ -7,7 +7,7 @@
 import { useState, type ReactNode } from "react";
 import type { Item, Link, Thing, ThingField, ThingName } from "../../../items/items";
 import { linkKindsIn, linksIn, mapsIn, removeThing, thingKindsIn, thingsIn, worldOf } from "../../../world/world";
-import { childrenOf, descendantsOf, firstTree, hiddenByHand, hiddenIn, hideHere, pathOf, setParent, treeKinds } from "../../../world/places";
+import { childrenOf, descendantsOf, firstTree, isInScope, pathOf, removeFromScope, setParent, treeKinds } from "../../../world/places";
 import { iconOf, mapsShowing } from "../../../world/maps";
 import { addToGroup, broughtOptions, effectiveMembers, excludeFromGroup, groupLinkKinds, groupsIn, groupsWithMember, membersOf, removeFromGroup, type Brings } from "../../../world/groups";
 import type { AppData } from "../../app-data";
@@ -353,29 +353,24 @@ function TreeSection({ data, nav, thing, editing, save, display, tree, treeName 
   const path = pathOf(data.items, world, thing.key, tree).slice(0, -1);
   const children = childrenOf(data.items, world, thing.key, tree);
   const fits = fitsTree(data.items, world, tree, thing.key);
-  const hidden = hiddenIn(data.items, world, tree, thing.key);
-  // Hidden from this tree, it holds nothing here (owner, 27 Nov): only loose or a container shows it.
-  const canHold = !refusal(data.items, world, tree, "to", thing.key) && hidden !== "by hand";
+  // Out of this tree's scope (owner, 28 Nov: "loose" is now "out of scope"): in it by no link, and not
+  // brought in at the top. Taking something in brings it into scope.
+  const outside = fits && !isInScope(data.items, world, thing.key, tree);
+  const canHold = !refusal(data.items, world, tree, "to", thing.key);
   const kind = linkKindsIn(data.items, world).find((k) => k.key === tree);
   const holdsWord = kind?.reverseName ? `${kind.reverseName[0].toUpperCase()}${kind.reverseName.slice(1)}` : "Holds";
   const inside = new Set(descendantsOf(data.items, world, thing.key, tree).map((t) => t.key));
-  const containers = thingsIn(data.items, world).filter((t) => t.key !== thing.key && !inside.has(t.key) && !refusal(data.items, world, tree, "to", t.key) && !hiddenByHand(data.items, tree, t.key));
+  const containers = thingsIn(data.items, world).filter((t) => t.key !== thing.key && !inside.has(t.key) && !refusal(data.items, world, tree, "to", t.key));
   const label = (t: Thing) => pathOf(data.items, world, t.key, tree).map((p) => p.name).join(" › ");
   const above = new Set(pathOf(data.items, world, thing.key, tree).map((t) => t.key));
   const movable = thingsIn(data.items, world)
     .filter((t) => !above.has(t.key) && !children.some((c) => c.key === t.key) && !refusal(data.items, world, tree, "from", t.key))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  // Where it is: loose, hidden from this tree, or inside a container (owner, 26 Nov: "just add a
-  // hidden option in the drop down").
+  // Where it is: at the top, out of scope, or inside a container (owner, 26–28 Nov).
   const place = async (to: string) => {
-    let items = data.items;
-    if (to === HIDDEN) {
-      items = setParent(items, world, thing.key, null, tree).items;
-      return save(hideHere(items, tree, thing.key, true));
-    }
-    if (hidden === "by hand") items = hideHere(items, tree, thing.key, false);
-    const result = setParent(items, world, thing.key, to || null, tree);
+    if (to === HIDDEN) return save(removeFromScope(data.items, world, thing.key, tree));
+    const result = setParent(data.items, world, thing.key, to || null, tree);
     if (result.problem) return alert(result.problem);
     await save(result.items);
   };
@@ -384,9 +379,9 @@ function TreeSection({ data, nav, thing, editing, save, display, tree, treeName 
     if (result.problem) return alert(result.problem);
     await save(result.items);
   };
-  const where = hidden ? `hidden from this tree${hidden === "loose hidden" ? " (it hides loose items)" : ""}` : path.length === 0 ? "loose: straight in the world" : null;
-  // Read mode: a tree with nothing to say (loose, holding nothing, not hidden) isn't shown.
-  if (!editing && fits && !hidden && path.length === 0 && children.length === 0) return null;
+  const where = outside ? "out of scope: not in this tree (the Diagram's Out of scope brings it in)" : path.length === 0 ? "at the top of the tree" : null;
+  // Read mode: a tree with nothing to say (at the top, holding nothing) isn't shown.
+  if (!editing && fits && !outside && path.length === 0 && children.length === 0) return null;
 
   return (
     <Fold id={`tree|${tree}`} title={`${treeName}${children.length ? ` · ${holdsWord.toLowerCase()} ${children.length}` : ""}`}>
@@ -398,9 +393,9 @@ function TreeSection({ data, nav, thing, editing, save, display, tree, treeName 
         </p>
       )}
       {editing && fits ? (
-        <select className="tree-select" value={hidden === "by hand" ? HIDDEN : path[path.length - 1]?.key ?? LOOSE} onChange={(e) => place(e.target.value)}>
-          <option value={LOOSE}>(loose: straight in the world)</option>
-          <option value={HIDDEN} disabled={children.length > 0}>(hidden from this tree{children.length > 0 ? `: take out what it ${holdsWord.toLowerCase()} first` : ""})</option>
+        <select className="tree-select" value={outside ? HIDDEN : path[path.length - 1]?.key ?? LOOSE} onChange={(e) => place(e.target.value)}>
+          <option value={LOOSE}>(at the top of the tree)</option>
+          <option value={HIDDEN}>(out of scope{children.length > 0 ? `: what it ${holdsWord.toLowerCase()} moves to the top` : ""})</option>
           {containers.map((t) => ({ t, name: label(t) })).sort((a, b) => a.name.localeCompare(b.name)).map(({ t, name }) => <option key={t.key} value={t.key}>{name}</option>)}
         </select>
       ) : where ? (
@@ -410,8 +405,6 @@ function TreeSection({ data, nav, thing, editing, save, display, tree, treeName 
       ) : (
         <ItemsShown data={data} nav={nav} things={path} display="thumbs" />
       )}
-      {hidden === "by hand" && editing && <p className="sub">Hidden from this tree, it {holdsWord.toLowerCase()} nothing here: choose loose or a container to show it.</p>}
-      {hidden === "loose hidden" && editing && <p className="sub warn">"{treeName}" hides loose items · <button className="link" onClick={() => nav.open({ name: "link-kind", key: tree })}>Show them</button> or put it in a container</p>}
 
       {(children.length > 0 || (editing && canHold)) && <div className="sub field-group">{holdsWord} ({children.length})</div>}
       {editing && canHold && (

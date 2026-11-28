@@ -95,7 +95,7 @@ export function newWorld(items: Item[], name: string, start: WorldStart): Item[]
   const made: Item[] = [world];
   addStarter(made, world, starter as StarterFile);
   if (start === "sample") addSample(made, world, sample as SampleFile, (starter as StarterFile).group);
-  return made;
+  return inScopeAtTheTop(made);
 }
 
 function addStarter(made: Item[], world: Sandbox, file: StarterFile) {
@@ -146,11 +146,18 @@ export function newLink(items: Item[], world: string, from: string, linkKind: st
 
 // --- Removing ------------------------------------------------------------------------------------
 
-// A thing goes with its links and its pins; what it held is left where it was, one level up
-// being a choice the owner makes, not something done for them. Links that were stretches of it, or
-// that it stood for, stay: they're just no longer part of it.
+// A thing goes with its links and its pins; what it held is left at the top of that tree, still in its
+// scope (owner, 28 Nov), one level up being a choice the owner makes. Links that were stretches of it,
+// or that it stood for, stay: they're just no longer part of it.
 export function removeThing(items: Item[], key: string): Item[] {
-  return items
+  const trees = new Set(items.filter((i) => i.kind === "link-kind" && i.hierarchy === "one parent").map((i) => i.key));
+  const held = items.filter((i): i is Link => i.kind === "link" && i.to === key && trees.has(i.linkKind));
+  const kept = items.map((i) => {
+    if (i.kind !== "link-kind" || !trees.has(i.key)) return i;
+    const up = held.filter((l) => l.linkKind === i.key).map((l) => l.from);
+    return up.length ? { ...i, inScope: [...new Set([...(i.inScope ?? []), ...up])].filter((k) => k !== key) } : i;
+  });
+  return kept
     .filter((i) => i.key !== key && !(i.kind === "link" && (i.from === key || i.to === key)))
     .map((i) => (i.kind === "map" ? { ...i, pins: i.pins.filter((p) => p.thing !== key) } : i))
     .map((i) => (i.kind === "link" && (i.partOf?.includes(key) || i.asThing === key) ? withoutThing(i, key) : i));
@@ -174,4 +181,16 @@ export function removeThingKind(items: Item[], key: string): Item[] {
 
 export function removeWorld(items: Item[], world: string): Item[] {
   return items.filter((i) => i.key !== world && !(isWorldItem(i) && (i as { world: string }).world === world));
+}
+
+// A new world's trees start with whatever sits loose at their top in scope, as an existing world's did
+// when scope came in (owner, 28 Nov). (Kept here, not in places.ts, which reads this file.)
+function inScopeAtTheTop(made: Item[]): Item[] {
+  return made.map((i) => {
+    if (i.kind !== "link-kind" || i.hierarchy !== "one parent" || i.inScope !== undefined) return i;
+    const linked = new Set(made.filter((l): l is Link => l.kind === "link" && l.linkKind === i.key).flatMap((l) => [l.from, l.to]));
+    const takes = new Set(i.scope ?? []);
+    const loose = made.filter((t): t is Thing => t.kind === "thing" && t.world === i.world && !linked.has(t.key) && (takes.size === 0 || t.kinds.some((k) => takes.has(k))));
+    return { ...i, inScope: loose.map((t) => t.key) };
+  });
 }

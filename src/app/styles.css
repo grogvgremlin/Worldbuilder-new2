@@ -483,3 +483,11 @@ main:has(.map-screen), main:has(.diagram-wrap) { max-width: none; }
 
 /* Pop-ups in the middle of a wide screen; at the bottom on a phone (owner, 28 Nov). */
 @media (min-width: 700px) { .popup-back { align-items: center; } .popup { border-radius: 14px; max-height: 80vh; } }
+
+/* The Out of scope panel and a carry from it (owner, 28 Nov). */
+.side-column { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.scope-line { display: flex; align-items: center; gap: 4px; } .scope-line .scope-row { flex: 1; }
+.drag-handle { touch-action: none; user-select: none; cursor: grab; padding: 4px 8px; color: var(--muted); font-size: 1.1rem; }
+.side-column .scope-panel { max-height: 45dvh; overflow: auto; }
+.scope-panel .scope-row.on { background: var(--panel); outline: 2px solid var(--link); border-radius: 6px; }
+.carry-ghost { position: fixed; z-index: 60; pointer-events: none; background: var(--ground); border: 2px solid var(--accent); border-radius: 8px; padding: 4px 8px; font-weight: 600; font-size: .9rem; }

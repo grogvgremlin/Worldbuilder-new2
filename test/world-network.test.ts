@@ -7,7 +7,7 @@ import { linkKindsIn, newWorld, thingKindsIn } from "../src/world/world";
 import { isNetwork, networkItems, networkKinds, networkLayers } from "../src/world/network";
 import { arrangedLayout, boxesThatMove, moveBoxes } from "../src/world/diagram";
 import { join } from "../src/world/links";
-import { hiddenIn, hideHere } from "../src/world/places";
+
 
 const W = "mine";
 const key = (name: string) => `${W}.thing.${name}`;
@@ -34,21 +34,14 @@ describe("a network", () => {
     expect(networkLayers(items, W, road).map((part) => part.map((layer) => layer.map((t) => t.name)))).toEqual([[["a"], ["b", "c"], ["d"]]]);
   });
 
-  it("shows its loose items after, unless hidden, all or by hand", () => {
+  it("its scope: joined items; a workspace brings others in for now; the rest it would join are out of scope", async () => {
+    const { networkOutOfScope } = await import("../src/world/network");
     const { items, road } = setUp();
-    expect(networkItems(items, W, road).loose.map((t) => t.name)).toEqual(["lonely"]);
-    const byHand = hideHere(items, road, key("lonely"), true);
-    expect(networkItems(byHand, W, road).loose).toEqual([]);
-    const all = items.map((i) => (i.key === road ? { ...(i as LinkKind), loose: "hide" as const } : i));
-    expect(networkItems(all, W, road).loose).toEqual([]);
-    expect(arrangedLayout(byHand, W, road, "across").map((b) => b.thing?.name).sort()).toEqual(["a", "b", "c", "d"]);
-  });
-
-  it("joined, a hidden item is in the network by choice: no longer hidden", () => {
-    const { items, road } = setUp();
-    const hidden = hideHere(items, road, key("lonely"), true);
-    const joined = join(hidden, W, key("lonely"), road, key("d")).items;
-    expect(hiddenIn(joined, W, road, key("lonely"))).toBeNull();
+    expect(networkItems(items, W, road).loose).toEqual([]);
+    expect(networkOutOfScope(items, W, road).map((t) => t.name)).toEqual(["lonely"]);
+    expect(networkItems(items, W, road, [key("lonely")]).loose.map((t) => t.name)).toEqual(["lonely"]);
+    expect(networkOutOfScope(items, W, road, [key("lonely")])).toEqual([]);
+    expect(arrangedLayout(items, W, road, "across").map((b) => b.thing?.name).sort()).toEqual(["a", "b", "c", "d"]);
   });
 
   it("has no world box and no branches; boxes keep where they're dragged", () => {
